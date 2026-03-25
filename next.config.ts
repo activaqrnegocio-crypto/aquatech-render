@@ -7,9 +7,6 @@ const withPWA = withPWAInit({
   register: true,
   cacheOnFrontEndNav: true,
   reloadOnOnline: true,
-  fallbacks: {
-    document: "/offline" 
-  },
   workboxOptions: {
     skipWaiting: true,
     clientsClaim: true,
