@@ -35,16 +35,16 @@ export default function QuotesListClient({ initialQuotes }: any) {
         <button onClick={() => setFilter('ACEPTADA')} className={`tab ${filter === 'ACEPTADA' ? 'active' : ''}`}>Aceptadas</button>
       </div>
 
-      <div className="card" style={{ padding: 0 }}>
-        <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+      <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
+        <table style={{ minWidth: '800px', width: '100%', borderCollapse: 'collapse' }}>
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-deep)' }}>
-              <th style={{ padding: '15px', textAlign: 'left' }}>Cliente</th>
-              <th style={{ padding: '15px', textAlign: 'left' }}>Proyecto Relacionado</th>
-              <th style={{ padding: '15px', textAlign: 'left' }}>Fecha</th>
-              <th style={{ padding: '15px', textAlign: 'left' }}>Estado</th>
-              <th style={{ padding: '15px', textAlign: 'right' }}>Total</th>
-              <th style={{ padding: '15px', textAlign: 'center' }}>Acciones</th>
+              <th style={{ padding: '15px', textAlign: 'left', whiteSpace: 'nowrap' }}>Cliente</th>
+              <th style={{ padding: '15px', textAlign: 'left', whiteSpace: 'nowrap' }}>Proyecto Relacionado</th>
+              <th style={{ padding: '15px', textAlign: 'left', whiteSpace: 'nowrap' }}>Fecha</th>
+              <th style={{ padding: '15px', textAlign: 'left', whiteSpace: 'nowrap' }}>Estado</th>
+              <th style={{ padding: '15px', textAlign: 'right', whiteSpace: 'nowrap' }}>Total</th>
+              <th style={{ padding: '15px', textAlign: 'center', whiteSpace: 'nowrap' }}>Acciones</th>
             </tr>
           </thead>
           <tbody>

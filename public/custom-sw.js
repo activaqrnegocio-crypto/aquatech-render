@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v17';
+const CACHE_VERSION = 'v18';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -206,7 +206,7 @@ async function navigationHandler(request) {
     // ONLY search PAGES_CACHE — never global caches.match() which would 
     // return RSC payloads from RSC_CACHE and display raw JSON text
     const pagesCache = await caches.open(PAGES_CACHE);
-    const cached = await pagesCache.match(request, { ignoreVary: true });
+    const cached = await pagesCache.match(request, { ignoreVary: true, ignoreSearch: true });
     if (cached) return cached;
 
     // Nothing in cache → show offline page

@@ -1,11 +1,18 @@
 import { prisma } from '@/lib/prisma'
 import QuotesListClient from './QuotesListClient'
 import Link from 'next/link'
+import { getServerSession } from 'next-auth/next'
+import { authOptions } from '@/lib/auth'
 
 export const dynamic = 'force-dynamic'
 
 export default async function CotizacionesPage() {
+  const session = await getServerSession(authOptions)
+  const role = session?.user?.role || 'OPERATOR'
+  const userId = session?.user?.id ? Number(session.user.id) : null
+
   const quotes = await prisma.quote.findMany({
+    where: role === 'OPERATOR' ? { userId: userId } : {},
     include: {
       client: { select: { name: true } },
       project: { select: { title: true } }
