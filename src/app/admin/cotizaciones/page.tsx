@@ -21,8 +21,8 @@ export default async function CotizacionesPage() {
           <p style={{ color: 'var(--text-muted)', marginTop: '5px' }}>Gestiona presupuestos y propuestas para clientes.</p>
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
-          <Link href="/admin/cotizaciones/materiales" className="btn btn-ghost">Ver Materiales</Link>
-          <Link href="/admin/cotizaciones/nuevo" className="btn btn-primary">+ Nueva Cotización</Link>
+          <Link href="/admin/cotizaciones/materiales" prefetch={true} className="btn btn-ghost">Ver Materiales</Link>
+          <Link href="/admin/cotizaciones/nuevo" prefetch={true} className="btn btn-primary">+ Nueva Cotización</Link>
         </div>
       </div>
 

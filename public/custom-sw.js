@@ -1,11 +1,12 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker (Offline-First)
+// Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v13';
+const CACHE_VERSION = 'v14';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
 const FONTS_CACHE  = `aquatech-fonts-${CACHE_VERSION}`;
+const RSC_CACHE    = `aquatech-rsc-${CACHE_VERSION}`;
 
 // Files to pre-cache on install (always available offline)
 const PRE_CACHE = [
@@ -16,7 +17,7 @@ const PRE_CACHE = [
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing...');
+  console.log('[SW v14] Installing...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(cache => cache.addAll(PRE_CACHE))
@@ -26,14 +27,14 @@ self.addEventListener('install', (event) => {
 
 // ─── ACTIVATE ───────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  console.log('[SW] Activating...');
+  console.log('[SW v14] Activating...');
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys
           .filter(key => 
             key.startsWith('aquatech-') && 
-            ![STATIC_CACHE, PAGES_CACHE, ASSETS_CACHE, FONTS_CACHE].includes(key)
+            ![STATIC_CACHE, PAGES_CACHE, ASSETS_CACHE, FONTS_CACHE, RSC_CACHE].includes(key)
           )
           .map(key => {
             console.log('[SW] Removing old cache:', key);
@@ -55,24 +56,10 @@ self.addEventListener('fetch', (event) => {
   // Skip chrome-extension, ws, etc.
   if (!url.protocol.startsWith('http')) return;
 
-  // ── API requests → Network Only (don't cache sensitive data)
-  if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(request).catch(() => 
-        new Response(JSON.stringify({ error: 'Sin conexión', offline: true }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json' }
-        })
-      )
-    );
-    return;
-  }
-
-  // ── Next.js auth endpoints → Network Only with Shadow Fallback
+  // ── Next.js auth/session → Shadow auth fallback
   if (url.pathname === '/api/auth/session') {
     event.respondWith(
       fetch(request).catch(async () => {
-        // Network failed (offline), try shadow auth from IndexedDB
         try {
           const auth = await getAuthFromIndexedDB();
           if (auth) {
@@ -94,7 +81,6 @@ self.addEventListener('fetch', (event) => {
           console.error('[SW] Auth shadow fallback failed', err);
         }
         
-        // Final fallback: no session
         return new Response(JSON.stringify({}), {
           status: 200,
           headers: { 'Content-Type': 'application/json' }
@@ -108,15 +94,28 @@ self.addEventListener('fetch', (event) => {
     return; // Let browser handle other auth naturally
   }
 
+  // ── API requests → Network Only (don't cache sensitive data)
+  if (url.pathname.startsWith('/api/')) {
+    event.respondWith(
+      fetch(request).catch(() => 
+        new Response(JSON.stringify({ error: 'Sin conexión', offline: true }), {
+          status: 503,
+          headers: { 'Content-Type': 'application/json' }
+        })
+      )
+    );
+    return;
+  }
+
   // ── Google Fonts → Cache First (long-lived)
   if (url.hostname.includes('fonts.googleapis.com') || url.hostname.includes('fonts.gstatic.com')) {
-    event.respondWith(cacheFirst(request, FONTS_CACHE, 365 * 24 * 60 * 60));
+    event.respondWith(cacheFirst(request, FONTS_CACHE));
     return;
   }
 
   // ── Next.js static assets → Cache First
   if (url.pathname.startsWith('/_next/static/')) {
-    event.respondWith(cacheFirst(request, ASSETS_CACHE, 30 * 24 * 60 * 60));
+    event.respondWith(cacheFirst(request, ASSETS_CACHE));
     return;
   }
 
@@ -126,10 +125,20 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ── Navigation requests (HTML pages) → Network First with offline fallback
-  // Only show offline.html for actual full-page navigations, not AJAX/RSC fetches
+  // ── RSC (React Server Component) requests — these are client-side navigations
+  // Next.js App Router uses RSC header for client-side transitions, NOT navigate mode
+  const isRSC = request.headers.get('RSC') === '1' || 
+                request.headers.get('Next-Router-Prefetch') === '1' ||
+                url.searchParams.has('_rsc');
+  
+  if (isRSC) {
+    event.respondWith(rscNetworkFirst(request));
+    return;
+  }
+
+  // ── Full-page navigation → Network First with offline.html fallback
   if (request.mode === 'navigate') {
-    event.respondWith(networkFirstWithOfflineFallback(request));
+    event.respondWith(navigationHandler(request));
     return;
   }
 
@@ -140,29 +149,66 @@ self.addEventListener('fetch', (event) => {
 // ─── STRATEGIES ─────────────────────────────────────────────
 
 /**
- * Network First with offline fallback for navigation.
- * Try network → cache → offline.html
+ * RSC Network First — specialized for React Server Component payloads.
+ * Caches by URL path only (ignoring RSC-specific headers/params) so that
+ * a prefetched response can serve a real navigation request offline.
  */
-async function networkFirstWithOfflineFallback(request) {
-  if (request.method !== 'GET') return fetch(request);
+async function rscNetworkFirst(request) {
+  // Build a normalized cache key: just the pathname (strip _rsc param)
+  const url = new URL(request.url);
+  url.searchParams.delete('_rsc');
+  const cacheKey = url.toString();
+
   try {
-    const response = await fetchWithTimeout(request, 8000);
-    if (response.ok || response.type === 'opaqueredirect') {
-      const responseToCache = response.clone();
-      const cache = await caches.open(PAGES_CACHE);
-      cache.put(request, responseToCache);
+    const response = await fetchWithTimeout(request, 6000);
+    if (response.ok) {
+      const cache = await caches.open(RSC_CACHE);
+      // Store using the normalized URL as key so it matches regardless of _rsc param
+      cache.put(cacheKey, response.clone());
     }
     return response;
   } catch (e) {
-    // Network failed, try cache
-    const cached = await caches.match(request);
+    // Network failed — try cache with the normalized key
+    const cache = await caches.open(RSC_CACHE);
+    const cached = await cache.match(cacheKey);
+    if (cached) {
+      console.log('[SW] Serving RSC from cache:', cacheKey);
+      return cached;
+    }
+    
+    // Also try exact match with ignoreVary
+    const exactCached = await caches.match(request, { ignoreVary: true, ignoreSearch: false });
+    if (exactCached) return exactCached;
+
+    // Return error so Next.js can handle it gracefully
+    return new Response(JSON.stringify({ error: 'offline' }), {
+      status: 503,
+      headers: { 'Content-Type': 'application/json' }
+    });
+  }
+}
+
+/**
+ * Navigation handler — for full page loads (first visit, refresh).
+ * Try network → cache → offline.html
+ */
+async function navigationHandler(request) {
+  try {
+    const response = await fetchWithTimeout(request, 8000);
+    if (response.ok || response.type === 'opaqueredirect') {
+      const cache = await caches.open(PAGES_CACHE);
+      cache.put(request, response.clone());
+    }
+    return response;
+  } catch (e) {
+    // Try cache with ignoreVary to handle any header differences
+    const cached = await caches.match(request, { ignoreVary: true });
     if (cached) return cached;
 
     // Nothing in cache → show offline page
     const offlinePage = await caches.match('/offline.html');
     if (offlinePage) return offlinePage;
 
-    // Absolute fallback
     return new Response('<h1>Sin conexión</h1><p>Por favor, conéctate a internet.</p>', {
       status: 503,
       headers: { 'Content-Type': 'text/html; charset=utf-8' }
@@ -178,13 +224,12 @@ async function networkFirst(request, cacheName) {
   try {
     const response = await fetchWithTimeout(request, 5000);
     if (response.ok) {
-      const responseToCache = response.clone();
       const cache = await caches.open(cacheName);
-      cache.put(request, responseToCache);
+      cache.put(request, response.clone());
     }
     return response;
   } catch (e) {
-    const cached = await caches.match(request);
+    const cached = await caches.match(request, { ignoreVary: true });
     return cached || Response.error();
   }
 }
@@ -192,16 +237,15 @@ async function networkFirst(request, cacheName) {
 /**
  * Cache First — serve from cache, fetch if miss.
  */
-async function cacheFirst(request, cacheName, maxAge) {
-  const cached = await caches.match(request);
+async function cacheFirst(request, cacheName) {
+  const cached = await caches.match(request, { ignoreVary: true });
   if (cached) return cached;
 
   try {
     const response = await fetch(request);
     if (response.ok) {
-      const responseToCache = response.clone();
       const cache = await caches.open(cacheName);
-      cache.put(request, responseToCache);
+      cache.put(request, response.clone());
     }
     return response;
   } catch (e) {
@@ -214,12 +258,11 @@ async function cacheFirst(request, cacheName, maxAge) {
  */
 async function staleWhileRevalidate(request, cacheName) {
   if (request.method !== 'GET') return fetch(request);
-  const cached = await caches.match(request);
+  const cached = await caches.match(request, { ignoreVary: true });
   
   const fetchPromise = fetch(request).then(response => {
     if (response.ok) {
-      const responseToCache = response.clone();
-      caches.open(cacheName).then(cache => cache.put(request, responseToCache));
+      caches.open(cacheName).then(cache => cache.put(request, response.clone()));
     }
     return response;
   }).catch(() => null);
@@ -255,14 +298,12 @@ function isStaticAsset(pathname) {
  */
 function getAuthFromIndexedDB() {
   return new Promise((resolve, reject) => {
-    // We use the same name as in db.ts: AquatechOfflineDB
     const request = indexedDB.open('AquatechOfflineDB');
     
     request.onerror = () => reject(request.error);
     request.onsuccess = () => {
       const db = request.result;
       
-      // Dexie version 2 has 'auth' store with 'id' as primary key
       try {
         const transaction = db.transaction(['auth'], 'readonly');
         const store = transaction.objectStore('auth');
@@ -271,7 +312,6 @@ function getAuthFromIndexedDB() {
         getRequest.onsuccess = () => resolve(getRequest.result);
         getRequest.onerror = () => reject(getRequest.error);
       } catch (err) {
-        // If 'auth' store doesn't exist yet (v1), fallback peacefully
         resolve(null);
       }
     };
@@ -291,5 +331,25 @@ self.addEventListener('message', (event) => {
     ).then(() => {
       event.source?.postMessage({ type: 'cacheCleared' });
     });
+  }
+
+  // Allow explicit pre-caching of URLs
+  if (event.data && event.data.type === 'PRECACHE_URLS') {
+    const urls = event.data.urls || [];
+    console.log('[SW] Pre-caching', urls.length, 'URLs');
+    event.waitUntil(
+      caches.open(PAGES_CACHE).then(async (cache) => {
+        for (const url of urls) {
+          try {
+            const response = await fetch(url, { credentials: 'same-origin' });
+            if (response.ok) {
+              await cache.put(url, response);
+            }
+          } catch (e) {
+            // Skip failed pre-caches silently
+          }
+        }
+      })
+    );
   }
 });

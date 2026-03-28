@@ -20,9 +20,21 @@ export interface AuthCache {
   lastLogin: number;
 }
 
+export interface MaterialCache {
+  id: number;
+  code: string;
+  name: string;
+  description?: string;
+  unit?: string;
+  unitPrice: number;
+  category?: string;
+  stock: number;
+}
+
 export class OfflineDatabase extends Dexie {
   outbox!: Table<OutboxItem>;
   auth!: Table<AuthCache>;
+  materialsCache!: Table<MaterialCache>;
 
   constructor() {
     super('AquatechOfflineDB');
@@ -30,7 +42,13 @@ export class OfflineDatabase extends Dexie {
       outbox: '++id, projectId, status, timestamp',
       auth: 'id'
     });
+    this.version(3).stores({
+      outbox: '++id, projectId, status, timestamp',
+      auth: 'id',
+      materialsCache: 'id, code, name, category'
+    });
   }
 }
 
 export const db = new OfflineDatabase();
+

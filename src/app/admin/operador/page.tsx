@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
+import OfflinePrefetcher from '@/components/OfflinePrefetcher'
 
 export const dynamic = 'force-dynamic'
 
@@ -46,8 +47,20 @@ export default async function OperatorDashboard() {
     }
   })
 
+  // Build URLs to pre-cache for offline use
+  const prefetchUrls = [
+    ...activeProjects.map(p => `/admin/operador/proyecto/${p.id}`),
+    '/admin/inventario',
+    '/admin/cotizaciones',
+    '/admin/cotizaciones/nuevo',
+    '/admin/recursos',
+  ]
+
   return (
     <div className="operator-dashboard">
+      {/* Pre-cache project pages for offline access */}
+      <OfflinePrefetcher urls={prefetchUrls} />
+
       <div className="operator-header">
         <div className="operator-welcome">
           <h1 className="page-title">Hola, {session.user.name.split(' ')[0]}</h1>
@@ -68,7 +81,7 @@ export default async function OperatorDashboard() {
           const progress = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0
           
           return (
-            <Link href={`/admin/operador/proyecto/${project.id}`} key={project.id} className="card interactive" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column' }}>
+            <Link href={`/admin/operador/proyecto/${project.id}`} prefetch={true} key={project.id} className="card interactive" style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
                 <span className={`status-badge status-${project.status.toLowerCase()}`}>
                   {project.status === 'ACTIVO' ? 'Activo' : 'Pendiente'}

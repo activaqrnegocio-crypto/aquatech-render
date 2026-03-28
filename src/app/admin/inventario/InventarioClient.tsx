@@ -15,7 +15,58 @@ export default function InventarioClient({ initialMaterials }: { initialMaterial
   
   const router = useRouter()
 
-  const categories = Array.from(new Set(initialMaterials.map(m => m.category))).filter(Boolean)
+  // Cache materials in IndexedDB for offline access
+  useEffect(() => {
+    if (initialMaterials && initialMaterials.length > 0) {
+      try {
+        const request = indexedDB.open('AquatechOfflineDB')
+        request.onsuccess = () => {
+          const db = request.result
+          // Check if 'materialsCache' store exists
+          if (db.objectStoreNames.contains('materialsCache')) {
+            const tx = db.transaction('materialsCache', 'readwrite')
+            const store = tx.objectStore('materialsCache')
+            store.clear()
+            initialMaterials.forEach(m => store.put(m))
+          }
+          db.close()
+        }
+      } catch (e) {
+        // Silently fail — IndexedDB not critical for online use
+      }
+    }
+  }, [initialMaterials])
+
+  // If initialMaterials is empty (offline page load), try loading from IndexedDB
+  useEffect(() => {
+    if (initialMaterials.length === 0) {
+      loadFromIndexedDB()
+    }
+  }, [])
+
+  const loadFromIndexedDB = async () => {
+    try {
+      const request = indexedDB.open('AquatechOfflineDB')
+      request.onsuccess = () => {
+        const db = request.result
+        if (db.objectStoreNames.contains('materialsCache')) {
+          const tx = db.transaction('materialsCache', 'readonly')
+          const store = tx.objectStore('materialsCache')
+          const getAll = store.getAll()
+          getAll.onsuccess = () => {
+            if (getAll.result && getAll.result.length > 0) {
+              setMaterials(getAll.result)
+            }
+          }
+        }
+        db.close()
+      }
+    } catch (e) {
+      console.error('Failed to load materials from IndexedDB', e)
+    }
+  }
+
+  const categories = Array.from(new Set(materials.map(m => m.category))).filter(Boolean)
 
   const filtered = materials.filter(m => {
     const matchesSearch = 
@@ -47,7 +98,6 @@ export default function InventarioClient({ initialMaterials }: { initialMaterial
                timestamp: Date.now(),
                status: 'pending'
             })
-            // Simular inserción temporal para que el operador lo vea de inmediato
             const tempMaterial = { 
                ...payload, 
                id: Date.now(), 
@@ -93,7 +143,7 @@ export default function InventarioClient({ initialMaterials }: { initialMaterial
           <h2 className="page-title">Inventario</h2>
           <p className="page-subtitle">Gestión centralizada de materiales, equipos y suministros.</p>
         </div>
-        <div className="flex gap-md">
+        <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
            <div className="kpi-card" style={{ padding: '10px 20px', marginBottom: 0, '--kpi-color': 'var(--primary)' } as any}>
               <div className="kpi-label">Items Totales</div>
               <div className="kpi-value" style={{ fontSize: '1.2rem' }}>{materials.length}</div>
@@ -105,36 +155,41 @@ export default function InventarioClient({ initialMaterials }: { initialMaterial
         </div>
       </div>
 
-      <div className="card mb-lg" style={{ padding: '20px' }}>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 200px 180px', gap: '15px' }}>
-          <div className="form-group" style={{ marginBottom: 0 }}>
+      {/* ── Search & Filters — MOBILE RESPONSIVE ── */}
+      <div className="card mb-lg" style={{ padding: '15px 20px' }}>
+        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '10px', alignItems: 'center' }}>
+          <div style={{ flex: '1 1 250px', minWidth: '0' }}>
             <input 
               type="text" 
-              placeholder="Buscar por nombre o código..." 
+              placeholder="🔍 Buscar por nombre o código..." 
               className="form-input"
+              style={{ width: '100%', fontSize: '0.95rem' }}
               value={search}
               onChange={(e) => setSearch(e.target.value)}
             />
           </div>
-          <select 
-            className="form-select"
-            value={categoryFilter}
-            onChange={(e) => setCategoryFilter(e.target.value)}
-          >
-            <option value="ALL">Todas las categorías</option>
-            {categories.map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
-          <button className="btn btn-primary" style={{ height: '42px' }} onClick={() => setShowModal(true)}>
+          <div style={{ flex: '0 1 180px', minWidth: '120px' }}>
+            <select 
+              className="form-select"
+              style={{ width: '100%' }}
+              value={categoryFilter}
+              onChange={(e) => setCategoryFilter(e.target.value)}
+            >
+              <option value="ALL">Todas</option>
+              {categories.map(cat => (
+                <option key={cat} value={cat}>{cat}</option>
+              ))}
+            </select>
+          </div>
+          <button className="btn btn-primary" style={{ height: '42px', whiteSpace: 'nowrap', flex: '0 0 auto' }} onClick={() => setShowModal(true)}>
             + Nuevo Item
           </button>
         </div>
       </div>
 
       {showModal && (
-        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)' }}>
-          <div className="card shadow-lg" style={{ width: '90%', maxWidth: '500px', padding: '25px' }}>
+        <div style={{ position: 'fixed', inset: 0, zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(0,0,0,0.5)', padding: '15px' }}>
+          <div className="card shadow-lg" style={{ width: '100%', maxWidth: '500px', padding: '25px' }}>
              <h3>Crear Nuevo Material</h3>
              <form onSubmit={handleSaveItem}>
                 <div style={{ display: 'grid', gap: '15px', marginTop: '15px' }}>
@@ -176,36 +231,38 @@ export default function InventarioClient({ initialMaterials }: { initialMaterial
         </div>
       )}
 
+      {/* ── Mobile-optimized card view for small screens ── */}
       <div className="card" style={{ padding: 0 }}>
-        <div className="table-wrapper">
-          <table className="table">
+        {/* Desktop table */}
+        <div className="table-wrapper" style={{ overflowX: 'auto' }}>
+          <table className="table" style={{ minWidth: '500px' }}>
             <thead>
               <tr>
-                <th style={{ width: '120px' }}>Código</th>
-                <th>Nombre del Producto</th>
-                <th>Categoría</th>
-                <th style={{ textAlign: 'center', width: '100px' }}>Stock</th>
-                <th style={{ textAlign: 'right', width: '150px' }}>P. Unitario</th>
+                <th style={{ width: '100px' }}>Código</th>
+                <th>Nombre</th>
+                <th style={{ display: 'var(--hide-on-mobile, table-cell)' }}>Categoría</th>
+                <th style={{ textAlign: 'center', width: '80px' }}>Stock</th>
+                <th style={{ textAlign: 'right', width: '120px' }}>Precio</th>
               </tr>
             </thead>
             <tbody>
               {filtered.slice(0, 100).map((material) => {
                 return (
                   <tr key={material.id}>
-                    <td style={{ fontWeight: '600', color: 'var(--primary)', fontSize: '0.85rem' }}>{material.code}</td>
+                    <td style={{ fontWeight: '600', color: 'var(--primary)', fontSize: '0.8rem' }}>{material.code}</td>
                     <td>
-                      <div style={{ fontWeight: '500' }}>{material.name}</div>
-                      {material.description && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{material.description.substring(0, 50)}...</div>}
+                      <div style={{ fontWeight: '500', fontSize: '0.9rem' }}>{material.name}</div>
+                      {material.description && <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>{material.description.substring(0, 40)}...</div>}
                     </td>
-                    <td>
-                      <span className="badge badge-neutral" style={{ textTransform: 'none' }}>{material.category}</span>
+                    <td style={{ display: 'var(--hide-on-mobile, table-cell)' }}>
+                      <span className="badge badge-neutral" style={{ textTransform: 'none', fontSize: '0.75rem' }}>{material.category}</span>
                     </td>
                     <td style={{ textAlign: 'center' }}>
                       <span style={{ fontWeight: 'bold', color: Number(material.stock) < 10 ? 'var(--danger)' : 'inherit' }}>
                         {material.stock}
                       </span>
                     </td>
-                    <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1.05rem', color: 'var(--primary)' }}>$ {Number(material.unitPrice).toFixed(2)}</td>
+                    <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--primary)' }}>$ {Number(material.unitPrice).toFixed(2)}</td>
                   </tr>
                 )
               })}
