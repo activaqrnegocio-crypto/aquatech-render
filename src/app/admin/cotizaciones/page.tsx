@@ -26,7 +26,20 @@ export default async function CotizacionesPage() {
         </div>
       </div>
 
-      <QuotesListClient initialQuotes={quotes.map(q => ({ ...q, totalAmount: Number(q.totalAmount) }))} />
+      <QuotesListClient initialQuotes={quotes.map(q => ({ 
+        ...q, 
+        totalAmount: Number(q.totalAmount),
+        // @ts-ignore
+        subtotal: Number(q.subtotal || 0),
+        // @ts-ignore
+        subtotal0: Number(q.subtotal0 || 0),
+        // @ts-ignore
+        subtotal15: Number(q.subtotal15 || 0),
+        // @ts-ignore
+        ivaAmount: Number(q.ivaAmount || 0),
+        // @ts-ignore
+        discountTotal: Number(q.discountTotal || 0)
+      }))} />
     </div>
   )
 }

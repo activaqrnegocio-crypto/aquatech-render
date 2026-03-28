@@ -10,14 +10,37 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     const session = await getServerSession(authOptions)
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
       
-    const { phaseId, content, type, lat, lng, media } = await req.json()
+    const { phaseId, content, type, lat, lng, media, createdAt } = await req.json()
     const projectId = Number(id)
     const userId = Number(session.user.id)
 
     let mediaUrl = null
     if (media && media.base64) {
-      const buffer = Buffer.from(media.base64.split(',')[1], 'base64')
-      mediaUrl = await uploadToBunny(buffer, media.filename || 'upload.jpg', `projects/${projectId}/chat`)
+      try {
+        const parts = media.base64.split(',')
+        if (parts.length > 1) {
+          const buffer = Buffer.from(parts[1], 'base64')
+          mediaUrl = await uploadToBunny(buffer, media.filename || 'upload.jpg', `projects/${projectId}/chat`)
+        } else {
+          console.warn('Invalid base64 format received')
+        }
+      } catch (uploadError) {
+        console.error('Error uploading to Bunny:', uploadError)
+        // We can continue or throw. Let's throw to give feedback to the client.
+        throw new Error('Failed to upload file to storage')
+      }
+    }
+
+    // Determine type if not provided
+    let finalType = type
+    if (!finalType && (mediaUrl || media?.url)) {
+      const mime = media?.mimeType || ''
+      if (mime.startsWith('image/')) finalType = 'IMAGE'
+      else if (mime.startsWith('video/')) finalType = 'VIDEO'
+      else if (mime.includes('pdf')) finalType = 'DOCUMENT'
+      else finalType = 'IMAGE' // Default fallback
+    } else if (!finalType) {
+      finalType = 'TEXT'
     }
 
     const msg = await prisma.chatMessage.create({
@@ -26,9 +49,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         userId,
         phaseId: phaseId ? Number(phaseId) : null,
         content: content || (mediaUrl || media?.url ? '' : null),
-        type: type || (mediaUrl || media?.url ? 'IMAGE' : 'TEXT'),
+        type: finalType,
         lat: lat ? Number(lat) : null,
         lng: lng ? Number(lng) : null,
+        createdAt: createdAt ? new Date(createdAt) : undefined,
         media: (mediaUrl || (media && media.url)) ? {
           create: {
             url: mediaUrl || media.url,
@@ -41,7 +65,10 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     return NextResponse.json(msg)
   } catch (error) {
-    console.error(error)
-    return NextResponse.json({ error: 'Error sending message' }, { status: 500 })
+    console.error('[API Messages ERROR]:', error)
+    return NextResponse.json({ 
+      error: 'Error sending message',
+      details: error instanceof Error ? error.message : String(error)
+    }, { status: 500 })
   }
 }

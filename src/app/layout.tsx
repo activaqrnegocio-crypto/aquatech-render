@@ -20,11 +20,8 @@ export const metadata: Metadata = {
   formatDetection: {
     telephone: false,
   },
-  icons: {
-    icon: "/logo.jpg",
-    apple: "/logo.jpg",
-  },
 };
+
 
 export default function RootLayout({
   children,
@@ -33,27 +30,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="es" data-scroll-behavior="smooth">
-      <head>
-        <script
-          dangerouslySetInnerHTML={{
-            __html: `
-              if ('serviceWorker' in navigator) {
-                window.addEventListener('load', function() {
-                  navigator.serviceWorker.register('/custom-sw.js', { scope: '/' })
-                    .then(function(reg) {
-                      console.log('[App] SW registered, scope:', reg.scope);
-                      // Check for updates every 30 minutes
-                      setInterval(function() { reg.update(); }, 30 * 60 * 1000);
-                    })
-                    .catch(function(err) {
-                      console.error('[App] SW registration failed:', err);
-                    });
-                });
-              }
-            `,
-          }}
-        />
-      </head>
+      <head />
       <body>
         <SessionWrapper>
           {children}

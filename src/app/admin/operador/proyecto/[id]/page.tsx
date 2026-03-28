@@ -23,7 +23,8 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
       team: { include: { user: { select: { name: true, role: true } } } },
       chatMessages: {
         take: 1
-      }
+      },
+      gallery: { orderBy: { createdAt: 'desc' } }
     }
   })
 
@@ -66,6 +67,12 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
       id: t.userId,
       name: t.user.name,
       role: t.user.role
+    })),
+    gallery: project.gallery.map(g => ({ 
+      id: g.id, 
+      url: g.url, 
+      filename: g.filename, 
+      mimeType: g.mimeType 
     }))
   }
 

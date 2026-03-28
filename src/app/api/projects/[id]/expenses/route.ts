@@ -23,6 +23,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         userId,
         lat: lat ? Number(lat) : null,
         lng: lng ? Number(lng) : null,
+        createdAt: createdAt ? new Date(createdAt) : undefined,
       }
     })
 
@@ -44,7 +45,8 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         type: 'EXPENSE_LOG',
         content: `${session.user.name} registró un gasto: L. ${Number(amount).toFixed(2)} (${description})`,
         lat: lat ? Number(lat) : null,
-        lng: lng ? Number(lng) : null
+        lng: lng ? Number(lng) : null,
+        createdAt: createdAt ? new Date(createdAt) : undefined,
       }
     })
 

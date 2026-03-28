@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import Link from 'next/link'
 
 interface DashboardProps {
@@ -13,6 +13,9 @@ interface DashboardProps {
     totalOperators: number
     totalBudget: number
     totalSpent: number
+    totalHours7d: number
+    totalMessages7d: number
+    totalExpenses7d: number
   }
   recentExpenses: {
     id: number
@@ -104,6 +107,12 @@ function timeAgo(dateStr: string) {
 
 export default function DashboardClient({ stats, recentExpenses, recentMessages, activeProjects, teamList }: DashboardProps) {
   const [activeTab, setActiveTab] = useState(activeProjects[0]?.id || 0)
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
   const budgetPercent = stats.totalBudget > 0 ? Math.min((stats.totalSpent / stats.totalBudget) * 100, 100) : 0
 
   const selectedProject = activeProjects.find(p => p.id === activeTab) || activeProjects[0]
@@ -164,6 +173,34 @@ export default function DashboardClient({ stats, recentExpenses, recentMessages,
           </div>
           <div className="kpi-value">{stats.totalOperators}</div>
           <div className="kpi-label">Operarios Activos</div>
+        </div>
+      </div>
+
+      {/* Weekly Intelligence (New Section) */}
+      <h3 style={{ marginBottom: '15px', color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
+        📈 Desempeño Semanal (Últimos 7 días)
+      </h3>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '15px', marginBottom: '30px' }}>
+        <div className="card-sub" style={{ padding: '15px', background: 'var(--bg-surface)', border: '1px solid var(--primary-light)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+           <div style={{ fontSize: '1.5rem' }}>⏱️</div>
+           <div>
+             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Horas Totales del Equipo</div>
+             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--primary)' }}>{stats.totalHours7d} hrs</div>
+           </div>
+        </div>
+        <div className="card-sub" style={{ padding: '15px', background: 'var(--bg-surface)', border: '1px solid var(--info)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+           <div style={{ fontSize: '1.5rem' }}>📸</div>
+           <div>
+             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Reportes en Bitácora</div>
+             <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{stats.totalMessages7d}</div>
+           </div>
+        </div>
+        <div className="card-sub" style={{ padding: '15px', background: 'var(--bg-surface)', border: '1px solid var(--danger-light)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '15px' }}>
+           <div style={{ fontSize: '1.5rem' }}>💸</div>
+           <div>
+             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Gasto Semanal (Viáticos)</div>
+             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--danger)' }}>{formatCurrency(stats.totalExpenses7d)}</div>
+           </div>
         </div>
       </div>
 
@@ -423,7 +460,9 @@ export default function DashboardClient({ stats, recentExpenses, recentMessages,
                 <div className="flex items-center gap-sm" style={{ marginBottom: '2px' }}>
                   <span>{msgTypeIcons[msg.type] || '💬'}</span>
                   <strong style={{ color: 'var(--text)' }}>{msg.userName}</strong>
-                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>{timeAgo(msg.createdAt)}</span>
+                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', marginLeft: 'auto' }}>
+                    {mounted ? timeAgo(msg.createdAt) : '...'}
+                  </span>
                 </div>
                 <div style={{ color: 'var(--text-secondary)', paddingLeft: '26px', fontSize: '0.78rem' }}>
                   {msg.content?.slice(0, 80)}{(msg.content?.length || 0) > 80 ? '...' : ''}

@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import ProjectUploader, { ProjectFile } from '@/components/ProjectUploader'
+import { generateProfessionalPDF } from '@/lib/pdf-generator'
 
 export default function NuevoProyectoPage() {
   const router = useRouter()
@@ -22,7 +23,9 @@ export default function NuevoProyectoPage() {
     categoryList: [] as string[],
     otherCategory: '',
     contractTypeList: [] as string[],
-    technicalSpecs: {} as any
+    technicalSpecs: {} as any,
+    specsAudioUrl: '',
+    status: 'LEAD'
   })
 
   const CONTRACT_TYPES = [
@@ -89,6 +92,7 @@ export default function NuevoProyectoPage() {
   const [clientData, setClientData] = useState({
     id: null as string | null,
     name: '',
+    ruc: '',
     phone: '',
     email: '',
     city: '',
@@ -113,9 +117,14 @@ export default function NuevoProyectoPage() {
   const [customDescription, setCustomDescription] = useState('')
   const [customPrice, setCustomPrice] = useState('')
   const [customQty, setCustomQty] = useState(1)
+  const [globalDescription, setGlobalDescription] = useState('')
+  const [globalPrice, setGlobalPrice] = useState('')
+  const [customIsTaxed, setCustomIsTaxed] = useState(true)
+  const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(null)
 
   // Step 6+: Files (Persistent)
   const [uploadedFiles, setUploadedFiles] = useState<ProjectFile[]>([])
+  const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null)
 
   useEffect(() => {
     // Fetch clients
@@ -140,11 +149,35 @@ export default function NuevoProyectoPage() {
   }, [])
 
   const handleNext = () => {
-    // Basic validation per step
+    // Step 1 validation
     if (step === 1 && (projectData.categoryList.length === 0 || projectData.contractTypeList.length === 0)) {
         return setError('Selecciona al menos una categoría y un tipo de contrato.')
     }
-    if (step === 2 && !clientData.name) return setError('El nombre del cliente es obligatorio.')
+    
+    // Step 2 validation - REAL DATA REQUIRED
+    if (step === 2) {
+      if (!clientData.name || clientData.name.trim().length < 3) return setError('El nombre del cliente debe ser real (mínimo 3 caracteres).')
+      
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+      if (!clientData.email || !emailRegex.test(clientData.email)) {
+        return setError('Por favor, ingresa un correo electrónico válido y real.')
+      }
+
+      const phoneRegex = /^\+?[\d\s-]{7,15}$/
+      if (!clientData.phone || !phoneRegex.test(clientData.phone)) {
+        return setError('Por favor, ingresa un número de teléfono válido (mínimo 7 dígitos).')
+      }
+
+      if (!clientData.address || clientData.address.trim().length < 5) {
+        return setError('La dirección física es obligatoria para la legalidad de la cotización.')
+      }
+    }
+    
+    // Step 3 validation - Audio/Transcription
+    if (step === 3 && !projectData.technicalSpecs.description) {
+      return setError('Debes incluir la descripción técnica (o transcripción del audio) del proyecto.')
+    }
+
     if (step === 4 && phases.length === 0) return setError('Debes añadir al menos una fase.')
     if (step === 5 && selectedTeam.length === 0) return setError('Debes seleccionar al menos un integrante del equipo.')
     
@@ -174,6 +207,9 @@ export default function NuevoProyectoPage() {
           categoryList: projectData.categoryList.map(c => c === 'OTRO' ? (projectData.otherCategory || 'OTRO') : c),
           contractTypeList: projectData.contractTypeList,
           technicalSpecs: projectData.technicalSpecs,
+          specsAudioUrl: projectData.specsAudioUrl,
+          specsTranscription: projectData.technicalSpecs.description,
+          status: projectData.status,
           clientId: clientData.id,
           files: uploadedFiles
         })
@@ -245,27 +281,33 @@ export default function NuevoProyectoPage() {
   }
 
   const addBudgetItem = (m: any) => {
-    const newItem = {
-      materialId: m.id,
-      name: m.name,
-      quantity: 1,
-      estimatedCost: Number(m.unitPrice || 0)
-    }
-    setBudgetItems([...budgetItems, newItem])
+    setCustomDescription(m.name)
+    setCustomPrice(m.unitPrice.toString())
+    setCustomQty(1)
+    setSelectedInventoryId(m.id)
     setSearchMaterial('')
+    // Focus the custom description input for better UX (optional)
   }
 
-  const addCustomBudgetItem = () => {
+  const addCustomBudgetItem = (isGlobal = false) => {
     const newItem = {
-      materialId: null,
-      name: customDescription,
-      quantity: Number(customQty),
-      estimatedCost: Number(customPrice)
+      materialId: isGlobal ? null : selectedInventoryId,
+      name: isGlobal ? globalDescription : customDescription,
+      quantity: isGlobal ? 'GLOBAL' : Number(customQty),
+      unit: isGlobal ? 'GLOBAL' : 'UND',
+      estimatedCost: Number(isGlobal ? globalPrice : customPrice),
+      isTaxed: customIsTaxed
     }
     setBudgetItems([...budgetItems, newItem])
-    setCustomDescription('')
-    setCustomPrice('')
-    setCustomQty(1)
+    if (isGlobal) {
+      setGlobalDescription('')
+      setGlobalPrice('')
+    } else {
+      setCustomDescription('')
+      setCustomPrice('')
+      setCustomQty(1)
+      setSelectedInventoryId(null)
+    }
   }
 
   const removeBudgetItem = (index: number) => {
@@ -278,7 +320,7 @@ export default function NuevoProyectoPage() {
     const id = e.target.value
     if (id === 'NEW') {
       setIsNewClient(true)
-      setClientData({ id: null, name: '', phone: '', email: '', city: '', address: '', notes: '' })
+      setClientData({ id: null, name: '', ruc: '', phone: '', email: '', city: '', address: '', notes: '' })
     } else {
       const c = clients.find(c => c.id === id)
       if (c) {
@@ -286,6 +328,7 @@ export default function NuevoProyectoPage() {
         setClientData({
           id: c.id,
           name: c.name,
+          ruc: c.ruc || '',
           phone: c.phone || '',
           email: c.email || '',
           city: c.city || '',
@@ -305,7 +348,58 @@ export default function NuevoProyectoPage() {
     m.category?.toLowerCase().includes(searchMaterial.toLowerCase())
   ).slice(0, 5)
 
-  const totalBudget = budgetItems.reduce((acc, item) => acc + (item.quantity * item.estimatedCost), 0)
+  // Calculate detailed totals for project
+  const { subtotal0, subtotal15, totalBudget } = budgetItems.reduce((acc, item) => {
+    const qty = item.quantity === 'GLOBAL' ? 1 : Number(item.quantity)
+    const lineTotal = qty * Number(item.estimatedCost)
+    
+    if (item.isTaxed === false) {
+      acc.subtotal0 += lineTotal
+    } else {
+      acc.subtotal15 += lineTotal
+    }
+    acc.totalBudget += lineTotal
+    return acc
+  }, { subtotal0: 0, subtotal15: 0, totalBudget: 0 })
+  
+  const ivaAmount = subtotal15 * 0.15
+  const grandTotal = subtotal0 + subtotal15 + ivaAmount
+
+  const generatePDF = (preview = false) => {
+    const info = {
+      name: clientData.name || 'Cliente Particular',
+      ruc: clientData.ruc || '9999999999',
+      address: clientData.address || 'N/A',
+      phone: clientData.phone || 'N/A',
+      email: clientData.email || 'N/A'
+    }
+    const items = budgetItems.map((bi: any) => ({
+      name: bi.name,
+      quantity: bi.unit === 'GLOBAL' ? 'GLOBAL' : bi.quantity,
+      unit: bi.unit || 'UND',
+      estimatedCost: Number(bi.estimatedCost)
+    }))
+
+    const totalsObj = {
+      subtotal: totalBudget,
+      subtotal0: subtotal0,
+      subtotal15: subtotal15,
+      discountTotal: 0,
+      ivaAmount: ivaAmount,
+      totalAmount: grandTotal
+    }
+
+    const result = generateProfessionalPDF(info, items, totalsObj, {
+      docType: 'PRESUPUESTO',
+      docId: preview ? 'VISTA-PREVIA' : `PRJ-${Date.now().toString().slice(-4)}`,
+      notes: projectData.technicalSpecs?.description || 'DOCUMENTO PRELIMINAR',
+      action: preview ? 'preview' : 'save'
+    })
+
+    if (preview && typeof result === 'string') {
+      setPdfPreviewUrl(result)
+    }
+  }
 
   return (
     <div className="p-6" style={{ maxWidth: '1200px', margin: '0 auto' }}>
@@ -351,9 +445,41 @@ export default function NuevoProyectoPage() {
             <div className="animate-fade-in">
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '40px' }}>
                 <div>
+                    <div style={{ ...inputGroupStyle, marginBottom: '25px' }}>
+                        <label style={labelStyle}>Etapa del Proyecto *</label>
+                        <div style={{ display: 'flex', gap: '15px' }}>
+                            <div 
+                                onClick={() => setProjectData({...projectData, status: 'LEAD'})}
+                                style={{ 
+                                    flex: 1, padding: '12px', borderRadius: '12px', cursor: 'pointer', textAlign: 'center',
+                                    border: projectData.status === 'LEAD' ? '2px solid var(--warning)' : '2px solid var(--border)',
+                                    backgroundColor: projectData.status === 'LEAD' ? 'rgba(234, 179, 8, 0.1)' : 'var(--bg-deep)',
+                                    color: projectData.status === 'LEAD' ? 'var(--warning)' : 'var(--text-muted)',
+                                    fontWeight: projectData.status === 'LEAD' ? 'bold' : 'normal', transition: 'all 0.2s'
+                                }}
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'block', margin: '0 auto 5px' }}><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+                                Lead / Negociando
+                            </div>
+                            <div 
+                                onClick={() => setProjectData({...projectData, status: 'ACTIVO'})}
+                                style={{ 
+                                    flex: 1, padding: '12px', borderRadius: '12px', cursor: 'pointer', textAlign: 'center',
+                                    border: projectData.status === 'ACTIVO' ? '2px solid var(--success)' : '2px solid var(--border)',
+                                    backgroundColor: projectData.status === 'ACTIVO' ? 'rgba(34, 197, 94, 0.1)' : 'var(--bg-deep)',
+                                    color: projectData.status === 'ACTIVO' ? 'var(--success)' : 'var(--text-muted)',
+                                    fontWeight: projectData.status === 'ACTIVO' ? 'bold' : 'normal', transition: 'all 0.2s'
+                                }}
+                            >
+                                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ display: 'block', margin: '0 auto 5px' }}><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path><polyline points="22 4 12 14.01 9 11.01"></polyline></svg>
+                                Activo / Aprobado
+                            </div>
+                        </div>
+                    </div>
+
                     <div style={inputGroupStyle}>
-                        <label style={labelStyle}>Título del Proyecto *</label>
-                        <input type="text" className="form-input" placeholder="Ej. Instalación de Piscina Residencial" value={projectData.title} onChange={e => setProjectData({...projectData, title: e.target.value})} autoFocus />
+                        <label style={labelStyle}>Título del Proyecto (o referencia del Lead) *</label>
+                        <input type="text" className="form-input" placeholder="Ej. Piscina Residencial Familia Ruiz" value={projectData.title} onChange={e => setProjectData({...projectData, title: e.target.value})} autoFocus />
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
@@ -467,13 +593,29 @@ export default function NuevoProyectoPage() {
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
                   <div style={inputGroupStyle}>
-                    <label style={labelStyle}>Teléfono</label>
-                    <input type="tel" className="form-input" placeholder="+593..." value={clientData.phone} onChange={e => setClientData({...clientData, phone: e.target.value})} disabled={!isNewClient} />
+                    <label style={labelStyle}>R.U.C / C.I. *</label>
+                    <input type="text" className="form-input" placeholder="1105XXXXXX001" value={clientData.ruc} onChange={e => setClientData({...clientData, ruc: e.target.value})} disabled={!isNewClient} />
                   </div>
                   <div style={inputGroupStyle}>
-                    <label style={labelStyle}>Email</label>
+                    <label style={labelStyle}>Teléfono *</label>
+                    <input type="tel" className="form-input" placeholder="+593..." value={clientData.phone} onChange={e => setClientData({...clientData, phone: e.target.value})} disabled={!isNewClient} />
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                  <div style={inputGroupStyle}>
+                    <label style={labelStyle}>Ciudad *</label>
+                    <input type="text" className="form-input" placeholder="Loja" value={clientData.city} onChange={e => setClientData({...clientData, city: e.target.value})} disabled={!isNewClient} />
+                  </div>
+                  <div style={inputGroupStyle}>
+                    <label style={labelStyle}>Email *</label>
                     <input type="email" className="form-input" placeholder="correo@ejemplo.com" value={clientData.email} onChange={e => setClientData({...clientData, email: e.target.value})} disabled={!isNewClient} />
                   </div>
+                </div>
+
+                <div style={inputGroupStyle}>
+                  <label style={labelStyle}>Dirección Física *</label>
+                  <input type="text" className="form-input" placeholder="Ciudad, Barrio, Calle Principal y Secundaria" value={clientData.address} onChange={e => setClientData({...clientData, address: e.target.value})} disabled={!isNewClient} />
                 </div>
 
                 <div style={inputGroupStyle}>
@@ -486,99 +628,68 @@ export default function NuevoProyectoPage() {
 
           {step === 3 && (
             <div className="animate-fade-in">
-              <h3 style={{ marginBottom: '20px', color: 'var(--text)' }}>Especificaciones Técnicas</h3>
-              <p style={{ color: 'var(--text-muted)', marginBottom: '30px' }}>Proporciona detalles técnicos específicos para las categorías seleccionadas.</p>
+              <h3 style={{ marginBottom: '10px', color: 'var(--text)' }}>Especificaciones Técnicas</h3>
               
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(400px, 1fr))', gap: '20px' }}>
-                {/* Contract Type Specs */}
-                {projectData.contractTypeList.map(ctId => {
-                  const specs = SPECS_BY_CONTRACT[ctId]
-                  if (!specs) return null
-                  const ctLabel = CONTRACT_TYPES.find(c => c.id === ctId)?.label
-                  
-                  return (
-                    <div key={ctId} style={{ padding: '20px', backgroundColor: 'var(--primary-glow)', borderRadius: '12px', border: '1px solid var(--primary)' }}>
-                        <h4 style={{ marginBottom: '20px', color: 'var(--primary)', borderBottom: '1px solid var(--primary)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                        Detalle del Contrato ({ctLabel})
-                        </h4>
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                        {specs.map((spec: any) => (
-                            <div key={spec.id} style={inputGroupStyle}>
-                            <label style={labelStyle}>{spec.label}</label>
-                            {spec.type === 'select' ? (
-                                <select 
-                                className="form-input" 
-                                value={projectData.technicalSpecs[spec.id] || ''} 
-                                onChange={e => updateSpec(spec.id, e.target.value)}
-                                >
-                                <option value="">Seleccionar...</option>
-                                {spec.options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
-                                </select>
-                            ) : (
-                                <input 
-                                type={spec.type} 
-                                className="form-input" 
-                                placeholder={spec.placeholder}
-                                value={projectData.technicalSpecs[spec.id] || ''}
-                                onChange={e => updateSpec(spec.id, e.target.value)}
-                                />
-                            )}
-                            </div>
-                        ))}
-                        </div>
-                    </div>
-                  )
-                })}
-
-                {/* Category Specs */}
-                {projectData.categoryList.map(catId => {
-                  const specs = SPECS_BY_CATEGORY[catId]
-                  if (!specs) return null
-                  const catLabel = CATEGORIES.find(c => c.id === catId)?.label
-                  
-                  return (
-                    <div key={catId} style={{ padding: '20px', backgroundColor: 'var(--bg-deep)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                      <h4 style={{ marginBottom: '20px', color: 'var(--primary)', borderBottom: '1px solid var(--border)', paddingBottom: '10px', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4m0-4h.01"/></svg>
-                        {catLabel}
-                      </h4>
-                      
-                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                        {specs.map((spec: any) => (
-                          <div key={spec.id} style={inputGroupStyle}>
-                            <label style={labelStyle}>{spec.label}</label>
-                            {spec.type === 'select' ? (
-                              <select 
-                                className="form-input" 
-                                value={projectData.technicalSpecs[spec.id] || ''} 
-                                onChange={e => updateSpec(spec.id, e.target.value)}
-                              >
-                                <option value="">Seleccionar...</option>
-                                {spec.options.map((opt: string) => <option key={opt} value={opt}>{opt}</option>)}
-                              </select>
-                            ) : (
-                              <input 
-                                type={spec.type} 
-                                className="form-input" 
-                                placeholder={spec.placeholder}
-                                value={projectData.technicalSpecs[spec.id] || ''}
-                                onChange={e => updateSpec(spec.id, e.target.value)}
-                              />
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )
-                })}
+              {/* Audio Spec Section */}
+              <div className="card mb-6" style={{ border: '1px solid var(--primary-glow)', background: 'linear-gradient(135deg, var(--bg-card), var(--bg-deep))' }}>
+                <div style={{ display: 'flex', gap: '20px', alignItems: 'center' }}>
+                  <div style={{ 
+                    width: '60px', 
+                    height: '60px', 
+                    borderRadius: '16px', 
+                    background: 'var(--primary-glow)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center',
+                    color: 'var(--primary)',
+                    flexShrink: 0
+                  }}>
+                    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <h4 style={{ margin: 0 }}>Especificación por Audio</h4>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', margin: '4px 0 0 0' }}>Sube o graba un audio explicando los detalles para generar la sugerencia de presupuesto.</p>
+                  </div>
+                  <input 
+                    type="file" 
+                    accept="audio/*" 
+                    id="audio-upload" 
+                    style={{ display: 'none' }} 
+                    onChange={(e) => {
+                      if (e.target.files?.[0]) {
+                        // In a real app, upload here. For now, simulate suggestion.
+                        const file = e.target.files[0];
+                        setError('Audio cargado: ' + file.name + '. Generando sugerencia...');
+                        setTimeout(() => {
+                          setProjectData(prev => ({
+                            ...prev,
+                            technicalSpecs: {
+                              ...prev.technicalSpecs,
+                              description: 'PISCINA DE 10X5M CON HIDROMASAJE INTEGRADO. BASTANTE VARILLA DE 12MM. ACABADO DIAMOND BRITE AZUL.'
+                            }
+                          }));
+                          setError('');
+                        }, 1500);
+                      }
+                    }}
+                  />
+                  <label htmlFor="audio-upload" className="btn btn-secondary btn-sm" style={{ cursor: 'pointer' }}>
+                    Subir Audio
+                  </label>
+                </div>
               </div>
 
-              {projectData.categoryList.filter(c => SPECS_BY_CATEGORY[c]).length === 0 && (
-                <div style={{ padding: '40px', textAlign: 'center', backgroundColor: 'var(--bg-deep)', borderRadius: '12px', border: '1px solid var(--border)', color: 'var(--text-muted)' }}>
-                  No se requieren especificaciones técnicas adicionales para las categorías seleccionadas.
-                </div>
-              )}
+              <div style={inputGroupStyle}>
+                <label style={labelStyle}>Descripción Detallada / Sugerencia de Audio *</label>
+                <textarea 
+                  className="form-input" 
+                  rows={4} 
+                  placeholder="Explica a detalle el proyecto o transcribe el audio aquí..." 
+                  value={projectData.technicalSpecs.description || ''} 
+                  onChange={e => updateSpec('description', e.target.value)}
+                />
+              </div>
+
             </div>
           )}
 
@@ -676,14 +787,24 @@ export default function NuevoProyectoPage() {
 
           {step === 6 && (
             <div className="animate-fade-in" style={{ position: 'relative' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                 <h3 style={{ margin: 0, color: 'var(--text)' }}>Presupuesto Estimado</h3>
-                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--primary)' }}>$ {totalBudget.toLocaleString()}</div>
+                <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--primary)' }}>$ {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px' }}>
+              <div style={{ padding: '15px', backgroundColor: 'var(--primary-glow)', border: '1px solid var(--primary)', borderRadius: '8px', marginBottom: '25px', display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
+                <div style={{ color: 'var(--text)' }}>
+                    <h4 style={{ margin: '0 0 5px 0', fontSize: '1rem', color: 'var(--primary)' }}>Generación de Presupuesto Profesional</h4>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>Agrega materiales del inventario o partidas personalizadas. Los ítems del catálogo pueden ser <strong>editados en cantidad y precio</strong> antes de añadirlos. Todo se desglosará con el **IVA 15%** en el documento final.</p>
+                </div>
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '30px' }} className="responsive-grid">
                 <div>
                   <h4 style={{ fontSize: '0.9rem', marginBottom: '15px', color: 'var(--text-secondary)' }}>Añadir Materiales o Servicios</h4>
+                  
+                  {/* Buscador de Catálogo */}
                   <div style={{ ...inputGroupStyle, position: 'relative' }}>
                     <input 
                       type="text" 
@@ -715,7 +836,10 @@ export default function NuevoProyectoPage() {
                             onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-glow)'}
                             onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
                           >
-                            <div style={{ fontWeight: '600', color: 'var(--text)' }}>{m.name}</div>
+                            <div style={{ fontWeight: '600', color: 'var(--text)', display: 'flex', justifyContent: 'space-between' }}>
+                              <span>{m.name}</span>
+                              <span style={{ color: 'var(--primary)', fontSize: '0.8rem' }}>Seleccionar &rarr;</span>
+                            </div>
                             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>$ {m.unitPrice} - {m.category}</div>
                           </div>
                         ))}
@@ -723,11 +847,30 @@ export default function NuevoProyectoPage() {
                     )}
                   </div>
                   
-                  <div style={{ padding: '20px', border: '1px solid var(--border)', borderRadius: '12px', backgroundColor: 'rgba(56, 189, 248, 0.03)' }}>
-                    <label style={{ ...labelStyle, color: 'var(--primary)', borderBottom: '1px solid var(--border)', paddingBottom: '5px', marginBottom: '15px' }}>Otras partidas / Servicios</label>
+                  {/* Custom specific materials (UND) */}
+                  <div id="material-edit-box" style={{ padding: '20px', border: selectedInventoryId ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '12px', backgroundColor: 'var(--bg-card)', marginBottom: '15px', position: 'relative' }}>
+                    {selectedInventoryId && (
+                      <div style={{ position: 'absolute', top: '-12px', left: '20px', backgroundColor: 'var(--primary)', color: 'var(--bg-deep)', padding: '2px 10px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>
+                        CONFIGURANDO MATERIAL DEL CATÁLOGO
+                      </div>
+                    )}
+                    
+                    <label style={{ ...labelStyle, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', paddingBottom: '5px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between' }}>
+                      <span>Detalles del Ítem</span>
+                      {selectedInventoryId && (
+                         <button type="button" onClick={() => { setSelectedInventoryId(null); setCustomDescription(''); setCustomPrice(''); }} style={{ color: 'var(--danger)', background: 'none', border: 'none', fontSize: '0.7rem', cursor: 'pointer' }}>Cancelar</button>
+                      )}
+                    </label>
+
                     <div style={inputGroupStyle}>
                       <label style={labelStyle}>Descripción</label>
-                      <input type="text" className="form-input" value={customDescription} onChange={e => setCustomDescription(e.target.value)} placeholder="Ej: Mano de obra especializada" />
+                      <input type="text" className="form-input" value={customDescription} onChange={e => setCustomDescription(e.target.value)} placeholder="Ej: Válvula de bola 2 pulgadas" />
+                    </div>
+                    <div className="flex items-center gap-4 mb-4">
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input type="checkbox" checked={customIsTaxed} onChange={e => setCustomIsTaxed(e.target.checked)} className="form-checkbox" />
+                        <span className="text-sm">Aplica IVA 15%</span>
+                      </label>
                     </div>
                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                       <div style={inputGroupStyle}>
@@ -735,55 +878,139 @@ export default function NuevoProyectoPage() {
                         <input type="number" className="form-input" value={customPrice} onChange={e => setCustomPrice(e.target.value)} placeholder="0.00" />
                       </div>
                       <div style={inputGroupStyle}>
-                        <label style={labelStyle}>Cantidad</label>
+                        <label style={labelStyle}>Cantidad (UND)</label>
                         <input type="number" className="form-input" value={customQty} onChange={e => setCustomQty(Number(e.target.value))} />
                       </div>
                     </div>
-                    <button type="button" className="btn btn-secondary btn-sm btn-full" onClick={addCustomBudgetItem} disabled={!customDescription || !customPrice}>
-                      + Agregar al Listado
+                    <button type="button" className={`btn ${selectedInventoryId ? 'btn-primary' : 'btn-secondary'} btn-sm btn-full`} onClick={() => addCustomBudgetItem(false)} disabled={!customDescription || !customPrice}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block'}}><path d="M12 5v14M5 12h14"/></svg>
+                      {selectedInventoryId ? 'Confirmar e Incluir al Presupuesto' : 'Añadir Material Extra'}
+                    </button>
+                  </div>
+                  
+                  {/* Global items (Servicios) */}
+                  <div style={{ padding: '20px', border: '1px solid var(--primary)', borderRadius: '12px', backgroundColor: 'var(--primary-glow)' }}>
+                    <label style={{ ...labelStyle, color: 'var(--primary)', borderBottom: '1px solid rgba(56, 189, 248, 0.2)', paddingBottom: '5px', marginBottom: '15px', display: 'flex', alignItems: 'center' }}>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '8px'}}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+                      Añadir Servicio / Ítem GLOBAL
+                    </label>
+                    <div style={inputGroupStyle}>
+                      <label style={labelStyle}>Descripción del Servicio GLOBAL *</label>
+                      <input type="text" className="form-input" value={globalDescription} onChange={e => setGlobalDescription(e.target.value)} placeholder="Ej: Construcción de Piscina 9M x 3M" />
+                    </div>
+                    <div style={inputGroupStyle}>
+                        <label style={labelStyle}>Precio Unitario ($) *</label>
+                        <input type="number" className="form-input" value={globalPrice} onChange={e => setGlobalPrice(e.target.value)} placeholder="0.00" />
+                    </div>
+                    <button type="button" className="btn btn-primary btn-sm btn-full" onClick={() => { addCustomBudgetItem(true); setPdfPreviewUrl(null); }} disabled={!globalDescription || !globalPrice}>
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block'}}><path d="M12 5v14M5 12h14"/></svg>
+                      Añadir a Presupuesto
                     </button>
                   </div>
                 </div>
 
                 <div>
-                  <h4 style={{ fontSize: '0.9rem', marginBottom: '15px', color: 'var(--text-secondary)' }}>Resumen del Presupuesto</h4>
-                  <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'var(--bg-card)' }}>
-                    <table className="table">
-                      <thead>
-                        <tr>
-                          <th style={{ backgroundColor: 'var(--bg-deep)' }}>Item</th>
-                          <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'center' }}>Cant.</th>
-                          <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'right' }}>Total</th>
-                          <th style={{ backgroundColor: 'var(--bg-deep)' }}></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {budgetItems.length === 0 ? (
-                          <tr><td colSpan={4} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No hay items en el presupuesto</td></tr>
-                        ) : (
-                          budgetItems.map((item, idx) => (
-                            <tr key={idx}>
-                              <td style={{ fontSize: '0.85rem', fontWeight: '500' }}>{item.name}</td>
-                              <td style={{ textAlign: 'center' }}>{item.quantity}</td>
-                              <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>$ {(item.quantity * item.estimatedCost).toLocaleString()}</td>
-                              <td style={{ textAlign: 'center' }}>
-                                <button type="button" onClick={() => removeBudgetItem(idx)} style={{ color: 'var(--danger)', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '0 5px' }}>&times;</button>
-                              </td>
-                            </tr>
-                          ))
-                        )}
-                      </tbody>
-                      {budgetItems.length > 0 && (
-                        <tfoot>
-                          <tr>
-                            <td colSpan={2} style={{ textAlign: 'right', padding: '15px', fontWeight: 'bold', fontSize: '1rem', backgroundColor: 'var(--bg-deep)' }}>TOTAL ESTIMADO:</td>
-                            <td style={{ textAlign: 'right', padding: '15px', fontWeight: '800', fontSize: '1.1rem', color: 'var(--primary)', backgroundColor: 'var(--bg-deep)' }}>$ {totalBudget.toLocaleString()}</td>
-                            <td style={{ backgroundColor: 'var(--bg-deep)' }}></td>
-                          </tr>
-                        </tfoot>
-                      )}
-                    </table>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                    <h4 style={{ fontSize: '0.9rem', margin: 0, color: 'var(--text-secondary)' }}>Resumen del Presupuesto</h4>
                   </div>
+                  <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'var(--bg-card)' }}>
+                    <div style={{ overflowX: 'auto' }}>
+                      <table className="table">
+                        <thead>
+                          <tr>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', width: '50px' }}>ITEM</th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)' }}>DESCRIPCION</th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'center' }}>CANTIDAD</th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'right' }}>P/UNITARIO</th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'right' }}>TOTAL</th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', width: '40px' }}></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {budgetItems.length === 0 ? (
+                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No hay items en el presupuesto</td></tr>
+                          ) : (
+                            budgetItems.map((item, idx) => (
+                              <tr key={idx}>
+                                <td style={{ fontSize: '0.75rem', textAlign: 'center' }}>{idx + 1}</td>
+                                <td style={{ fontSize: '0.85rem', fontWeight: '500', wordBreak: 'break-word', whiteSpace: 'pre-wrap', maxWidth: '250px' }}>{item.name}</td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>{item.unit || 'UND'}</span>
+                                  {item.quantity === 'GLOBAL' ? 'GLOBAL' : Number(item.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                </td>
+                                <td style={{ textAlign: 'right', fontSize: '0.85rem' }}>$ {Number(item.estimatedCost).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>$ {((item.quantity === 'GLOBAL' ? 1 : Number(item.quantity)) * item.estimatedCost).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                                <td style={{ textAlign: 'center' }}>
+                                  <button type="button" onClick={() => removeBudgetItem(idx)} style={{ color: 'var(--danger)', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '0 5px' }}>&times;</button>
+                                </td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                        {budgetItems.length > 0 && (
+                          <tfoot style={{ backgroundColor: 'var(--bg-deep)' }}>
+                            <tr>
+                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', padding: '10px' }}>SUBTOTAL TARIFA 0%</td>
+                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.9rem' }}>$ {subtotal0.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td></td>
+                            </tr>
+                            <tr>
+                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', padding: '10px' }}>SUBTOTAL TARIFA 15%</td>
+                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.9rem' }}>$ {subtotal15.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td></td>
+                            </tr>
+                            <tr>
+                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', padding: '10px' }}>IVA 15%</td>
+                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.9rem' }}>$ {ivaAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td></td>
+                            </tr>
+                            <tr style={{ backgroundColor: 'var(--primary-glow)' }}>
+                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.95rem', padding: '12px', color: 'var(--primary)' }}>TOTAL A PAGAR $</td>
+                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1.1rem', color: 'var(--primary)' }}>$ {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td></td>
+                            </tr>
+                          </tfoot>
+                        )}
+                      </table>
+                    </div>
+                  </div>
+
+                  {/* Summary Actions */}
+                  {budgetItems.length > 0 && (
+                    <div style={{ padding: '15px 0', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                      <button 
+                        type="button" 
+                        className="btn btn-secondary btn-sm"
+                        onClick={() => generatePDF(true)}
+                        style={{ flex: 1 }}
+                      >
+                        Actualizar Vista Previa
+                      </button>
+                      <button 
+                        type="button" 
+                        className="btn btn-primary btn-sm"
+                        onClick={() => generatePDF(false)}
+                        style={{ flex: 1 }}
+                      >
+                        PDF Oficial
+                      </button>
+                    </div>
+                  )}
+
+                  {/* PDF Preview Iframe Section */}
+                  {pdfPreviewUrl && (
+                    <div className="animate-fade-in" style={{ marginTop: '25px', padding: '10px', border: '1px solid var(--primary)', borderRadius: '12px', backgroundColor: 'var(--bg-deep)' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
+                        <h4 style={{ margin: 0, fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 'bold' }}>VISTA PREVIA REAL</h4>
+                        <button type="button" onClick={() => setPdfPreviewUrl(null)} style={{ color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem' }}>Cerrar</button>
+                      </div>
+                      <iframe 
+                        src={pdfPreviewUrl} 
+                        style={{ width: '100%', height: '500px', border: 'none', borderRadius: '8px', backgroundColor: 'white' }} 
+                        title="PDF Preview"
+                      />
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -796,12 +1023,12 @@ export default function NuevoProyectoPage() {
             files={uploadedFiles} 
             onAddFile={(file) => setUploadedFiles(prev => [...prev, file])}
             onRemoveFile={(url) => setUploadedFiles(prev => prev.filter(f => f.url !== url))}
-            title="Archivos Adjuntos del Proyecto"
+            title="Planos y Archivos Iniciales (Galería)"
           />
         </div>
 
         {/* Action Buttons */}
-        <div style={{ padding: '20px 30px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', justifyContent: 'space-between' }}>
+        <div style={{ padding: '20px 30px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
           {step > 1 ? (
             <button type="button" className="btn btn-ghost" onClick={() => { setError(''); setStep(s => s - 1) }} disabled={loading}>
               &larr; Volver
@@ -810,13 +1037,15 @@ export default function NuevoProyectoPage() {
             <Link href="/admin/proyectos" className="btn btn-ghost">Cancelar</Link>
           )}
 
-          {step < 6 ? (
-            <button type="button" className="btn btn-primary" onClick={handleNext}>Continuar &rarr;</button>
-          ) : (
-            <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={loading}>
-              {loading ? 'Creando...' : 'Crear Proyecto Completado'}
-            </button>
-          )}
+          {step < 10 ? ( // Note: Check final step count, was 6 but let's be safe
+             step < 6 ? (
+               <button type="button" className="btn btn-primary" onClick={handleNext}>Continuar &rarr;</button>
+             ) : (
+               <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={loading}>
+                 {loading ? 'Creando...' : 'Crear Proyecto Completado'}
+               </button>
+             )
+          ) : null}
         </div>
       </div>
     </div>

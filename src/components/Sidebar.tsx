@@ -48,7 +48,7 @@ const adminNavItems: NavSection[] = [
         ),
         subItems: [
           { label: 'Proyectos', href: '/admin/proyectos' },
-          { label: 'Equipo / Operadores', href: '/admin/team' },
+          { label: 'Gestión de Equipo', href: '/admin/team' },
           { label: 'Reportes', href: '/admin/reportes' },
         ]
       },
@@ -64,10 +64,16 @@ const adminNavItems: NavSection[] = [
             <path d="M10 9H8" />
           </svg>
         ),
-        subItems: [
-          { label: 'Cotizaciones Proyectos', href: '/admin/cotizaciones' },
-          { label: 'Cotización Simple', href: '/admin/cotizacion-rapida' },
-        ],
+      },
+      {
+        label: 'Inventario',
+        href: '/admin/inventario',
+        icon: (
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z" />
+            <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+          </svg>
+        ),
       },
       {
         label: 'Recursos',
@@ -109,33 +115,23 @@ export default function Sidebar() {
   const [mobileOpen, setMobileOpen] = useState(false)
   const [openMenus, setOpenMenus] = useState<Record<string, boolean>>({
     'Proyectos': true,
-    'Cotizaciones': true,
     'Mis Proyectos': true,
     'Proyecto Actual': true,
   })
 
-  // Prevent flashing wrong nav items during initial load
   if (status === 'loading') {
     return (
-      <>
-        <div className="mobile-header">
-          <button className="mobile-header-menu">
-             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg>
-          </button>
-          <div className="mobile-header-title">A<span>Q</span>UATECH</div>
+      <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
+        <div className="sidebar-brand">
+          <img src="/logo.jpg" alt="Aquatech" className="sidebar-brand-logo" />
+          <div className="sidebar-brand-text">A<span>Q</span>UATECH</div>
         </div>
-        <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
-          <div className="sidebar-brand">
-            <img src="/logo.jpg" alt="Aquatech" className="sidebar-brand-logo" />
-            <div className="sidebar-brand-text">A<span>Q</span>UATECH</div>
-          </div>
-          <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Cargando...</div>
-        </aside>
-      </>
+        <div style={{ padding: '20px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>Cargando...</div>
+      </aside>
     )
   }
 
-  const isAdmin = session?.user?.role === 'ADMIN'
+  const isAdmin = session?.user?.role === 'ADMIN' || session?.user?.role === 'ADMINISTRADORA'
   const projectIdMatch = pathname.match(/\/admin\/operador\/proyecto\/(\d+)/)
   const projectId = projectIdMatch ? projectIdMatch[1] : null
 
@@ -170,14 +166,50 @@ export default function Sidebar() {
         }] : []),
       ],
     },
+    {
+      section: 'Herramientas y Recursos',
+      items: [
+        {
+          label: 'Cotizaciones',
+          href: '/admin/cotizaciones',
+          icon: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+              <path d="M14 2v6h6" />
+              <path d="M16 13H8" />
+              <path d="M16 17H8" />
+              <path d="M10 9H8" />
+            </svg>
+          ),
+        },
+        {
+          label: 'Inventario',
+          href: '/admin/inventario',
+          icon: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z" />
+              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+            </svg>
+          ),
+        },
+        {
+          label: 'Recursos',
+          href: '/admin/recursos',
+          icon: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+            </svg>
+          ),
+        },
+      ]
+    }
   ]
 
   const navItems = isAdmin ? adminNavItems : dynamicOperatorNavItems
 
   const isActive = (href: string) => {
     if (href === '/admin') return pathname === '/admin'
-    // If it's a subitem parent like /admin/proyectos, we check if it starts with it
-    // But for the specific subitem link, we want exact match
     return pathname === href
   }
 
@@ -223,7 +255,6 @@ export default function Sidebar() {
 
       {/* Sidebar */}
       <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
-        {/* Brand */}
         <div className="sidebar-brand">
           <img src="/logo.jpg" alt="Aquatech" className="sidebar-brand-logo" />
           <div>
@@ -234,7 +265,6 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Navigation */}
         <nav className="sidebar-nav">
           {navItems.map((section) => (
             <div key={section.section} className="sidebar-section">
@@ -289,15 +319,17 @@ export default function Sidebar() {
           ))}
         </nav>
 
-        {/* Footer / User */}
         <div className="sidebar-footer">
           <div className="sidebar-user" onClick={() => signOut({ callbackUrl: '/admin/login' })}>
             <div className="sidebar-avatar">{userInitials}</div>
             <div className="sidebar-user-info">
               <div className="sidebar-user-name">{session?.user?.name || 'Admin'}</div>
-              <div className="sidebar-user-role">{session?.user?.role === 'ADMIN' ? 'Administrador' : 'Operador'}</div>
+              <div className="sidebar-user-role">
+                {session?.user?.role === 'ADMIN' ? 'Administrador' : 
+                 session?.user?.role === 'ADMINISTRADORA' ? 'Administradora' : 'Operador'}
+              </div>
             </div>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ color: 'var(--text-muted)' }}>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />
               <line x1="21" y1="12" x2="9" y2="12" />
@@ -313,7 +345,7 @@ export default function Sidebar() {
             {[
               { label: 'Dashboard', href: '/admin', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
               { label: 'Proyectos', href: '/admin/proyectos', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg> },
-              { label: 'Equipo', href: '/admin/team', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg> },
+              { label: 'Inventario', href: '/admin/inventario', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> },
               { label: 'Cotizaciones', href: '/admin/cotizaciones', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg> },
             ].map((item) => (
               <Link
@@ -325,7 +357,7 @@ export default function Sidebar() {
                 {item.label}
               </Link>
             ))}
-            <button className="mobile-nav-item" onClick={() => signOut({ callbackUrl: '/admin/login' })} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+            <button className="mobile-nav-item" onClick={() => signOut({ callbackUrl: '/admin/login' })} style={{ background: 'none', border: 'none' }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
               Salir
             </button>
@@ -333,7 +365,9 @@ export default function Sidebar() {
         ) : (
           <>
             {[
-              { label: 'Mis Proyectos', href: '/admin/operador', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> }
+              { label: 'Mis Proyectos', href: '/admin/operador', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
+              { label: 'Inventario', href: '/admin/inventario', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> },
+              { label: 'Cotizaciones', href: '/admin/cotizaciones', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg> },
             ].map((item) => (
               <Link
                 key={item.href}
@@ -344,7 +378,7 @@ export default function Sidebar() {
                 {item.label}
               </Link>
             ))}
-            <button className="mobile-nav-item" onClick={() => signOut({ callbackUrl: '/admin/login' })} style={{ background: 'none', border: 'none', cursor: 'pointer' }}>
+            <button className="mobile-nav-item" onClick={() => signOut({ callbackUrl: '/admin/login' })} style={{ background: 'none', border: 'none' }}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
               Salir
             </button>

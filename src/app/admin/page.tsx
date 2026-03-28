@@ -24,6 +24,9 @@ export default async function AdminDashboard() {
     recentMessages,
     projectsList,
     teamList,
+    recent7DayRecords,
+    recent7DayMessagesCount,
+    recent7DayExpenses,
   ] = await Promise.all([
     prisma.project.count(),
     prisma.project.count({ where: { status: 'ACTIVO' } }),
@@ -49,10 +52,17 @@ export default async function AdminDashboard() {
       where: { status: { in: ['ACTIVO', 'LEAD'] } },
       take: 5,
       orderBy: { updatedAt: 'desc' },
-      include: {
+      select: {
+        id: true,
+        title: true,
+        type: true,
+        status: true,
+        estimatedBudget: true,
+        startDate: true,
+        updatedAt: true,
         client: { select: { name: true } },
         phases: { select: { id: true, title: true, status: true, estimatedDays: true } },
-        team: { include: { user: { select: { name: true } } } },
+        team: { select: { user: { select: { name: true } } } },
         expenses: { select: { amount: true } },
         _count: { select: { expenses: true } },
       },
@@ -72,7 +82,34 @@ export default async function AdminDashboard() {
         }
       }
     }),
+    // 7-day metrics
+    prisma.dayRecord.findMany({
+      where: {
+        startTime: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+      },
+      select: { startTime: true, endTime: true }
+    }),
+    prisma.chatMessage.count({
+      where: {
+        createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+      }
+    }),
+    prisma.expense.aggregate({
+      where: {
+        createdAt: { gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) }
+      },
+      _sum: { amount: true }
+    })
   ])
+
+  // Calculate 7-day stats
+  const last7DaysHours = recent7DayRecords.reduce((total, record) => {
+    const start = record.startTime
+    const end = record.endTime || new Date()
+    return total + (end.getTime() - start.getTime())
+  }, 0)
+  const totalHours7d = +(last7DaysHours / 3600000).toFixed(1)
+  const weeklyExpenseTotal = Number(recent7DayExpenses._sum.amount || 0)
 
   // Calculate budget totals
   const budgetData = await prisma.project.aggregate({
@@ -152,6 +189,9 @@ export default async function AdminDashboard() {
         totalOperators,
         totalBudget,
         totalSpent,
+        totalHours7d,
+        totalMessages7d: recent7DayMessagesCount,
+        totalExpenses7d: weeklyExpenseTotal,
       }}
       recentExpenses={serializedExpenses}
       recentMessages={serializedMessages}

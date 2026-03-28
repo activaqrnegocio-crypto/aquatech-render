@@ -23,11 +23,29 @@ export default async function QuoteDetailPage({ params }: { params: Promise<{ id
     <div className="p-6">
       <QuoteDetailClient quote={{
         ...quote,
+        // @ts-ignore
+        subtotal: Number(quote.subtotal || 0),
+        // @ts-ignore
         totalAmount: Number(quote.totalAmount),
+        // @ts-ignore
+        subtotal0: Number(quote.subtotal0 || 0),
+        // @ts-ignore
+        subtotal15: Number(quote.subtotal15 || 0),
+        // @ts-ignore
+        ivaAmount: Number(quote.ivaAmount || 0),
+        // @ts-ignore
+        discountTotal: Number(quote.discountTotal || 0),
         items: quote.items.map(i => ({
           ...i,
+          quantity: Number(i.quantity),
           unitPrice: Number(i.unitPrice),
-          total: Number(i.total)
+          // @ts-ignore
+          discountPct: Number(i.discountPct || 0),
+          total: Number(i.total),
+          material: i.material ? {
+            ...i.material,
+            unitPrice: Number(i.material.unitPrice)
+          } : null
         }))
       }} />
     </div>

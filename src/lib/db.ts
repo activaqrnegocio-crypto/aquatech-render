@@ -2,13 +2,13 @@ import Dexie, { type Table } from 'dexie';
 
 export interface OutboxItem {
   id?: number;
-  type: 'MESSAGE' | 'EXPENSE' | 'DAY_START' | 'DAY_END' | 'PHASE_COMPLETE' | 'MEDIA_UPLOAD';
+  type: 'MESSAGE' | 'EXPENSE' | 'DAY_START' | 'DAY_END' | 'PHASE_COMPLETE' | 'MEDIA_UPLOAD' | 'QUOTE' | 'MATERIAL';
   projectId: number;
   payload: any;
   timestamp: number;
-  lat: number | null;
-  lng: number | null;
-  status: 'pending' | 'syncing' | 'failed';
+  lat?: number;
+  lng?: number;
+  status: 'pending' | 'syncing' | 'failed' | 'synced';
 }
 
 export interface AuthCache {

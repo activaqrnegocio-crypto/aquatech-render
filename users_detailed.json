@@ -1,0 +1,26 @@
+[
+  {
+    "id": 1,
+    "username": "Aquatech",
+    "name": "Administrador Aquatech",
+    "role": "ADMIN"
+  },
+  {
+    "id": 16,
+    "username": "prueba_old_1774653480752",
+    "name": "cristhopher",
+    "role": "OPERATOR"
+  },
+  {
+    "id": 19,
+    "username": "cristhophers",
+    "name": "Cristhopher",
+    "role": "OPERATOR"
+  },
+  {
+    "id": 20,
+    "username": "administradora",
+    "name": "administradora",
+    "role": "ADMINISTRADORA"
+  }
+]

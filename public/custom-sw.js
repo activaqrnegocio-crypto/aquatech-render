@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First)
 // ============================================================
-const CACHE_VERSION = 'v6';
+const CACHE_VERSION = 'v13';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -144,11 +144,13 @@ self.addEventListener('fetch', (event) => {
  * Try network → cache → offline.html
  */
 async function networkFirstWithOfflineFallback(request) {
+  if (request.method !== 'GET') return fetch(request);
   try {
     const response = await fetchWithTimeout(request, 8000);
     if (response.ok || response.type === 'opaqueredirect') {
+      const responseToCache = response.clone();
       const cache = await caches.open(PAGES_CACHE);
-      cache.put(request, response.clone());
+      cache.put(request, responseToCache);
     }
     return response;
   } catch (e) {
@@ -172,11 +174,13 @@ async function networkFirstWithOfflineFallback(request) {
  * Network First — try network, fallback to cache.
  */
 async function networkFirst(request, cacheName) {
+  if (request.method !== 'GET') return fetch(request);
   try {
     const response = await fetchWithTimeout(request, 5000);
     if (response.ok) {
+      const responseToCache = response.clone();
       const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
+      cache.put(request, responseToCache);
     }
     return response;
   } catch (e) {
@@ -195,8 +199,9 @@ async function cacheFirst(request, cacheName, maxAge) {
   try {
     const response = await fetch(request);
     if (response.ok) {
+      const responseToCache = response.clone();
       const cache = await caches.open(cacheName);
-      cache.put(request, response.clone());
+      cache.put(request, responseToCache);
     }
     return response;
   } catch (e) {
@@ -208,11 +213,13 @@ async function cacheFirst(request, cacheName, maxAge) {
  * Stale While Revalidate — serve cache immediately, update in background.
  */
 async function staleWhileRevalidate(request, cacheName) {
+  if (request.method !== 'GET') return fetch(request);
   const cached = await caches.match(request);
   
   const fetchPromise = fetch(request).then(response => {
     if (response.ok) {
-      caches.open(cacheName).then(cache => cache.put(request, response.clone()));
+      const responseToCache = response.clone();
+      caches.open(cacheName).then(cache => cache.put(request, responseToCache));
     }
     return response;
   }).catch(() => null);

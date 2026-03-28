@@ -29,25 +29,30 @@ export async function GET(request: Request) {
           userId: userId
         }
       }
+      if (!whereClause.status) {
+        whereClause.status = { not: 'LEAD' }
+      }
     }
 
     const projects = await prisma.project.findMany({
       where: whereClause,
       include: {
-        client: true,
+        client: {
+          select: { name: true }
+        },
+        creator: {
+          select: { name: true }
+        },
         phases: {
+          select: {
+            id: true,
+            status: true,
+            estimatedDays: true
+          },
           orderBy: { displayOrder: 'asc' }
         },
         team: {
-          include: {
-            user: {
-              select: {
-                id: true,
-                name: true,
-                role: true
-              }
-            }
-          }
+          select: { id: true }
         }
       },
       orderBy: { createdAt: 'desc' }
@@ -63,12 +68,23 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session || (session.user as any).role !== 'ADMIN') {
+    if (!session || !session.user) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    }
+
+    const userRole = (session.user as any).role
+    const userId = (session.user as any).id
+
+    if (userRole !== 'ADMIN' && userRole !== 'ADMINISTRADORA') {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
     const data = await request.json()
-    const { title, type, subtype, address, city, startDate, endDate, client, phases, team, budgetItems, categoryList, technicalSpecs, contractTypeList, clientId } = data
+    const { 
+      title, type, subtype, address, city, startDate, endDate, client, 
+      phases, team, budgetItems, categoryList, technicalSpecs, 
+      contractTypeList, clientId, specsAudioUrl, specsTranscription, status 
+    } = data
 
     // Validate minimum required data
     if (!title || (!client?.name && !clientId)) {
@@ -83,6 +99,7 @@ export async function POST(request: Request) {
         const createdClient = await tx.client.create({
           data: {
             name: client.name,
+            ruc: client.ruc || null,
             email: client.email || null,
             phone: client.phone || null,
             address: client.address || null,
@@ -104,22 +121,29 @@ export async function POST(request: Request) {
           title,
           type: mappedType as any,
           subtype: subtype || null,
-          status: 'ACTIVO',
+          status: status || 'ACTIVO',
           startDate: startDate ? new Date(startDate) : new Date(),
           endDate: endDate ? new Date(endDate) : null,
           address: address || null,
           city: city || null,
           clientId: targetClientId,
-          estimatedBudget: budgetItems ? budgetItems.reduce((acc: number, item: any) => acc + (Number(item.quantity) * Number(item.estimatedCost)), 0) : 0,
-          categoryList: categoryList || [],
-          contractTypeList: contractTypeList || [],
-          technicalSpecs: technicalSpecs || {},
+          createdBy: Number(userId),
+          estimatedBudget: budgetItems ? budgetItems.reduce((acc: number, item: any) => {
+            const qty = item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0)
+            return acc + (qty * Number(item.estimatedCost || 0))
+          }, 0) : 0,
+          categoryList: categoryList ? JSON.stringify(categoryList) : null,
+          contractTypeList: contractTypeList ? JSON.stringify(contractTypeList) : null,
+          technicalSpecs: technicalSpecs ? JSON.stringify(technicalSpecs) : null,
+          specsAudioUrl: specsAudioUrl || null,
+          specsTranscription: specsTranscription || null,
           
           budgetItems: {
             create: (budgetItems || []).map((item: any) => ({
               materialId: item.materialId ? Number(item.materialId) : null,
               name: item.name || null,
-              quantity: Number(item.quantity || 0),
+              quantity: item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0),
+              unit: item.unit || (item.quantity === 'GLOBAL' ? 'GLOBAL' : 'UND'),
               estimatedCost: Number(item.estimatedCost || 0)
             }))
           },
@@ -133,10 +157,18 @@ export async function POST(request: Request) {
               status: 'PENDIENTE'
             }))
           },
-          
           team: {
-            create: (team || []).map((userId: string | number) => ({
-              userId: Number(userId)
+            create: (team || []).map((id: string | number) => ({
+              userId: Number(id)
+            }))
+          },
+          
+          gallery: {
+            create: (data.files || []).map((file: any) => ({
+              url: file.url,
+              filename: file.filename || 'upload',
+              mimeType: file.mimeType || 'application/octet-stream',
+              sizeBytes: file.sizeBytes || null
             }))
           }
         },
@@ -149,39 +181,16 @@ export async function POST(request: Request) {
         }
       })
 
-      // 4. Handle additional files if present
-      if (data.files && Array.isArray(data.files)) {
-        for (const file of data.files) {
-          await tx.chatMessage.create({
-            data: {
-              projectId: newProject.id,
-              userId: Number(session.user.id),
-              content: '',
-              type: file.type || 'IMAGE',
-              media: {
-                create: {
-                  url: file.url,
-                  filename: file.filename || 'upload',
-                  mimeType: file.mimeType || 'application/octet-stream',
-                  sizeBytes: file.sizeBytes || null
-                }
-              }
-            }
-          })
-        }
-      }
-
       return newProject
     })
 
     return NextResponse.json(project, { status: 201 })
   } catch (error: any) {
     console.error('Error creating project:', error)
-    // Return detailed error message if possible to help debug on client
     return NextResponse.json({ 
         error: 'Internal Server Error', 
         details: error.message,
-        code: error.code // Prisma error code (e.g. P2002)
+        code: error.code
     }, { status: 500 })
   }
 }

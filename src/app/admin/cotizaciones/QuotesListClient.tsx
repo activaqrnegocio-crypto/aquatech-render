@@ -4,8 +4,25 @@ import { useState } from 'react'
 import Link from 'next/link'
 
 export default function QuotesListClient({ initialQuotes }: any) {
-  const [quotes] = useState(initialQuotes)
+  const [quotes, setQuotes] = useState(initialQuotes)
   const [filter, setFilter] = useState('ALL')
+
+  const handleDelete = async (id: number) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar esta cotización?')) return
+
+    try {
+      const res = await fetch(`/api/quotes/${id}`, { method: 'DELETE' })
+      if (res.ok) {
+        setQuotes(quotes.filter((q: any) => q.id !== id))
+        alert('Cotización eliminada con éxito')
+      } else {
+        alert('Error al eliminar la cotización')
+      }
+    } catch (error) {
+      console.error(error)
+      alert('Error de red al eliminar')
+    }
+  }
 
   const filtered = filter === 'ALL' ? quotes : quotes.filter((q: any) => q.status === filter)
 
@@ -44,8 +61,11 @@ export default function QuotesListClient({ initialQuotes }: any) {
                 <td style={{ padding: '15px', textAlign: 'right', fontWeight: 'bold', color: 'var(--primary)' }}>
                   $ {quote.totalAmount.toLocaleString()}
                 </td>
-                <td style={{ padding: '15px', textAlign: 'center' }}>
-                  <Link href={`/admin/cotizaciones/${quote.id}`} className="btn btn-ghost btn-sm">Ver Detalle</Link>
+                <td style={{ padding: '15px', textAlign: 'center', display: 'flex', gap: '8px', justifyContent: 'center' }}>
+                  <Link href={`/admin/cotizaciones/compuesto/${quote.id}`} className="btn btn-ghost btn-sm">PDF</Link>
+                  <button onClick={() => handleDelete(quote.id)} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M10 11v6M14 11v6"/></svg>
+                  </button>
                 </td>
               </tr>
             ))}

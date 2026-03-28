@@ -5,6 +5,8 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import ProjectUploader, { ProjectFile } from '@/components/ProjectUploader'
 import { db } from '@/lib/db'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { jsPDF } from 'jspdf'
+import autoTable from 'jspdf-autotable'
 
 import Link from 'next/link'
 
@@ -22,13 +24,36 @@ export default function OperatorProjectClient({
   const searchParams = useSearchParams()
   const view = searchParams.get('view') || 'records'
   const [activeTab, setActiveTab] = useState<'records' | 'chat'>(view as 'records' | 'chat')
+  const [handleDownloadLoading, setHandleDownloadLoading] = useState<string | null>(null)
+
+  const handleDownload = async (url: string, filename: string) => {
+    setHandleDownloadLoading(url)
+    try {
+      const response = await fetch(url)
+      const blob = await response.blob()
+      const blobUrl = window.URL.createObjectURL(blob)
+      const link = document.createElement('a')
+      link.href = blobUrl
+      link.download = filename
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(blobUrl)
+    } catch (error) {
+      console.error('Download error:', error)
+      window.open(url, '_blank')
+    } finally {
+      setHandleDownloadLoading(null)
+    }
+  }
+
 
   useEffect(() => {
     setActiveTab((searchParams.get('view') || 'records') as 'records' | 'chat')
   }, [searchParams])
 
   const pendingItems = useLiveQuery(() => db.outbox.where('projectId').equals(project.id).toArray(), [project.id]) || []
-  const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
+  const [isOnline, setIsOnline] = useState(true)
 
   const syncOutbox = async () => {
     if (!navigator.onLine) return
@@ -161,6 +186,7 @@ export default function OperatorProjectClient({
 
   useEffect(() => {
     setMounted(true)
+    setIsOnline(navigator.onLine)
     const checkScreen = () => setIsSmallScreen(window.innerWidth < 640)
     checkScreen()
     window.addEventListener('resize', checkScreen)
@@ -321,8 +347,8 @@ export default function OperatorProjectClient({
           projectId: project.id,
           payload,
           timestamp: Date.now(),
-          lat: null,
-          lng: null,
+          lat: undefined,
+          lng: undefined,
           status: 'pending'
         })
         router.refresh()
@@ -565,6 +591,195 @@ export default function OperatorProjectClient({
   
   const pendingDayAction = pendingItems.find((item: any) => item.type === 'DAY_START' || item.type === 'DAY_END')
 
+  // --- PDF GENERATORS FOR OFFLINE SUPPORT ---
+  const formatDate = (date: Date | string | null | undefined) => {
+    if (!date) return 'N/A'
+    const d = typeof date === 'string' ? new Date(date) : date
+    return new Intl.DateTimeFormat('es-ES', { month: 'long', day: 'numeric', year: 'numeric' }).format(d)
+  }
+
+  const formatDateTime = (date: Date | string | null | undefined) => {
+    if (!date) return 'N/A'
+    const d = typeof date === 'string' ? new Date(date) : date
+    return new Intl.DateTimeFormat('es-ES', { 
+      day: '2-digit', month: '2-digit', year: 'numeric',
+      hour: '2-digit', minute: '2-digit' 
+    }).format(d)
+  }
+
+  const generateFichaPDF = () => {
+    try {
+      const doc = new jsPDF()
+      doc.setFillColor(12, 26, 42)
+      doc.rect(0, 0, 210, 55, 'F')
+      doc.setDrawColor(56, 189, 248)
+      doc.setLineWidth(0.5)
+      doc.line(20, 50, 190, 50)
+      doc.setTextColor(56, 189, 248)
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+      doc.text('AQUATECH S.A.', 20, 18)
+      
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(24)
+      doc.text('FICHA DE PROYECTO', 20, 33)
+      
+      doc.setFontSize(11)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`#${project.id} — ${project.title}`, 20, 43)
+      doc.text(`Fecha: ${new Date().toLocaleDateString('es-EC')}`, 150, 43)
+
+      let y = 70
+      doc.setTextColor(56, 189, 248)
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.text('1. DATOS GENERALES', 20, y)
+      y += 10
+
+      const infoRows = [
+        ['Título', project.title],
+        ['Estado', project.status],
+        ['Ciudad', projectCity || 'N/A'],
+        ['Dirección', projectAddress || 'N/A'],
+        ['Fecha de Inicio', formatDate(project.startDate)],
+        ['Fecha Fin (Est.)', formatDate(project.endDate)],
+      ]
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Campo', 'Valor']],
+        body: infoRows,
+        theme: 'grid',
+        headStyles: { fillColor: [56, 189, 248], textColor: 255 },
+        styles: { fontSize: 9, cellPadding: 4 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } }
+      })
+      y = (doc as any).lastAutoTable.finalY + 15
+
+      doc.setTextColor(56, 189, 248)
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.text('2. INFORMACIÓN DEL CLIENTE', 20, y)
+      y += 10
+
+      autoTable(doc, {
+        startY: y,
+        head: [['Campo', 'Valor']],
+        body: [
+          ['Nombre', clientName || 'N/A'],
+          ['Ciudad', projectCity || 'N/A'],
+          ['Dirección', projectAddress || 'N/A'],
+        ],
+        theme: 'grid',
+        headStyles: { fillColor: [56, 189, 248], textColor: 255 },
+        styles: { fontSize: 9, cellPadding: 4 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } }
+      })
+      y = (doc as any).lastAutoTable.finalY + 15
+
+      const phaseData = project.phases?.map((p: any, i: number) => [
+        `${i + 1}`, p.title, p.description || '—', `${p.estimatedDays || 0} días`, p.status === 'COMPLETADA' ? 'Completada' : p.status === 'EN_PROGRESO' ? 'En Progreso' : 'Pendiente'
+      ]) || []
+
+      if (phaseData.length > 0) {
+        doc.setTextColor(56, 189, 248)
+        doc.setFontSize(14)
+        doc.text('3. FASES DE TRABAJO', 20, y)
+        y += 10
+        autoTable(doc, {
+          startY: y,
+          head: [['#', 'Fase', 'Descripción', 'Días Est.', 'Estado']],
+          body: phaseData,
+          theme: 'grid',
+          headStyles: { fillColor: [56, 189, 248], textColor: 255 },
+          styles: { fontSize: 8 },
+        })
+      }
+
+      doc.save(`Proyecto_${project.id}_${project.title.replace(/\s+/g, '_')}.pdf`)
+    } catch(err) {
+      console.error(err)
+      alert("Error al generar PDF")
+    }
+  }
+
+  const generateReportePDF = () => {
+    try {
+      const doc = new jsPDF()
+      doc.setFillColor(12, 26, 42) 
+      doc.rect(0, 0, 210, 45, 'F')
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(22)
+      doc.setFont('helvetica', 'bold')
+      doc.text('AQUATECH - REPORTE DE OBRA', 20, 25)
+      
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`ID Proyecto: #${project.id}`, 20, 35)
+      doc.text(`Fecha de Reporte: ${new Date().toLocaleDateString()}`, 150, 35)
+
+      doc.setTextColor(0, 0, 0)
+      doc.setFontSize(16)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Resumen Ejecutivo', 20, 60)
+      
+      doc.setFontSize(11)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`Proyecto: ${project.title}`, 20, 70)
+      doc.text(`Estado: ${project.status}`, 20, 77)
+      doc.text(`Cliente: ${clientName || 'N/A'}`, 120, 70)
+
+      doc.addPage()
+      doc.setFontSize(16)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Bitácora de Campo (Avances + Offline)', 20, 20)
+      
+      const chatData = combinedChat.map((msg: any) => [
+        formatDateTime(msg.createdAt),
+        msg.userName || 'Sistema',
+        msg.content || (msg.media?.length ? '[Contenido Multimedia]' : '-'),
+        msg.isPending ? '⏳ PENDIENTE (Offline)' : '✅ SINCRONIZADO'
+      ])
+
+      autoTable(doc, {
+        startY: 30,
+        head: [['Fecha/Hora', 'Usuario', 'Descripción', 'Estado de Red']],
+        body: chatData.length > 0 ? chatData : [['Sin avances registrados', '-', '-', '-']],
+        styles: { fontSize: 9 }
+      })
+
+      doc.addPage()
+      doc.setFontSize(16)
+      doc.setFont('helvetica', 'bold')
+      doc.text('Detalle de Gastos (+ Offline)', 20, 20)
+
+      let totalExpenses = 0
+      const expenseData = allExpenses.map((exp: any) => {
+        totalExpenses += Number(exp.amount)
+        return [
+          formatDate(exp.date),
+          exp.description,
+          `$ ${Number(exp.amount).toFixed(2)}`,
+          exp.isPending ? '⏳ PEND.' : '✅ SINC.'
+        ]
+      })
+
+      autoTable(doc, {
+        startY: 30,
+        head: [['Fecha', 'Descripción', 'Monto', 'Estado Red']],
+        body: expenseData.length > 0 ? expenseData : [['No hay gastos registrados', '-', '-', '-']],
+        styles: { fontSize: 9 },
+        foot: [['', 'TOTAL ACUMULADO:', `$ ${totalExpenses.toFixed(2)}`, '']],
+        footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
+      })
+
+      doc.save(`Reporte_Obra_${project.id}_${project.title.replace(/\s+/g, '_')}.pdf`)
+    } catch(err) {
+      console.error(err)
+      alert("Error al generar Reporte")
+    }
+  }
+
   return (
     <div style={{ padding: isSmallScreen ? '5px 10px 0 10px' : '0', minHeight: isSmallScreen ? 'calc(100vh - 128px)' : 'auto', display: 'flex', flexDirection: 'column' }}>
       {/* Project Header */}
@@ -572,16 +787,93 @@ export default function OperatorProjectClient({
         <Link href="/admin/operador" className="btn btn-ghost btn-sm" style={{ padding: 0, color: 'var(--primary)', marginBottom: isSmallScreen ? '5px' : '10px', display: 'inline-flex', alignItems: 'center', gap: '5px', fontSize: isSmallScreen ? '0.8rem' : '0.9rem' }}>
           &larr; {isSmallScreen ? 'Volver' : 'Volver a Mis Proyectos'}
         </Link>
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', fontSize: '0.7rem', color: isOnline ? 'var(--success)' : 'var(--warning)', backgroundColor: 'var(--bg-deep)', padding: '2px 8px', borderRadius: '12px', border: '1px solid currentColor' }}>
-               <div style={{ width: '6px', height: '6px', borderRadius: '50%', backgroundColor: 'currentColor' }}></div>
-               {isOnline ? 'EN LÍNEA' : 'MODO OFFLINE'}
-               {pendingItems.length > 0 && <span style={{ marginLeft: '5px', color: 'var(--warning)', fontWeight: 'bold' }}>({pendingItems.length} pendientes)</span>}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '10px' }}>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', flex: '1', minWidth: '150px' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '5px', 
+              alignSelf: 'flex-start', 
+              fontSize: '0.7rem', 
+              color: !mounted ? 'var(--text-muted)' : (isOnline ? 'var(--success)' : 'var(--warning)'), 
+              backgroundColor: 'var(--bg-deep)', 
+              padding: '2px 8px', 
+              borderRadius: '12px', 
+              border: '1px solid currentColor', 
+              whiteSpace: 'nowrap' 
+            }}>
+               <div style={{ 
+                 width: '6px', 
+                 height: '6px', 
+                 borderRadius: '50%', 
+                 backgroundColor: 'currentColor',
+                 boxShadow: mounted && isOnline ? '0 0 8px var(--success)' : 'none'
+               }}></div>
+               {mounted ? (
+                 <>
+                   {isOnline ? 'EN LÍNEA' : 'MODO OFFLINE'}
+                 </>
+               ) : 'COMPROBANDO...'}
             </div>
-            <h1 style={{ fontSize: isSmallScreen ? '1.4rem' : '1.8rem', margin: 0, color: 'var(--text)', fontWeight: 'bold' }}>{project.title}</h1>
+            
+            <h1 style={{ fontSize: isSmallScreen ? '1.4rem' : '1.8rem', margin: 0, color: 'var(--text)', fontWeight: 'bold', lineHeight: 1.2, wordBreak: 'break-word' }}>{project.title}</h1>
+            
+            {/* NEW: Collapsible Project Info Accordion */}
+            <div className="card" style={{ padding: '0', overflow: 'hidden', border: '1px solid var(--border-color)', margin: '5px 0' }}>
+              <details style={{ width: '100%' }}>
+                <summary style={{ 
+                  padding: '10px 15px', 
+                  cursor: 'pointer', 
+                  backgroundColor: 'var(--bg-deep)', 
+                  fontWeight: 'bold',
+                  display: 'flex',
+                  justifyContent: 'space-between',
+                  alignItems: 'center',
+                  listStyle: 'none'
+                }}>
+                  <span style={{ fontSize: '0.9rem', color: 'var(--primary)' }}>📋 Ficha del Proyecto (Info)</span>
+                  <span style={{ fontSize: '0.7rem', opacity: 0.6 }}>▼</span>
+                </summary>
+                <div style={{ padding: '15px', display: 'grid', gridTemplateColumns: isSmallScreen ? '1fr' : '1fr 1fr', gap: '15px' }}>
+                  <div>
+                    <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Cliente</h4>
+                    <p style={{ margin: 0, fontWeight: 'bold' }}>{clientName}</p>
+                  </div>
+                  <div>
+                    <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Dirección</h4>
+                    <p style={{ margin: 0 }}>{projectAddress}, {projectCity}</p>
+                  </div>
+                  <div style={{ gridColumn: isSmallScreen ? 'auto' : '1 / -1' }}>
+                    <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '4px' }}>Especificaciones</h4>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+                      {project.depth && <span style={{ backgroundColor: 'var(--bg-deep)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>Prof: {project.depth}m</span>}
+                      {project.diameter && <span style={{ backgroundColor: 'var(--bg-deep)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>Diám: {project.diameter}"</span>}
+                      {project.elevation && <span style={{ backgroundColor: 'var(--bg-deep)', padding: '2px 8px', borderRadius: '4px', fontSize: '0.75rem' }}>Elev: {project.elevation}m</span>}
+                    </div>
+                  </div>
+                  
+                  {/* Download PDF Buttons in the info card */}
+                  <div style={{ marginTop: '10px', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
+                    <button 
+                      onClick={() => generateFichaPDF()}
+                      className="btn btn-ghost" 
+                      style={{ fontSize: '0.75rem', border: '1px solid var(--primary)', color: 'var(--primary)', flex: 1 }}
+                    >
+                      📄 Ficha del Proyecto
+                    </button>
+                    <button 
+                      onClick={() => generateReportePDF()}
+                      className="btn btn-primary" 
+                      style={{ fontSize: '0.75rem', flex: 1 }}
+                    >
+                      📑 Reporte de Obra
+                    </button>
+                  </div>
+                </div>
+              </details>
+            </div>
           </div>
-          <span className={`status-badge status-${project.status.toLowerCase()}`} style={{ fontSize: isSmallScreen ? '0.7rem' : '0.8rem', padding: isSmallScreen ? '2px 8px' : '4px 12px' }}>
+          <span className={`status-badge status-${project.status.toLowerCase()}`} style={{ fontSize: isSmallScreen ? '0.7rem' : '0.8rem', padding: isSmallScreen ? '2px 8px' : '4px 12px', flexShrink: 0 }}>
             {project.status === 'ACTIVO' ? 'Activo' : 'Pendiente'}
           </span>
         </div>
@@ -595,14 +887,14 @@ export default function OperatorProjectClient({
           flexWrap: 'wrap',
           alignItems: 'center'
         }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-            <svg width={isSmallScreen ? "12" : "14"} height={isSmallScreen ? "12" : "14"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/></svg>
-            {clientName}
+          <div style={{ display: 'flex', alignItems: 'center', gap: '4px', maxWidth: '100%', overflow: 'hidden' }}>
+            <svg width={isSmallScreen ? "12" : "14"} height={isSmallScreen ? "12" : "14"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}><circle cx="12" cy="7" r="4"/><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/></svg>
+            <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{clientName}</span>
           </div>
           {(projectAddress) && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-              <svg width={isSmallScreen ? "12" : "14"} height={isSmallScreen ? "12" : "14"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              {projectAddress} {projectCity ? `, ${projectCity}` : ''}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', maxWidth: '100%', overflow: 'hidden' }}>
+              <svg width={isSmallScreen ? "12" : "14"} height={isSmallScreen ? "12" : "14"} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ flexShrink: 0 }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span style={{ overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectAddress} {projectCity ? `, ${projectCity}` : ''}</span>
             </div>
           )}
           {isSmallScreen && (
@@ -622,10 +914,10 @@ export default function OperatorProjectClient({
       <div className="tab-content" style={{ flex: isSmallScreen ? 1 : 'none', display: isSmallScreen ? 'flex' : 'block', flexDirection: 'column', overflow: isSmallScreen ? 'hidden' : 'visible' }}>
         {activeTab === 'records' && (
           <div style={{ display: 'grid', gap: '20px' }}>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: '20px' }}>
-              <div className="card">
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
+              <div className="card" style={{ minWidth: 0 }}>
                 <h3 style={{ fontSize: '1.2rem', marginBottom: '15px' }}>Registro de Jornada</h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px' }}>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
                   Registra tu hora de entrada y salida para contabilizar tus horas en obra.
                 </p>
                 <button 
@@ -657,9 +949,113 @@ export default function OperatorProjectClient({
                 )}
               </div>
 
-              <div className="card">
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-                  <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Gastos Registrados</h3>
+               {/* Galería Principal (Planos/Fotos Admin) */}
+               {project.gallery && project.gallery.length > 0 && (
+                 <div className="card" style={{ minWidth: 0, marginBottom: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                      <h3 style={{ fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+                        Planos y Referencias
+                      </h3>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{project.gallery.length} Archivos</span>
+                    </div>
+                    
+                    <div style={{ 
+                      display: 'grid', 
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
+                      gap: '12px'
+                    }}>
+                      {project.gallery.map((item: any) => (
+                        <div 
+                          key={item.id} 
+                          className="group"
+                          style={{ 
+                            position: 'relative', 
+                            aspectRatio: '1/1', 
+                            borderRadius: '12px', 
+                            overflow: 'hidden', 
+                            border: '1px solid var(--border-color)',
+                            backgroundColor: 'var(--bg-surface)',
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                          }}
+                        >
+                          {item.mimeType.startsWith('image/') ? (
+                            <img 
+                              src={item.url} 
+                              alt={item.filename} 
+                              style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }} 
+                              className="group-hover:scale-110"
+                            />
+                          ) : (
+                            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-deep)', padding: '10px' }}>
+                              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" style={{ opacity: 0.7 }}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                              <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.filename}</span>
+                            </div>
+                          )}
+
+                          {/* Interaction Overlay */}
+                          <div style={{ 
+                            position: 'absolute', 
+                            inset: 0, 
+                            backgroundColor: 'rgba(0,0,0,0.6)', 
+                            display: 'flex', 
+                            flexDirection: 'column',
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            gap: '12px',
+                            opacity: 0,
+                            transition: 'opacity 0.2s',
+                            zIndex: 10
+                          }} className="group-hover:opacity-100">
+                            <a 
+                              href={item.url} 
+                              target="_blank" 
+                              rel="noopener noreferrer"
+                              style={{ 
+                                padding: '8px 16px', 
+                                backgroundColor: 'var(--primary)', 
+                                color: 'white', 
+                                borderRadius: '20px', 
+                                fontSize: '0.75rem', 
+                                fontWeight: 'bold',
+                                textDecoration: 'none',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                              Ver
+                            </a>
+                            <button 
+                              onClick={() => handleDownload(item.url, item.filename)}
+                              style={{ 
+                                padding: '8px 16px', 
+                                backgroundColor: 'white', 
+                                color: 'var(--primary)', 
+                                borderRadius: '20px', 
+                                fontSize: '0.75rem', 
+                                fontWeight: 'bold',
+                                border: 'none',
+                                cursor: 'pointer',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '6px'
+                              }}
+                            >
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                              Descargar
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+               <div className="card" style={{ minWidth: 0 }}>
+                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '10px' }}>
+                   <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Gastos Registrados</h3>
                   <button className="btn btn-primary btn-sm" onClick={() => setExpenseForm(!expenseForm)} disabled={loading}>
                     {expenseForm ? 'Cancelar' : '+ Agregar'}
                   </button>
@@ -702,7 +1098,7 @@ export default function OperatorProjectClient({
               </div>
             </div>
 
-            <div className="card">
+            <div className="card" style={{ minWidth: 0 }}>
               <h3 style={{ fontSize: '1.2rem', marginBottom: '15px' }}>Avances de Fase & Notas</h3>
               <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 <div className="form-group">
@@ -711,6 +1107,7 @@ export default function OperatorProjectClient({
                     className="form-input" 
                     value={notePhase || ''} 
                     onChange={e => setNotePhase(Number(e.target.value))}
+                    style={{ maxWidth: '100%', textOverflow: 'ellipsis' }}
                   >
                     {project.phases.map((p: any) => (
                       <option key={p.id} value={p.id} disabled={p.status === 'COMPLETADA'}>
@@ -740,7 +1137,7 @@ export default function OperatorProjectClient({
               </div>
             </div>
 
-            <div className="card">
+            <div className="card" style={{ minWidth: 0 }}>
               <ProjectUploader 
                 files={projectMediaFiles}
                 onAddFile={handleUploadMedia}
@@ -870,8 +1267,36 @@ export default function OperatorProjectClient({
                       <div style={{ backgroundColor: msg.type === 'NOTE' ? 'var(--bg-deep)' : (msg.isMe ? 'var(--primary)' : 'var(--bg-surface)'), color: msg.isMe && msg.type !== 'NOTE' ? 'var(--bg-deep)' : 'var(--text)', padding: isSmallScreen ? '8px 12px' : '10px 15px', borderRadius: '16px', fontSize: isSmallScreen ? '0.8rem' : '0.875rem', border: msg.type === 'NOTE' ? '1px solid var(--warning)' : 'none', borderBottomRightRadius: msg.isMe ? '4px' : '12px', borderBottomLeftRadius: msg.isMe ? '12px' : '4px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
                         {msg.type === 'NOTE' && <div style={{ fontSize: '0.7rem', color: 'var(--warning)', fontWeight: 'bold', marginBottom: '4px', textTransform: 'uppercase' }}>Nota de Avance</div>}
                         {msg.media && msg.media.length > 0 && (
-                            <div style={{ marginBottom: '8px', borderRadius: '8px', overflow: 'hidden' }}>
-                                {msg.media[0].mimeType.startsWith('image') ? <img src={msg.media[0].url} alt="Evidencia" style={{ width: '100%', display: 'block' }} /> : <video src={msg.media[0].url} controls style={{ width: '100%' }} />}
+                            <div style={{ marginBottom: '8px', borderRadius: '12px', overflow: 'hidden', position: 'relative', border: '1px solid rgba(255,255,255,0.1)' }}>
+                                {msg.media[0].mimeType.startsWith('image') ? (
+                                  <div style={{ position: 'relative' }}>
+                                    <img src={msg.media[0].url} alt="Evidencia" style={{ width: '100%', maxHeight: isSmallScreen ? '200px' : '400px', objectFit: 'contain', display: 'block' }} />
+                                    <button 
+                                      onClick={() => handleDownload(msg.media[0].url, msg.media[0].filename)}
+                                      style={{ position: 'absolute', bottom: '8px', right: '8px', padding: '6px', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: '50%', border: 'none', color: 'white', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    >
+                                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    </button>
+                                  </div>
+                                ) : msg.media[0].mimeType.startsWith('video') ? (
+                                  <video src={msg.media[0].url} controls style={{ width: '100%', maxHeight: isSmallScreen ? '200px' : '400px' }} />
+                                ) : (
+                                  <div style={{ padding: '15px', backgroundColor: 'var(--bg-deep)', display: 'flex', alignItems: 'center', gap: '12px' }}>
+                                    <div style={{ width: '40px', height: '40px', backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                                    </div>
+                                    <div style={{ flex: 1, minWidth: 0 }}>
+                                      <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{msg.media[0].filename}</div>
+                                      <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)' }}>Documento {(msg.media[0].mimeType.split('/')[1] || 'FILE').toUpperCase()}</div>
+                                    </div>
+                                    <button 
+                                      onClick={() => handleDownload(msg.media[0].url, msg.media[0].filename)}
+                                      style={{ padding: '8px', backgroundColor: 'var(--primary)', border: 'none', borderRadius: '8px', color: 'white', cursor: 'pointer' }}
+                                    >
+                                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    </button>
+                                  </div>
+                                )}
                             </div>
                         )}
                         {msg.content}

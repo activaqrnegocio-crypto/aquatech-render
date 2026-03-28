@@ -14,13 +14,16 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
       client: true,
       phases: { orderBy: { displayOrder: 'asc' } },
       team: { include: { user: true } },
-      expenses: { orderBy: { date: 'desc' } }, // Fetch all for comparison
+      gallery: { orderBy: { createdAt: 'desc' }, take: 24 }, // Limit gallery preview
+      expenses: { orderBy: { date: 'desc' } }, // Keep all for correct budget calculation
       dayRecords: { 
         orderBy: { createdAt: 'desc' },
+        take: 15, // Only recent logs
         include: { user: true }
       },
       chatMessages: {
         orderBy: { createdAt: 'desc' },
+        take: 20, // Only recent messages for fast loading
         include: { 
           user: true, 
           phase: true,

@@ -12,7 +12,8 @@ export async function PATCH(
     if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
     const { id, phaseId } = await params
-    const { status } = await req.json()
+    const { status, createdAt } = await req.json()
+    const timestamp = createdAt ? new Date(createdAt) : new Date()
 
     // Validate if user belongs to the project team
     const teamMember = await prisma.projectTeam.findUnique({
@@ -32,8 +33,8 @@ export async function PATCH(
       where: { id: Number(phaseId) },
       data: { 
         status,
-        completedAt: status === 'COMPLETADA' ? new Date() : null,
-        startedAt: status === 'EN_PROGRESO' ? new Date() : undefined
+        completedAt: status === 'COMPLETADA' ? timestamp : null,
+        startedAt: status === 'EN_PROGRESO' ? timestamp : undefined
       }
     })
 

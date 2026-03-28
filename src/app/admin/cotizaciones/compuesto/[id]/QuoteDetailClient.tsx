@@ -1,89 +1,42 @@
 'use client'
 
-import { jsPDF } from 'jspdf'
+import { generateProfessionalPDF, numberToSpanishWords } from '@/lib/pdf-generator'
 import Link from 'next/link'
 
 export default function QuoteDetailClient({ quote }: any) {
   
-  const generatePDF = () => {
-    const doc = new jsPDF()
-    const primaryColor = '#38BDF8'
-    
-    // Header
-    doc.setFillColor(12, 26, 42) // bg-deep
-    doc.rect(0, 0, 210, 40, 'F')
-    
-    doc.setTextColor(255, 255, 255)
-    doc.setFontSize(24)
-    doc.setFont('helvetica', 'bold')
-    doc.text('AQUATECH', 20, 25)
-    
-    doc.setFontSize(10)
-    doc.setFont('helvetica', 'normal')
-    doc.text('COTIZACIÓN # ' + quote.id, 150, 25)
-    doc.text('Fecha: ' + new Date(quote.createdAt).toLocaleDateString(), 150, 32)
+  const handleDownloadPDF = () => {
+    const clientInfo = {
+      name: quote.clientName || quote.client?.name || '',
+      ruc: quote.clientRuc || quote.client?.ruc,
+      address: quote.clientAddress || quote.client?.address,
+      phone: quote.clientPhone || quote.client?.phone,
+      date: new Date(quote.createdAt)
+    }
 
-    // Client Info
-    doc.setTextColor(0, 0, 0)
-    doc.setFontSize(14)
-    doc.setFont('helvetica', 'bold')
-    doc.text('Información del Cliente', 20, 55)
-    
-    doc.setFontSize(12)
-    doc.setFont('helvetica', 'normal')
-    doc.text(quote.client.name, 20, 65)
-    doc.text(quote.client.email || '', 20, 72)
-    doc.text(quote.client.phone || '', 20, 79)
-    doc.text(quote.client.address || '', 20, 86)
+    const items = quote.items.map((item: any) => ({
+      quantity: item.quantity === 'GLOBAL' ? 'GLOBAL' : Number(item.quantity),
+      code: item.material?.code || item.code || '',
+      description: item.description,
+      unitPrice: Number(item.unitPrice),
+      discountPct: Number(item.discountPct || 0),
+      total: Number(item.total)
+    }))
 
-    // Items Table Header
-    doc.setFillColor(240, 240, 240)
-    doc.rect(20, 100, 170, 10, 'F')
-    doc.setFont('helvetica', 'bold')
-    doc.text('Descripción', 25, 107)
-    doc.text('Cant.', 120, 107)
-    doc.text('Precio', 145, 107)
-    doc.text('Total', 170, 107)
+    const totals = {
+      subtotal: Number(quote.subtotal || 0),
+      subtotal0: Number(quote.subtotal0 || 0),
+      subtotal15: Number(quote.subtotal15 || 0),
+      discountTotal: Number(quote.discountTotal || 0),
+      ivaAmount: Number(quote.ivaAmount || 0),
+      totalAmount: Number(quote.totalAmount)
+    }
 
-    // Items
-    let y = 117
-    doc.setFont('helvetica', 'normal')
-    quote.items.forEach((item: any) => {
-      doc.text(item.description, 25, y)
-      doc.text(item.quantity.toString(), 125, y)
-      doc.text(item.unitPrice.toLocaleString(), 145, y)
-      doc.text(item.total.toLocaleString(), 170, y)
-      y += 10
-      
-      if (y > 270) {
-        doc.addPage()
-        y = 20
-      }
+    generateProfessionalPDF(clientInfo, items, totals, {
+      docType: 'COTIZACIÓN',
+      docId: quote.id,
+      notes: quote.notes
     })
-
-    // Totals
-    y += 10
-    doc.setDrawColor(200, 200, 200)
-    doc.line(120, y, 190, y)
-    y += 10
-    doc.text('Subtotal:', 140, y)
-    doc.text('$ ' + quote.totalAmount.toLocaleString(), 170, y)
-    
-    y += 7
-    doc.text('Impuestos (15%):', 140, y)
-    doc.text('$ ' + (quote.totalAmount * 0.15).toLocaleString(), 170, y)
-    
-    y += 10
-    doc.setFont('helvetica', 'bold')
-    doc.text('TOTAL:', 140, y)
-    doc.text('$ ' + (quote.totalAmount * 1.15).toLocaleString(), 170, y)
-
-    // Footer
-    doc.setFontSize(9)
-    doc.setTextColor(150, 150, 150)
-    doc.text('Gracias por preferir Aquatech — Innovación Hidráulica', 105, 285, { align: 'center' })
-
-    doc.save(`Cotizacion_Aquatech_${quote.id}.pdf`)
   }
 
   return (
@@ -94,93 +47,136 @@ export default function QuoteDetailClient({ quote }: any) {
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
             Volver a Cotizaciones
           </Link>
-          <h2>Detalle de Cotización #{quote.id}</h2>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
+            <h2 style={{ margin: 0 }}>Cotización #{quote.id.toString().padStart(5, '0')}</h2>
+            <span className={`badge badge-${quote.status === 'BORRADOR' ? 'info' : quote.status === 'ACEPTADA' ? 'success' : 'warning'}`}>
+              {quote.status}
+            </span>
+          </div>
         </div>
-        <div style={{ display: 'flex', gap: '15px' }}>
-          <button className="btn btn-ghost" onClick={() => window.print()}>Imprimir Pantalla</button>
-          <button className="btn btn-primary" onClick={generatePDF}>Descargar PDF Oficial</button>
+        <div style={{ display: 'flex', gap: '12px' }}>
+          <button className="btn btn-primary" onClick={handleDownloadPDF} style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/></svg>
+            Descargar PDF Oficial
+          </button>
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '2.5fr 1fr', gap: '20px' }}>
-        <div className="card" style={{ padding: '40px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', borderBottom: '2px solid var(--primary)', paddingBottom: '20px', marginBottom: '30px' }}>
-            <div>
-              <h1 style={{ color: 'var(--primary)', margin: 0 }}>AQUATECH</h1>
-              <p style={{ color: 'var(--text-muted)' }}>Loja, Ecuador</p>
-            </div>
-            <div style={{ textAlign: 'right' }}>
-              <h3 style={{ margin: 0 }}>COTIZACIÓN</h3>
-              <p style={{ margin: '5px 0' }}>#{quote.id}</p>
-              <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Fecha: {new Date(quote.createdAt).toLocaleDateString()}</p>
-            </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '30px', alignItems: 'start' }}>
+        <div className="card shadow-md" style={{ padding: '0', overflow: 'hidden' }}>
+          <div style={{ backgroundColor: 'var(--bg-deep)', padding: '20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
+            <h4 style={{ margin: 0, textTransform: 'uppercase', letterSpacing: '1px' }}>Vista Previa de Documento</h4>
+            <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{new Date(quote.createdAt).toLocaleString()}</div>
           </div>
+          
+          <div style={{ padding: '40px', backgroundColor: 'white', color: '#333', fontSize: '13px', lineHeight: '1.5' }}>
+            {/* Header Preview */}
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '40px' }}>
+              <div style={{ color: 'var(--primary)', fontSize: '2rem', fontWeight: 'bold' }}>AQUATECH</div>
+              <div style={{ textAlign: 'right', border: '1px solid #ddd', padding: '15px', borderRadius: '4px' }}>
+                <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>R.U.C.: 1105048852001</div>
+                <div style={{ color: 'var(--primary)', fontWeight: 'bold' }}>COTIZACIÓN # {quote.id.toString().padStart(5, '0')}</div>
+                <div style={{ fontSize: '0.8rem' }}>CASTILLO CASTILLO PABLO JOSE</div>
+              </div>
+            </div>
 
-          <div style={{ marginBottom: '40px' }}>
-            <h4 style={{ textTransform: 'uppercase', color: 'var(--primary)', marginBottom: '10px' }}>Cliente</h4>
-            <p style={{ margin: '2px 0', fontSize: '1.2rem', fontWeight: 'bold' }}>{quote.client.name}</p>
-            <p style={{ margin: '2px 0', color: 'var(--text-muted)' }}>{quote.client.address}, {quote.client.city}</p>
-            <p style={{ margin: '2px 0', color: 'var(--text-muted)' }}>{quote.client.phone}</p>
-          </div>
+            {/* Client Box Preview */}
+            <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px', padding: '15px', backgroundColor: '#f9fafb', border: '1px solid #eee', borderRadius: '4px', marginBottom: '30px' }}>
+              <div>
+                <div><strong>Cliente:</strong> {quote.clientName || quote.client?.name}</div>
+                <div><strong>Dirección:</strong> {quote.clientAddress || quote.client?.address}</div>
+                <div><strong>Proyecto:</strong> {quote.project?.title || 'General'}</div>
+              </div>
+              <div>
+                <div><strong>RUC/CI:</strong> {quote.clientRuc || quote.client?.ruc}</div>
+                <div><strong>Telef:</strong> {quote.clientPhone || quote.client?.phone}</div>
+                <div><strong>Fecha:</strong> {new Date(quote.createdAt).toLocaleDateString()}</div>
+              </div>
+            </div>
 
-          <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '40px' }}>
-            <thead>
-              <tr style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'left' }}>
-                <th style={{ padding: '12px' }}>Descripción</th>
-                <th style={{ padding: '12px', textAlign: 'center' }}>Cant.</th>
-                <th style={{ padding: '12px', textAlign: 'right' }}>Unitario</th>
-                <th style={{ padding: '12px', textAlign: 'right' }}>Total</th>
-              </tr>
-            </thead>
-            <tbody>
-              {quote.items.map((item: any) => (
-                <tr key={item.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
-                  <td style={{ padding: '12px' }}>{item.description}</td>
-                  <td style={{ padding: '12px', textAlign: 'center' }}>{item.quantity}</td>
-                  <td style={{ padding: '12px', textAlign: 'right' }}>$ {item.unitPrice.toLocaleString()}</td>
-                  <td style={{ padding: '12px', textAlign: 'right' }}>$ {item.total.toLocaleString()}</td>
+            {/* Table Preview */}
+            <table style={{ width: '100%', borderCollapse: 'collapse', marginBottom: '30px' }}>
+              <thead>
+                <tr style={{ backgroundColor: '#111', color: 'white' }}>
+                  <th style={{ padding: '10px', textAlign: 'center' }}>Cant.</th>
+                  <th style={{ padding: '10px', textAlign: 'left' }}>Producto</th>
+                  <th style={{ padding: '10px', textAlign: 'right' }}>P.Unit</th>
+                  <th style={{ padding: '10px', textAlign: 'right' }}>Total</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {quote.items.map((item: any, idx: number) => (
+                  <tr key={item.id || idx} style={{ borderBottom: '1px solid #eee' }}>
+                    <td style={{ padding: '10px', textAlign: 'center' }}>{item.quantity}</td>
+                    <td style={{ padding: '10px' }}>
+                      <div style={{ fontSize: '0.7rem', color: '#888' }}>{item.material?.code || item.code}</div>
+                      {item.description}
+                    </td>
+                    <td style={{ padding: '10px', textAlign: 'right' }}>$ {Number(item.unitPrice).toFixed(2)}</td>
+                    <td style={{ padding: '10px', textAlign: 'right' }}>$ {Number(item.total).toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
 
-          <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-            <div style={{ width: '250px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Subtotal</span>
-                <span>$ {quote.totalAmount.toLocaleString()}</span>
+            {/* Totals Preview */}
+            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+              <div style={{ width: '60%', fontSize: '0.8rem' }}>
+                <strong>OBSERVACIONES:</strong>
+                <p>{quote.notes || 'Ninguna'}</p>
+                <div style={{ marginTop: '20px' }}><strong>SON:</strong> {numberToSpanishWords(Number(quote.totalAmount))}</div>
               </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '10px' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Impuestos (15%)</span>
-                <span>$ {(quote.totalAmount * 0.15).toLocaleString()}</span>
-              </div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '10px', paddingTop: '10px', borderTop: '2px solid var(--primary)', fontSize: '1.4rem', fontWeight: 'bold' }}>
-                <span>TOTAL</span>
-                <span>$ {(quote.totalAmount * 1.15).toLocaleString()}</span>
+              
+              <div style={{ width: '35%' }}>
+                <div className="space-y-2">
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500">Subtotal:</span>
+                    <span className="font-semibold text-gray-900">$ {Number(quote.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500">Descuentos:</span>
+                    <span className="font-semibold text-red-600">-$ {Number(quote.discountTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1">
+                    <span className="text-gray-500">Subtotal TARIFA 0%:</span>
+                    <span className="font-semibold text-gray-900">$ {Number(quote.subtotal0 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500">Subtotal TARIFA 15%:</span>
+                    <span className="font-semibold text-gray-900">$ {Number(quote.subtotal15 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-xs">
+                    <span className="text-gray-500">15% IVA:</span>
+                    <span className="font-semibold text-gray-900">$ {Number(quote.ivaAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                  <div className="flex justify-between items-center text-sm border-t-2 border-primary pt-2 mt-2">
+                    <span className="font-bold text-primary">TOTAL A PAGAR $:</span>
+                    <span className="font-bold text-primary">$ {Number(quote.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                  </div>
+                </div>
               </div>
             </div>
           </div>
         </div>
 
-        <div>
-          <div className="card" style={{ marginBottom: '20px' }}>
-            <h3>Estado de la Propuesta</h3>
-            <div style={{ marginTop: '15px' }}>
-              <select className="form-input" defaultValue={quote.status} style={{ marginBottom: '10px' }}>
-                <option value="BORRADOR">Borrador</option>
-                <option value="ENVIADA">Enviada</option>
-                <option value="ACEPTADA">Aceptada</option>
-                <option value="RECHAZADA">Rechazada</option>
-              </select>
-              <button className="btn btn-primary" style={{ width: '100%' }}>Actualizar Estado</button>
+        <div style={{ display: 'grid', gap: '20px' }}>
+          <div className="card">
+            <h3>Gestión de Cotización</h3>
+            <div style={{ marginTop: '20px', display: 'grid', gap: '10px' }}>
+              <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center' }}>Marcar como Enviada</button>
+              <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', color: 'var(--success)' }}>Marcar como Aceptada</button>
+              <button className="btn btn-ghost" style={{ width: '100%', justifyContent: 'center', color: 'var(--danger)' }}>Rechazar Propuesta</button>
             </div>
           </div>
 
           <div className="card">
-            <h3>Notas Internas</h3>
-            <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '10px' }}>
-              {quote.notes || 'No hay notas adicionales para esta cotización.'}
-            </p>
+            <h3>Acciones Rápidas</h3>
+            <div style={{ marginTop: '20px', display: 'grid', gap: '10px' }}>
+              <Link href={`/admin/cotizaciones/nuevo?from=${quote.id}`} className="btn btn-ghost" style={{ textDecoration: 'none', textAlign: 'center' }}>
+                Duplicar Cotización
+              </Link>
+              <button className="btn btn-ghost" onClick={() => window.print()}>Imprimir Copia</button>
+            </div>
           </div>
         </div>
       </div>

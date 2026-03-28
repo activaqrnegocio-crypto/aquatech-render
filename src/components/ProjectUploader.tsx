@@ -24,6 +24,9 @@ interface ProjectUploaderProps {
   onRemoveFile?: (url: string) => void
   readOnly?: boolean
   title?: string
+  minimal?: boolean
+  showGrid?: boolean
+  onFilterChange?: (filter: FilterType) => void
 }
 
 type FilterType = 'ALL' | 'IMAGE' | 'VIDEO' | 'DOCUMENT'
@@ -33,11 +36,19 @@ export default function ProjectUploader({
   onAddFile, 
   onRemoveFile, 
   readOnly = false,
-  title = "Archivos del Proyecto"
+  title = "Archivos del Proyecto",
+  minimal = false,
+  showGrid = true,
+  onFilterChange
 }: ProjectUploaderProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [filter, setFilter] = useState<FilterType>('ALL')
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleFilterChange = (newFilter: FilterType) => {
+    setFilter(newFilter)
+    if (onFilterChange) onFilterChange(newFilter)
+  }
 
   const filteredFiles = useMemo(() => {
     if (filter === 'ALL') return files
@@ -111,130 +122,227 @@ export default function ProjectUploader({
   }
 
   return (
-    <div className="card w-full mt-6">
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
-        <div>
-          <h3 className="card-title text-lg">{title}</h3>
-          <p className="card-subtitle">Gestiona imágenes, videos y documentos</p>
+    <div className={minimal ? "" : "card"} style={{ width: '100%', marginTop: minimal ? '0' : '24px' }}>
+      <div style={{ 
+          display: 'flex', 
+          flexWrap: 'wrap', 
+          alignItems: 'center', 
+          justifyContent: minimal ? 'flex-start' : 'space-between', 
+          gap: '16px', 
+          marginBottom: minimal ? '0' : '24px' 
+      }}>
+        {!minimal && (
+          <div>
+            <h3 className="card-title" style={{ fontSize: '1.125rem', margin: '0' }}>{title}</h3>
+            <p className="card-subtitle" style={{ margin: '4px 0 0 0' }}>Gestiona imágenes, videos y documentos</p>
+          </div>
+        )}
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flexWrap: 'wrap' }}>
+          {!readOnly && (
+            <button 
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isUploading}
+              className="btn btn-primary btn-sm flex items-center gap-2"
+              style={{ padding: '8px 16px', borderRadius: '8px', display: 'flex', alignItems: 'center', gap: '8px' }}
+            >
+              {isUploading ? (
+                <>
+                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                  <span>Subiendo...</span>
+                </>
+              ) : (
+                <>
+                  <UploadCloud size={16} />
+                  <span>Subir Archivos</span>
+                </>
+              )}
+            </button>
+          )}
+
+          {/* Filters - Professional Styling */}
+          <div className="flex items-center gap-2 overflow-x-auto scrollbar-hide">
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '6px', 
+              padding: '6px 12px', 
+              borderRadius: '8px', 
+              background: 'rgba(255, 255, 255, 0.03)', 
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+              color: 'var(--text-muted)',
+              fontSize: '0.75rem',
+              fontWeight: 600
+            }}>
+              <Filter size={14} />
+              <span>Filtrar</span>
+            </div>
+            
+            {(['ALL', 'IMAGE', 'VIDEO', 'DOCUMENT'] as FilterType[]).map((t) => (
+              <button
+                key={t}
+                onClick={() => handleFilterChange(t)}
+                style={{
+                  padding: '6px 14px',
+                  borderRadius: '20px',
+                  fontSize: '0.75rem',
+                  fontWeight: 500,
+                  transition: 'all 0.2s ease',
+                  border: '1px solid',
+                  cursor: 'pointer',
+                  backgroundColor: filter === t ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)',
+                  borderColor: filter === t ? 'var(--primary)' : 'rgba(255, 255, 255, 0.1)',
+                  color: filter === t ? 'white' : 'var(--text-muted)',
+                  boxShadow: filter === t ? '0 4px 12px rgba(54, 162, 235, 0.3)' : 'none'
+                }}
+                className={filter === t ? 'scale-105' : 'hover:bg-white/10'}
+              >
+                {t === 'ALL' ? 'Todos' : t === 'IMAGE' ? 'Fotos' : t === 'VIDEO' ? 'Videos' : 'Docs'}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {!readOnly && (
-          <button 
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isUploading}
-            className="btn btn-primary btn-sm"
-          >
-            {isUploading ? (
-              <div className="flex items-center gap-2">
-                <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                <span>Subiendo...</span>
-              </div>
-            ) : (
-              <>
-                <UploadCloud size={16} />
-                <span>Subir Archivos</span>
-              </>
-            )}
-          </button>
-        )}
         <input 
           type="file" 
           multiple 
           hidden 
           ref={fileInputRef}
           onChange={handleFileChange}
-          accept="image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx"
+          accept="image/*,video/*,application/pdf,.pdf,.doc,.docx,.xls,.xlsx"
         />
       </div>
 
-      {/* Filters */}
-      <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-2 scrollbar-hide">
-        <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-white/5 border border-white/10 text-xs font-semibold text-text-muted mr-2">
-          <Filter size={14} />
-          <span>Filtrar:</span>
-        </div>
-        
-        {(['ALL', 'IMAGE', 'VIDEO', 'DOCUMENT'] as FilterType[]).map((t) => (
-          <button
-            key={t}
-            onClick={() => setFilter(t)}
-            className={`px-4 py-1.5 rounded-full text-xs font-medium transition-all ${
-              filter === t 
-                ? 'bg-primary text-text-inverse shadow-glow scale-105' 
-                : 'bg-white/5 text-text-secondary hover:bg-white/10'
-            }`}
-          >
-            {t === 'ALL' ? 'Todos' : t === 'IMAGE' ? 'Fotos' : t === 'VIDEO' ? 'Videos' : 'Docs'}
-          </button>
-        ))}
-      </div>
-
-      {/* Files Grid */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-4">
-        {filteredFiles.length > 0 ? (
-          filteredFiles.map((file, idx) => (
-            <div 
-              key={file.url + idx} 
-              className="group relative aspect-square rounded-xl overflow-hidden bg-bg-deep border border-border hover:border-primary/50 transition-all card-shadow-hover"
-            >
-              {file.type === 'IMAGE' ? (
-                <img 
-                  src={file.url} 
-                  alt={file.filename} 
-                  className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center p-4 text-center gap-2">
-                  {getIcon(file.type)}
-                  <span className="text-[10px] text-text-secondary font-medium truncate w-full px-2">
-                    {file.filename}
-                  </span>
-                </div>
-              )}
-
-              {/* Overlay Actions */}
-              <div className="absolute inset-0 bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
-                <a 
-                  href={file.url} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="p-2 bg-white/10 hover:bg-white/20 rounded-lg text-white transition-colors"
-                  title="Ver archivo"
-                >
-                  <FileText size={20} />
-                </a>
-                {!readOnly && onRemoveFile && (
-                  <button 
-                    onClick={() => onRemoveFile(file.url)}
-                    className="p-2 bg-red-500/20 hover:bg-red-500/40 rounded-lg text-red-400 transition-colors"
-                    title="Eliminar"
-                  >
-                    <Trash2 size={20} />
-                  </button>
-                )}
-              </div>
-
-              {/* Tag Pin */}
-              <div className="absolute top-2 left-2 px-2 py-0.5 bg-black/40 backdrop-blur-md rounded text-[9px] font-bold text-white uppercase tracking-wider border border-white/10">
-                {file.type}
-              </div>
-            </div>
-          ))
-        ) : (
-          <div className="col-span-full py-12 flex flex-col items-center justify-center text-text-muted border-2 border-dashed border-border rounded-xl">
-            <UploadCloud size={40} className="mb-3 opacity-20" />
-            <p className="text-sm">No hay archivos {filter !== 'ALL' ? 'de este tipo' : ''}</p>
-            {!readOnly && (
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                className="text-primary text-xs font-semibold mt-2 hover:underline"
+      {showGrid && (
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(140px, 1fr))', gap: '16px', marginTop: '24px' }}>
+          {filteredFiles.length > 0 ? (
+            filteredFiles.map((file, idx) => (
+              <div 
+                key={file.url + idx} 
+                className="card-shadow-hover"
+                style={{
+                   position: 'relative',
+                   aspectRatio: '1/1',
+                   borderRadius: '12px',
+                   overflow: 'hidden',
+                   backgroundColor: 'var(--bg-deep)',
+                   border: '1px solid var(--border)',
+                   transition: 'all 0.3s'
+                }}
+                onMouseOver={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--primary)';
+                  const overlay = e.currentTarget.querySelector('.file-overlay') as HTMLElement;
+                  if (overlay) overlay.style.opacity = '1';
+                }}
+                onMouseOut={(e) => {
+                  e.currentTarget.style.borderColor = 'var(--border)';
+                  const overlay = e.currentTarget.querySelector('.file-overlay') as HTMLElement;
+                  if (overlay) overlay.style.opacity = '0';
+                }}
               >
-                Subir ahora
-              </button>
-            )}
-          </div>
-        )}
-      </div>
+                {file.type === 'IMAGE' ? (
+                  <img 
+                    src={file.url} 
+                    alt={file.filename} 
+                    style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s' }}
+                    onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                    onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                  />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px', textAlign: 'center', gap: '5px' }}>
+                    {getIcon(file.type)}
+                    <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: '500', width: '100%', wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
+                      {file.filename}
+                    </span>
+                  </div>
+                )}
+
+                <div 
+                  className="file-overlay"
+                  style={{ 
+                    position: 'absolute', 
+                    inset: 0, 
+                    backgroundColor: 'rgba(0,0,0,0.6)', 
+                    opacity: 0, 
+                    transition: 'opacity 0.2s', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    gap: '10px' 
+                  }}
+                >
+                  <a 
+                    href={file.url} 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                    style={{ padding: '8px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white', transition: 'background 0.2s' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                    title="Ver archivo"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                  </a>
+                  <button 
+                    onClick={async (e) => {
+                      e.preventDefault();
+                      try {
+                        const response = await fetch(file.url);
+                        const blob = await response.blob();
+                        const blobUrl = window.URL.createObjectURL(blob);
+                        const link = document.createElement('a');
+                        link.href = blobUrl;
+                        link.download = file.filename;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                        window.URL.revokeObjectURL(blobUrl);
+                      } catch (err) {
+                        window.open(file.url, '_blank');
+                      }
+                    }}
+                    style={{ padding: '8px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', border: 'none', cursor: 'pointer', color: 'white', transition: 'background 0.2s' }}
+                    onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)'}
+                    onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
+                    title="Descargar"
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  </button>
+                  {!readOnly && onRemoveFile && (
+                    <button 
+                      onClick={() => onRemoveFile(file.url)}
+                      style={{ padding: '8px', backgroundColor: 'rgba(239, 68, 68, 0.2)', borderRadius: '8px', border: 'none', cursor: 'pointer', color: '#f87171', transition: 'background 0.2s' }}
+                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.4)'}
+                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.2)'}
+                      title="Eliminar"
+                    >
+                      <Trash2 size={20} />
+                    </button>
+                  )}
+                </div>
+
+                <div style={{ position: 'absolute', top: '8px', left: '8px', padding: '2px 8px', backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  {file.type}
+                </div>
+              </div>
+            ))
+          ) : (
+            <div style={{ gridColumn: '1 / -1', padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', border: '2px dashed var(--border)', borderRadius: '12px' }}>
+              <UploadCloud size={40} style={{ marginBottom: '12px', opacity: 0.2 }} />
+              <p style={{ fontSize: '0.9rem', margin: 0 }}>No hay archivos {filter !== 'ALL' ? 'de este tipo' : ''}</p>
+              {!readOnly && (
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600', marginTop: '10px', textDecoration: 'none' }}
+                  onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
+                  onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
+                >
+                  Subir ahora
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <style jsx>{`
         .scrollbar-hide::-webkit-scrollbar {

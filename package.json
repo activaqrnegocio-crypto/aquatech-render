@@ -12,6 +12,7 @@
     "@ducanh2912/next-pwa": "^10.2.9",
     "@prisma/client": "^6.19.2",
     "@types/bcryptjs": "^2.4.6",
+    "@types/nodemailer": "^7.0.11",
     "bcryptjs": "^3.0.3",
     "dexie": "^4.3.0",
     "dexie-react-hooks": "^4.2.0",
@@ -22,10 +23,12 @@
     "mysql2": "^3.20.0",
     "next": "16.2.1",
     "next-auth": "^4.24.13",
+    "nodemailer": "^7.0.13",
     "prisma": "^6.19.2",
     "react": "19.2.4",
     "react-dom": "19.2.4",
-    "recharts": "^3.8.0"
+    "recharts": "^3.8.0",
+    "xlsx": "^0.18.5"
   },
   "devDependencies": {
     "@types/node": "^20",
