@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v16';
+const CACHE_VERSION = 'v17';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -17,7 +17,7 @@ const PRE_CACHE = [
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  console.log('[SW v16] Installing...');
+  console.log('[SW v17] Installing...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(cache => cache.addAll(PRE_CACHE))
@@ -27,7 +27,7 @@ self.addEventListener('install', (event) => {
 
 // ─── ACTIVATE ───────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  console.log('[SW v16] Activating...');
+  console.log('[SW v17] Activating...');
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
@@ -357,3 +357,116 @@ self.addEventListener('message', (event) => {
     );
   }
 });
+
+// ─── BACKGROUND SYNC ───────────────────────────────────────────────
+self.addEventListener('sync', (event) => {
+  if (event.tag === 'sync-outbox') {
+    console.log('[SW] Background sync triggered: sync-outbox');
+    event.waitUntil(processOutboxSync());
+  }
+});
+
+/**
+ * Native IndexedDB connection inside the Service Worker
+ * because we cannot import Dexie/lib directly here.
+ */
+function openAquatechDB() {
+  return new Promise((resolve, reject) => {
+    // We strictly use version 3 because that's our Dexie schema version
+    const request = indexedDB.open('aquatech-db', 3);
+    
+    request.onerror = () => reject(request.error);
+    request.onsuccess = () => resolve(request.result);
+    // If upgrade is needed from the SW, we do nothing to avoid breaking the main app
+    request.onupgradeneeded = (e) => {
+      e.target.transaction.abort();
+      reject(new Error('Upgrade requested from SW. Aborting.'));
+    };
+  });
+}
+
+async function processOutboxSync() {
+  let db;
+  try {
+    db = await openAquatechDB();
+  } catch (err) {
+    console.error('[SW] Failed to open IndexedDB for sync:', err);
+    return;
+  }
+
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(['outbox'], 'readwrite');
+    const outboxStore = transaction.objectStore('outbox');
+    const getAllRequest = outboxStore.getAll();
+
+    getAllRequest.onsuccess = async () => {
+      const items = getAllRequest.result || [];
+      const pendingItems = items.filter(i => 
+        (i.status === 'pending' || i.status === 'failed') && 
+        (i.type === 'QUOTE' || i.type === 'MATERIAL')
+      );
+
+      if (pendingItems.length === 0) {
+        resolve();
+        return;
+      }
+
+      console.log(`[SW] Found ${pendingItems.length} pending items to sync`);
+
+      for (const item of pendingItems) {
+        try {
+          // 1. Update status to syncing
+          await new Promise((res, rej) => {
+            const tx = db.transaction(['outbox'], 'readwrite');
+            const store = tx.objectStore('outbox');
+            item.status = 'syncing';
+            const req = store.put(item);
+            req.onsuccess = res;
+            req.onerror = rej;
+          });
+
+          // 2. Fetch API
+          let endpoint = '';
+          if (item.type === 'QUOTE') endpoint = '/api/quotes';
+          else if (item.type === 'MATERIAL') endpoint = '/api/materials';
+
+          if (endpoint) {
+            const res = await fetch(endpoint, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(item.payload)
+            });
+
+            if (res.ok) {
+               // 3. Delete on success
+               await new Promise((deleteRes) => {
+                 const txd = db.transaction(['outbox'], 'readwrite');
+                 const stored = txd.objectStore('outbox');
+                 const req = stored.delete(item.id);
+                 req.onsuccess = deleteRes;
+               });
+               console.log(`[SW] Successfully synced ${item.type} (ID: ${item.id})`);
+            } else {
+               throw new Error('Server returned ' + res.status);
+            }
+          }
+        } catch (e) {
+          console.error(`[SW] Failed to sync item ${item.id}:`, e);
+          // 4. Mark as failed
+          await new Promise((res) => {
+            const txError = db.transaction(['outbox'], 'readwrite');
+            const storeError = txError.objectStore('outbox');
+            item.status = 'failed';
+            storeError.put(item).onsuccess = res;
+          });
+        }
+      }
+      resolve();
+    };
+
+    getAllRequest.onerror = () => {
+      console.error('[SW] Failed to read outbox for sync');
+      reject(getAllRequest.error);
+    };
+  });
+}

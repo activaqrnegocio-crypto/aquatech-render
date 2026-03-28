@@ -200,7 +200,17 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject 
              timestamp: tempId,
              status: 'pending'
           })
-          alert("Cotización guardada sin conexión. Se sincronizará cuando regreses a un área con cobertura.")
+          // Register Background Sync if supported (Chrome/Android mostly)
+          if ('serviceWorker' in navigator && 'SyncManager' in window) {
+            try {
+              const swReg = await navigator.serviceWorker.ready
+              // @ts-ignore
+              await swReg.sync.register('sync-outbox')
+              console.log('[SW] Background Sync registered for outbox')
+            } catch (ignored) { }
+          }
+
+          alert("Cotización guardada sin conexión. Se sincronizará en segundo plano cuando regreses a un área con cobertura.")
           // Redirect to the offline preview
           router.push(`/admin/cotizaciones/offline?id=${tempId}`)
        } catch (error) {
