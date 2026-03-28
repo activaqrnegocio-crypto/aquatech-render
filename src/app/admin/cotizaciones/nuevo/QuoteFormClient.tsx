@@ -202,7 +202,7 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject 
           })
           alert("Cotización guardada sin conexión. Se sincronizará cuando regreses a un área con cobertura.")
           // Redirect to the offline preview
-          router.push(`/admin/cotizaciones/offline/${tempId}`)
+          router.push(`/admin/cotizaciones/offline?id=${tempId}`)
        } catch (error) {
           alert("Error crítico accediendo a la base de datos local.")
        } finally { setLoading(false) }
@@ -444,10 +444,7 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject 
 
           <div style={{ display: 'grid', gap: '10px' }}>
             {items.map((item, index) => (
-              <div key={index} style={{ 
-                display: 'grid', 
-                gridTemplateColumns: 'minmax(200px, 3.5fr) repeat(auto-fit, minmax(80px, 1fr)) 40px',
-                gap: '15px', 
+              <div key={index} className="quote-item-row" style={{ 
                 alignItems: 'center', 
                 padding: '16px', 
                 border: '1px solid var(--border-color)', 
@@ -498,15 +495,17 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject 
                     $ {( (Number(item.unitPrice) * (item.quantity === 'GLOBAL' ? 1 : Number(item.quantity))) * (1 - (Number(item.discountPct || 0)/100)) ).toFixed(2)}
                   </div>
                 </div>
-                <button 
-                  type="button" 
-                  onClick={() => removeItem(index)} 
-                  className="btn-ghost" 
-                  style={{ color: 'var(--danger)', padding: '8px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
-                  title="Eliminar ítem"
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                </button>
+                <div className="quote-item-delete">
+                  <button 
+                    type="button" 
+                    onClick={() => removeItem(index)} 
+                    className="btn-ghost" 
+                    style={{ color: 'var(--danger)', padding: '8px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
+                    title="Eliminar ítem"
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
+                  </button>
+                </div>
               </div>
             ))}
 
@@ -623,6 +622,11 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject 
           gap: 10px;
           align-items: end;
         }
+        .quote-item-row {
+          display: grid;
+          grid-template-columns: minmax(200px, 3.5fr) repeat(auto-fit, minmax(80px, 1fr)) 40px;
+          gap: 15px;
+        }
         @media (max-width: 768px) {
           .quote-form-layout {
             grid-template-columns: 1fr;
@@ -635,6 +639,20 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject 
           }
           .quote-global-fields {
             grid-template-columns: 1fr;
+          }
+          .quote-item-row {
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+          }
+          .quote-item-row > div:first-child {
+            grid-column: span 2;
+          }
+          .quote-item-delete {
+            grid-column: span 2;
+            text-align: right;
+            border-top: 1px solid var(--border-color);
+            padding-top: 10px;
+            margin-top: 5px;
           }
         }
      `}</style>

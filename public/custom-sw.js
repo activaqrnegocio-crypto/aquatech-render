@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v15';
+const CACHE_VERSION = 'v16';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -17,7 +17,7 @@ const PRE_CACHE = [
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  console.log('[SW v15] Installing...');
+  console.log('[SW v16] Installing...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(cache => cache.addAll(PRE_CACHE))
@@ -27,7 +27,7 @@ self.addEventListener('install', (event) => {
 
 // ─── ACTIVATE ───────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  console.log('[SW v15] Activating...');
+  console.log('[SW v16] Activating...');
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(

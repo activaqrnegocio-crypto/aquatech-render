@@ -53,6 +53,7 @@ export default async function OperatorDashboard() {
     '/admin/inventario',
     '/admin/cotizaciones',
     '/admin/cotizaciones/nuevo',
+    '/admin/cotizaciones/offline',
     '/admin/recursos',
   ]
 
