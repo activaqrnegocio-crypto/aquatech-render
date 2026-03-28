@@ -24,24 +24,19 @@ export default function GlobalSyncWorker() {
   }, [session])
 
   const syncOutbox = async () => {
-    if (!navigator.onLine) return
+    if (typeof window === 'undefined' || !navigator.onLine) return
     const items = await db.outbox.where('status').equals('pending').toArray()
     
-    // Only process QUOTE and MATERIAL in the global sync to avoid duplicating
-    // the logic inside OperatorProjectClient for messaging and expenses
+    // Only process QUOTE and MATERIAL in the global sync
     const globalItems = items.filter(i => i.type === 'QUOTE' || i.type === 'MATERIAL')
     if (globalItems.length === 0) return
 
     for (const item of globalItems) {
        try {
          await db.outbox.update(item.id!, { status: 'syncing' })
-         
           let endpoint = ''
-          if (item.type === 'QUOTE') {
-            endpoint = '/api/quotes'
-          } else if (item.type === 'MATERIAL') {
-            endpoint = '/api/materials'
-          }
+          if (item.type === 'QUOTE') endpoint = '/api/quotes'
+          else if (item.type === 'MATERIAL') endpoint = '/api/materials'
           
           if (endpoint) {
              const res = await fetch(endpoint, {
@@ -49,11 +44,8 @@ export default function GlobalSyncWorker() {
                  headers: { 'Content-Type': 'application/json' },
                  body: JSON.stringify(item.payload)
              })
-             if (res.ok) {
-                 await db.outbox.delete(item.id!)
-             } else {
-                 await db.outbox.update(item.id!, { status: 'failed' })
-             }
+             if (res.ok) await db.outbox.delete(item.id!)
+             else await db.outbox.update(item.id!, { status: 'failed' })
           }
        } catch (e) {
           await db.outbox.update(item.id!, { status: 'pending' })
@@ -61,19 +53,63 @@ export default function GlobalSyncWorker() {
     }
   }
 
+  const refreshCaches = async () => {
+    if (typeof window === 'undefined' || !navigator.onLine) return
+    try {
+      // 1. Refresh Materials
+      const matRes = await fetch('/api/materials')
+      if (matRes.ok) {
+        const materials = await matRes.json()
+        await db.materialsCache.clear()
+        await db.materialsCache.bulkPut(materials.map((m: any) => ({
+          ...m,
+          unitPrice: Number(m.unitPrice)
+        })))
+      }
+
+      // 2. Refresh Clients
+      const cliRes = await fetch('/api/clients')
+      if (cliRes.ok) {
+        const clients = await cliRes.json()
+        await db.clientsCache.clear()
+        await db.clientsCache.bulkPut(clients.map((c: any) => ({
+          id: c.id,
+          name: c.name,
+          ruc: c.ruc || '',
+          address: c.address || '',
+          phone: c.phone || ''
+        })))
+      }
+      console.log('[Offline] Caches refreshed successfully')
+    } catch (e) {
+      console.error('[Offline] Error refreshing caches:', e)
+    }
+  }
+
   useEffect(() => {
     const handleStatusChange = () => {
       setIsOnline(navigator.onLine)
-      if (navigator.onLine) syncOutbox()
+      if (navigator.onLine) {
+        syncOutbox()
+        refreshCaches()
+      }
     }
     
     window.addEventListener('online', handleStatusChange)
     window.addEventListener('offline', handleStatusChange)
     
-    // Auto-sync interval checking for orphaned quotes/materials
+    // Initial sync and cache refresh
+    if (navigator.onLine) {
+      syncOutbox()
+      refreshCaches()
+    }
+    
     const interval = setInterval(() => {
-        if (navigator.onLine) syncOutbox()
-    }, 20000)
+        if (navigator.onLine) {
+            syncOutbox()
+            refreshCaches() // Refresh caches every 5 mins or so to stay updated
+        }
+    }, 1000 * 60 * 5) // 5 minutes
 
     return () => {
       window.removeEventListener('online', handleStatusChange)

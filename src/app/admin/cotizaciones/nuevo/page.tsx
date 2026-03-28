@@ -1,20 +1,66 @@
-import { prisma } from '@/lib/prisma'
+'use client'
+
+import { useState, useEffect, Suspense } from 'react'
+import { useSearchParams } from 'next/navigation'
 import QuoteFormClient from './QuoteFormClient'
+import { db } from '@/lib/db'
 
-export const dynamic = 'force-dynamic'
+function NewQuoteContent() {
+  const searchParams = useSearchParams()
+  const projectId = searchParams.get('projectId')
 
-export default async function NewQuotePage({ searchParams }: { searchParams: Promise<{ projectId?: string }> }) {
-  const params = await searchParams;
-  const [clients, materials, prefetchedProject] = await Promise.all([
-    prisma.client.findMany({ orderBy: { name: 'asc' } }),
-    prisma.material.findMany({ where: { isActive: true }, orderBy: { name: 'asc' } }),
-    params.projectId 
-      ? prisma.project.findUnique({ 
-          where: { id: Number(params.projectId) },
-          include: { budgetItems: { include: { material: true } } } 
-        })
-      : null
-  ])
+  const [clients, setClients] = useState<any[]>([])
+  const [materials, setMaterials] = useState<any[]>([])
+  const [prefetchedProject, setPrefetchedProject] = useState<any>(null)
+  const [initializing, setInitializing] = useState(true)
+
+  useEffect(() => {
+    async function loadInitialData() {
+      try {
+        // 1. Load from local DB (Dexie) first for speed and offline support
+        const cachedClients = await db.clientsCache.toArray()
+        const cachedMaterials = await db.materialsCache.toArray()
+
+        setClients(cachedClients)
+        setMaterials(cachedMaterials)
+
+        // 2. If online and has projectId, try to fetch the specific project for budget conversion
+        if (projectId && navigator.onLine) {
+          const res = await fetch(`/api/projects/${projectId}`)
+          if (res.ok) {
+            const project = await res.json()
+            setPrefetchedProject({
+              id: project.id,
+              clientId: project.clientId,
+              title: project.title,
+              items: (project.budgetItems || []).map((bi: any) => ({
+                materialId: bi.materialId,
+                description: bi.material?.name || 'Material sin nombre',
+                code: bi.material?.code || 'S/C',
+                quantity: Number(bi.quantity),
+                unitPrice: Number(bi.material?.unitPrice || 0)
+              }))
+            })
+          }
+        }
+      } catch (error) {
+        console.error('Error loading offline data:', error)
+      } finally {
+        setInitializing(false)
+      }
+    }
+
+    loadInitialData()
+  }, [projectId])
+
+  if (initializing) {
+    return (
+      <div className="p-6 flex flex-col items-center justify-center min-h-[400px]">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary mb-4"></div>
+        <p className="text-muted">Preparando formulario offline...</p>
+      </div>
+    )
+  }
 
   return (
     <div className="p-6">
@@ -22,26 +68,26 @@ export default async function NewQuotePage({ searchParams }: { searchParams: Pro
         <div>
           <h2>Nueva Cotización</h2>
           <p style={{ color: 'var(--text-muted)', marginTop: '5px' }}>
-            {prefetchedProject ? `Generando desde presupuesto: ${prefetchedProject.title}` : 'Crea una propuesta comercial desde cero.'}
+            {prefetchedProject 
+              ? `Generando desde presupuesto: ${prefetchedProject.title}` 
+              : 'Crea una propuesta comercial desde cero.'}
           </p>
         </div>
       </div>
 
       <QuoteFormClient 
         clients={clients} 
-        materials={materials.map(m => ({ ...m, unitPrice: Number(m.unitPrice) }))}
-        prefetchedProject={prefetchedProject ? {
-            id: prefetchedProject.id,
-            clientId: prefetchedProject.clientId,
-            items: prefetchedProject.budgetItems.map(bi => ({
-                materialId: bi.materialId,
-                description: bi.material?.name || 'Material sin nombre',
-                code: bi.material?.code || 'S/C',
-                quantity: Number(bi.quantity),
-                unitPrice: Number(bi.material?.unitPrice || 0)
-            }))
-        } : null}
+        materials={materials}
+        prefetchedProject={prefetchedProject}
       />
     </div>
+  )
+}
+
+export default function NewQuotePage() {
+  return (
+    <Suspense fallback={<div className="p-6">Cargando...</div>}>
+      <NewQuoteContent />
+    </Suspense>
   )
 }
