@@ -27,19 +27,27 @@ export async function GET(request: Request) {
 
     const results: string[] = [];
 
-    // --- 1. RESUMEN DIARIO (Solo entre las 6:00 AM y las 6:10 AM + PRUEBA 10:30 AM) ---
-    if ((currentHour === 6 && currentMinute <= 10) || (currentHour === 10 && currentMinute >= 30 && currentMinute <= 45)) {
+    // --- 1. RESUMEN DIARIO (Solo entre las 6:00 AM y las 6:10 AM + PRUEBA 11:00 AM) ---
+    // Ajustado a las 11:00 AM para la siguiente prueba solicitada indirectamente
+    if ((currentHour === 6 && currentMinute <= 10) || (currentHour === 11 && currentMinute <= 15)) {
+      // Calculamos el inicio y fin del día en Ecuador convertido a UTC real para Prisma
+      // 00:00 Ecuador = 05:00 UTC
       const todayStart = new Date(localTime);
       todayStart.setHours(0, 0, 0, 0);
+      const utcStart = new Date(todayStart.getTime() + 5 * 60 * 60 * 1000); // Shift back to real UTC
+
       const todayEnd = new Date(localTime);
       todayEnd.setHours(23, 59, 59, 999);
+      const utcEnd = new Date(todayEnd.getTime() + 5 * 60 * 60 * 1000); // Shift back to real UTC
+
+      console.log(`Buscando citas entre ${utcStart.toISOString()} y ${utcEnd.toISOString()}`);
 
       const operatorsWithTasks = await prisma.user.findMany({
         where: { role: 'OPERATOR', isActive: true },
         include: {
           appointments: {
             where: {
-              startTime: { gte: todayStart, lte: todayEnd },
+              startTime: { gte: utcStart, lte: utcEnd },
               status: { not: 'CANCELADO' }
             },
             orderBy: { startTime: 'asc' }
@@ -47,8 +55,12 @@ export async function GET(request: Request) {
         }
       });
 
+      console.log(`Operadores activos encontrados: ${operatorsWithTasks.length}`);
+
       for (const op of operatorsWithTasks) {
         if (op.phone && op.appointments.length > 0) {
+          console.log(`Enviando resumen a ${op.name} (${op.phone}) - Citas: ${op.appointments.length}`);
+          
           let summary = `*Resumen del Día - Aquatech*\n\nHola ${op.name}, hoy tienes *${op.appointments.length}* tareas asignadas:\n\n`;
           
           op.appointments.forEach((apt, idx) => {
@@ -63,8 +75,15 @@ export async function GET(request: Request) {
 
           summary += `\n¡Que tengas un excelente día de trabajo!`;
           
-          await sendWhatsAppMessage(op.phone, summary);
-          results.push(`Summary sent to ${op.name}`);
+          const waResult = await sendWhatsAppMessage(op.phone, summary);
+          if (waResult.success) {
+            results.push(`Summary sent to ${op.name}`);
+          } else {
+            console.error(`Error enviando a ${op.name}:`, waResult.error);
+            results.push(`FAILED sending to ${op.name}: ${waResult.error}`);
+          }
+        } else {
+          console.log(`Omitiendo a ${op.name}: Sin teléfono o sin citas.`);
         }
       }
     }
