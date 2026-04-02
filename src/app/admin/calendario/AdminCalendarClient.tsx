@@ -50,6 +50,16 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
     }
   }
 
+  const handleDeleteAppointment = async (id: number) => {
+    const res = await fetch(`/api/appointments/${id}`, { method: 'DELETE' })
+    if (res.ok) {
+      await fetchAppointments()
+      setIsModalOpen(false)
+    } else {
+      throw new Error('Failed to delete')
+    }
+  }
+
   return (
     <div className="admin-calendar-page animate-fade-in">
       <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '15px' }}>
@@ -100,6 +110,7 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleSaveAppointment}
+        onDelete={handleDeleteAppointment}
         initialData={editingEvent}
         userId={selectedOperatorId === 'all' ? 0 : Number(selectedOperatorId)} // This will be handled by the specialized modal
         projects={projects}

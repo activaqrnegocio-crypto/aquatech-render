@@ -24,6 +24,11 @@ export async function GET(request: Request) {
       whereClause.role = role
     }
 
+    // Hide their own profile if the user is an ADMINISTRADORA
+    if ((session.user as any).role === 'ADMINISTRADORA') {
+      whereClause.id = { not: Number(session.user.id) }
+    }
+
     const users = await prisma.user.findMany({
       where: whereClause,
       select: {

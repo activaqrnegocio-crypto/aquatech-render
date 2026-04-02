@@ -7,6 +7,7 @@ interface AppointmentModalProps {
   isOpen: boolean
   onClose: () => void
   onSave: (data: any) => Promise<void>
+  onDelete?: (id: number) => Promise<void>
   initialData?: any
   userId: number
   projects: any[]
@@ -18,6 +19,7 @@ export default function AppointmentModal({
   isOpen,
   onClose,
   onSave,
+  onDelete,
   initialData,
   userId,
   projects,
@@ -72,8 +74,18 @@ export default function AppointmentModal({
     e.preventDefault()
     setLoading(true)
     try {
+      // Forzar que la hora sea tomada como la zona de Ecuador (-05:00) si no tiene zona horaria
+      const forceEcuadorTZ = (dtStr: string) => {
+        if (!dtStr) return dtStr;
+        if (dtStr.includes('Z') || dtStr.includes('-0') || dtStr.includes('+')) return dtStr;
+        // dtStr fomrato normal es YYYY-MM-DDTHH:mm, le falta segundos y offset
+        return dtStr + ':00-05:00';
+      }
+
       await onSave({
         ...formData,
+        startTime: forceEcuadorTZ(formData.startTime),
+        endTime: forceEcuadorTZ(formData.endTime),
         userId: Number(formData.userId),
         id: initialData?.id
       })
@@ -195,10 +207,32 @@ export default function AppointmentModal({
           </div>
 
           <div style={{ display: 'flex', gap: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
-            <button type="button" className="btn btn-secondary btn-full" onClick={onClose} disabled={loading}>
+            {initialData?.id && onDelete && (
+              <button 
+                type="button" 
+                className="btn" 
+                style={{ backgroundColor: 'var(--status-danger)', color: 'white', flex: 1 }} 
+                onClick={async () => {
+                  if (confirm('¿Estás seguro de eliminar esta tarea?')) {
+                    setLoading(true);
+                    try { 
+                      await onDelete(initialData.id); 
+                      onClose(); 
+                    } catch (error) { 
+                      alert('Error eliminando'); 
+                      setLoading(false); 
+                    }
+                  }
+                }}
+                disabled={loading}
+              >
+                Eliminar
+              </button>
+            )}
+            <button type="button" className="btn btn-secondary" style={{ flex: 1 }} onClick={onClose} disabled={loading}>
               Cancelar
             </button>
-            <button type="submit" className="btn btn-primary btn-full" disabled={loading}>
+            <button type="submit" className="btn btn-primary" style={{ flex: 1 }} disabled={loading}>
               {loading ? 'Guardando...' : initialData?.id ? 'Actualizar' : 'Agendar'}
             </button>
           </div>
