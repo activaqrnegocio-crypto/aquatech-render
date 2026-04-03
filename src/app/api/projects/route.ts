@@ -180,12 +180,52 @@ export async function POST(request: Request) {
           phases: true,
           team: {
             include: { user: true }
-          }
+          },
+          budgetItems: true
         }
       })
 
+      // 4. Create Linked Quote
+      if (budgetItems && budgetItems.length > 0) {
+        const subtotal = newProject.estimatedBudget
+        const quote = await tx.quote.create({
+          data: {
+            projectId: newProject.id,
+            clientId: targetClientId as number,
+            userId: Number(userId),
+            status: 'BORRADOR',
+            
+            // Snapshot client data
+            clientName: newProject.client?.name,
+            clientRuc: newProject.client?.ruc,
+            clientAddress: newProject.client?.address,
+            clientPhone: newProject.client?.phone,
+
+            // Financial summary (Simplified for now, match project total)
+            subtotal: subtotal,
+            subtotal0: subtotal, // Default to 0% for now if not specified
+            subtotal15: 0,
+            ivaAmount: 0,
+            discountTotal: 0,
+            totalAmount: subtotal,
+
+            items: {
+              create: (budgetItems || []).map((item: any) => ({
+                materialId: item.materialId ? Number(item.materialId) : null,
+                description: item.name || 'Sin descripción',
+                quantity: item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0),
+                unitPrice: Number(item.estimatedCost || 0),
+                total: (item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0)) * Number(item.estimatedCost || 0),
+                isTaxed: false, // Default to false to match estimatedBudget simplicity
+                discountPct: 0
+              }))
+            }
+          }
+        })
+      }
+
       return newProject
-    })
+    }, { timeout: 20000 })
 
     return NextResponse.json(project, { status: 201 })
   } catch (error: any) {

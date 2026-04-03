@@ -36,49 +36,87 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const data = await req.json()
     const items = data.items || []
 
-    // 1. Delete all existing items for this quote
-    await prisma.quoteItem.deleteMany({
-      where: { quoteId: id }
-    })
+    const updatedQuote = await prisma.$transaction(async (tx) => {
+      // 1. Delete all existing items for this quote
+      await tx.quoteItem.deleteMany({
+        where: { quoteId: id }
+      })
 
-    // 2. Update quote and create new items
-    const updatedQuote = await prisma.quote.update({
-      where: { id },
-      data: {
-        status: data.status || 'BORRADOR',
-        
-        // Snapshot client data (might have been edited in form)
-        clientName: data.clientName,
-        clientRuc: data.clientRuc,
-        clientAddress: data.clientAddress,
-        clientPhone: data.clientPhone,
-        clientAttention: data.clientAttention,
+      // 2. Update quote and create new items
+      const q = await tx.quote.update({
+        where: { id },
+        data: {
+          status: data.status || 'BORRADOR',
+          
+          // Snapshot client data (might have been edited in form)
+          clientName: data.clientName,
+          clientRuc: data.clientRuc,
+          clientAddress: data.clientAddress,
+          clientPhone: data.clientPhone,
+          clientAttention: data.clientAttention,
 
-        // Financial summary
-        subtotal: Number(data.subtotal || 0),
-        subtotal0: Number(data.subtotal0 || 0),
-        subtotal15: Number(data.subtotal15 || 0),
-        ivaAmount: Number(data.ivaAmount || 0),
-        discountTotal: Number(data.discountTotal || 0),
-        totalAmount: Number(data.totalAmount || 0),
+          // Financial summary
+          subtotal: Number(data.subtotal || 0),
+          subtotal0: Number(data.subtotal0 || 0),
+          subtotal15: Number(data.subtotal15 || 0),
+          ivaAmount: Number(data.ivaAmount || 0),
+          discountTotal: Number(data.discountTotal || 0),
+          totalAmount: Number(data.totalAmount || 0),
 
-        notes: data.notes,
-        validUntil: data.validUntil ? new Date(data.validUntil) : null,
-        
-        items: {
-          create: items.map((item: any) => ({
+          notes: data.notes,
+          validUntil: data.validUntil ? new Date(data.validUntil) : null,
+          
+          items: {
+            create: items.map((item: any) => ({
+              materialId: item.materialId ? Number(item.materialId) : null,
+              description: item.description,
+              quantity: item.quantity === 'GLOBAL' ? 1 : Number(item.quantity),
+              unitPrice: Number(item.unitPrice),
+              discountPct: Number(item.discountPct || 0),
+              isTaxed: item.isTaxed !== undefined ? Boolean(item.isTaxed) : true,
+              total: Number(item.total)
+            }))
+          }
+        },
+        include: { items: true }
+      })
+
+      // 3. Sync to Project if linked
+      if (q.projectId) {
+        // Delete project budget items
+        await tx.budgetItem.deleteMany({
+          where: { projectId: q.projectId }
+        })
+
+        // Create new project budget items
+        await tx.budgetItem.createMany({
+          data: items.map((item: any) => ({
+            projectId: q.projectId as number,
             materialId: item.materialId ? Number(item.materialId) : null,
-            description: item.description,
+            name: item.description || 'Sin descripción',
             quantity: item.quantity === 'GLOBAL' ? 1 : Number(item.quantity),
-            unitPrice: Number(item.unitPrice),
-            discountPct: Number(item.discountPct || 0),
-            isTaxed: item.isTaxed !== undefined ? Boolean(item.isTaxed) : true,
-            total: Number(item.total)
+            unit: 'UND',
+            estimatedCost: Number(item.unitPrice)
           }))
+        })
+
+        // Update project totals and status
+        const projectUpdateData: any = {
+          estimatedBudget: q.totalAmount
         }
-      },
-      include: { items: true }
-    })
+
+        if (q.status === 'ACEPTADA') {
+          projectUpdateData.status = 'ACTIVO'
+        }
+
+        await tx.project.update({
+          where: { id: q.projectId },
+          data: projectUpdateData
+        })
+      }
+
+      return q
+    }, { timeout: 20000 })
 
     return NextResponse.json(updatedQuote)
   } catch (error) {

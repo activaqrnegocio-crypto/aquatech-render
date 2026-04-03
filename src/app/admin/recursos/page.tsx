@@ -1,7 +1,8 @@
 import React from 'react';
 import { prisma } from '@/lib/prisma';
 import Link from 'next/link';
-import { BlogSearch } from '@/components/blog/BlogSearch';
+import BlogSearch from '../../../components/blog/BlogSearch';
+import { deepSerialize } from '@/lib/serializable';
 
 interface RecursosPageProps {
   searchParams: Promise<{ q?: string; cat?: string }>;
@@ -18,7 +19,7 @@ export default async function RecursosPage({ searchParams }: RecursosPageProps) 
     orderBy: { name: 'asc' }
   });
 
-  // Recursos estáticos tradicionales - Pagos
+  // ... (pagoRecurso and generalRecursos remain the same)
   const pagoRecurso = {
     id: "s1",
     title: 'Datos para Pagos',
@@ -27,7 +28,6 @@ export default async function RecursosPage({ searchParams }: RecursosPageProps) 
     type: 'Pagos'
   };
 
-  // Recursos estáticos tradicionales - Documentación
   const generalRecursos = [
     {
       id: "s2",
@@ -156,7 +156,7 @@ export default async function RecursosPage({ searchParams }: RecursosPageProps) 
             Explora el portafolio de proyectos ejecutados y artículos técnicos publicados.
           </p>
           <BlogSearch 
-            categories={categories} 
+            categories={deepSerialize(categories)} 
             placeholder="Escriba para buscar trabajos específicos..." 
           />
         </div>
@@ -192,9 +192,6 @@ export default async function RecursosPage({ searchParams }: RecursosPageProps) 
                   </p>
                   <div style={{ display: 'flex', gap: '16px' }}>
                     <Link href={`/blog/${post.slug}`} className="btn btn-primary btn-sm" style={{ flex: 1 }} target="_blank">Leer Mas</Link>
-                    <Link href={`/admin/blog/edit/${post.id}`} className="btn btn-secondary btn-sm" title="Editar">
-                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ width: '16px', height: '16px' }}><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-                    </Link>
                   </div>
                 </div>
               </div>

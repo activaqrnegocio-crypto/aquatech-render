@@ -168,7 +168,7 @@ function SearchContent({ categories = [], placeholder = 'Buscar artículos...', 
 }
 
 /**
- * EXPORTACIÓN NOMBRADA: Más segura para la resolución de módulos en Next.js 16.
+ * EXPORTACIÓN NOMBRADA: Más segura para la resolución de módulos en Next.js.
  */
 export function BlogSearch(props: BlogSearchProps) {
   return (
@@ -178,5 +178,4 @@ export function BlogSearch(props: BlogSearchProps) {
   );
 }
 
-// Mantenemos una exportación por defecto opcional pero recomendamos la nombrada.
 export default BlogSearch;

@@ -243,7 +243,7 @@ export default function ProyectosPage() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                             <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Presupuesto Estimado</span>
                             <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#FFFFFF' }}>
-                                $ {Number(p.estimatedBudget).toLocaleString()}
+                                $ {new Intl.NumberFormat('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(p.estimatedBudget))}
                             </span>
                         </div>
                         

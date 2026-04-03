@@ -2,13 +2,19 @@ import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import QuoteFormClient from '../../nuevo/QuoteFormClient'
 
+import { deepSerialize } from '@/lib/serializable'
+
 export default async function EditQuotePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
   const quoteId = Number(id)
 
   const quote = await prisma.quote.findUnique({
     where: { id: quoteId },
-    include: { items: true }
+    include: { 
+      items: {
+        include: { material: true }
+      } 
+    }
   })
 
   if (!quote) notFound()
@@ -32,9 +38,9 @@ export default async function EditQuotePage({ params }: { params: Promise<{ id: 
       </div>
 
       <QuoteFormClient 
-        clients={clients} 
-        materials={materials} 
-        initialQuote={JSON.parse(JSON.stringify(quote))} 
+        clients={deepSerialize(clients)} 
+        materials={deepSerialize(materials)} 
+        initialQuote={deepSerialize(quote)} 
       />
     </div>
   )

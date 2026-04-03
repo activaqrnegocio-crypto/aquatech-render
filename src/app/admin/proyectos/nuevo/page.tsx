@@ -1,11 +1,12 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
 import ProjectUploader, { ProjectFile } from '@/components/ProjectUploader'
 import MediaCapture from '@/components/MediaCapture'
+import BudgetBuilder, { BudgetItem } from '@/components/BudgetBuilder'
 import { generateProfessionalPDF } from '@/lib/pdf-generator'
 
 export default function NuevoProyectoPage() {
@@ -115,17 +116,21 @@ export default function NuevoProyectoPage() {
   const [availableTeam, setAvailableTeam] = useState<any[]>([])
   const [selectedTeam, setSelectedTeam] = useState<string[]>([])
 
-  // Step 5: Presupuesto
-  const [budgetItems, setBudgetItems] = useState<any[]>([])
+  // Step 6: Presupuesto
+  const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([])
   const [materials, setMaterials] = useState<any[]>([])
-  const [searchMaterial, setSearchMaterial] = useState('')
-  const [customDescription, setCustomDescription] = useState('')
-  const [customPrice, setCustomPrice] = useState('')
-  const [customQty, setCustomQty] = useState(1)
-  const [globalDescription, setGlobalDescription] = useState('')
-  const [globalPrice, setGlobalPrice] = useState('')
-  const [customIsTaxed, setCustomIsTaxed] = useState(true)
-  const [selectedInventoryId, setSelectedInventoryId] = useState<string | null>(null)
+  const [budgetCalculations, setBudgetCalculations] = useState<any>({
+    subtotal: 0,
+    subtotal0: 0,
+    subtotal15: 0,
+    ivaAmount: 0,
+    grandTotal: 0
+  })
+
+  const handleBudgetChange = useCallback((newItems: BudgetItem[], newCalculations: any) => {
+    setBudgetItems(newItems)
+    setBudgetCalculations(newCalculations)
+  }, [])
 
   // Step 6+: Files (Persistent)
   const [uploadedFiles, setUploadedFiles] = useState<ProjectFile[]>([])
@@ -275,42 +280,6 @@ export default function NuevoProyectoPage() {
     }
   }
 
-  const addBudgetItem = (m: any) => {
-    setCustomDescription(m.name)
-    setCustomPrice(m.unitPrice.toString())
-    setCustomQty(1)
-    setSelectedInventoryId(m.id)
-    setSearchMaterial('')
-    // Focus the custom description input for better UX (optional)
-  }
-
-  const addCustomBudgetItem = (isGlobal = false) => {
-    const newItem = {
-      materialId: isGlobal ? null : selectedInventoryId,
-      name: isGlobal ? globalDescription : customDescription,
-      quantity: isGlobal ? 'GLOBAL' : Number(customQty),
-      unit: isGlobal ? 'GLOBAL' : 'UND',
-      estimatedCost: Number(isGlobal ? globalPrice : customPrice),
-      isTaxed: customIsTaxed
-    }
-    setBudgetItems([...budgetItems, newItem])
-    if (isGlobal) {
-      setGlobalDescription('')
-      setGlobalPrice('')
-    } else {
-      setCustomDescription('')
-      setCustomPrice('')
-      setCustomQty(1)
-      setSelectedInventoryId(null)
-    }
-  }
-
-  const removeBudgetItem = (index: number) => {
-    const newItems = [...budgetItems]
-    newItems.splice(index, 1)
-    setBudgetItems(newItems)
-  }
-
   const selectExistingClient = (id: string) => {
     if (id === 'NEW') {
       setIsNewClient(true)
@@ -342,27 +311,8 @@ export default function NuevoProyectoPage() {
   const inputGroupStyle = { marginBottom: '20px' }
   const labelStyle = { display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.85rem' }
 
-  const filteredMaterials = searchMaterial.trim() === '' ? [] : materials.filter(m => 
-    m.name.toLowerCase().includes(searchMaterial.toLowerCase()) || 
-    m.category?.toLowerCase().includes(searchMaterial.toLowerCase())
-  ).slice(0, 5)
-
-  // Calculate detailed totals for project
-  const { subtotal0, subtotal15, totalBudget } = budgetItems.reduce((acc, item) => {
-    const qty = item.quantity === 'GLOBAL' ? 1 : Number(item.quantity)
-    const lineTotal = qty * Number(item.estimatedCost)
-    
-    if (item.isTaxed === false) {
-      acc.subtotal0 += lineTotal
-    } else {
-      acc.subtotal15 += lineTotal
-    }
-    acc.totalBudget += lineTotal
-    return acc
-  }, { subtotal0: 0, subtotal15: 0, totalBudget: 0 })
-  
-  const ivaAmount = subtotal15 * 0.15
-  const grandTotal = subtotal0 + subtotal15 + ivaAmount
+  // Total amount used in PDF generation
+  const { subtotal0, subtotal15, ivaAmount, grandTotal, totalBudget } = budgetCalculations
 
   const generatePDF = (preview = false) => {
     const info = {
@@ -917,223 +867,17 @@ export default function NuevoProyectoPage() {
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
                 <div style={{ color: 'var(--text)' }}>
                     <h4 style={{ margin: '0 0 5px 0', fontSize: '1rem', color: 'var(--primary)' }}>Generación de Presupuesto Profesional</h4>
-                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>Agrega materiales del inventario o partidas personalizadas. Los ítems del catálogo pueden ser <strong>editados en cantidad y precio</strong> antes de añadirlos. Todo se desglosará con el **IVA 15%** en el documento final.</p>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>Agrega materiales del catálogo o servicios globales. Este componente garantiza que el presupuesto del proyecto sea idéntico al de las cotizaciones, facilitando la conversión final.</p>
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '30px' }} className="responsive-grid">
-                <div>
-                  <h4 style={{ fontSize: '0.9rem', marginBottom: '15px', color: 'var(--text-secondary)' }}>Añadir Materiales o Servicios</h4>
-                  
-                  {/* Buscador de Catálogo */}
-                  <div style={{ ...inputGroupStyle, position: 'relative' }}>
-                    <input 
-                      type="text" 
-                      className="form-input" 
-                      placeholder="Buscar en catálogo..." 
-                      value={searchMaterial} 
-                      onChange={e => setSearchMaterial(e.target.value)} 
-                    />
-                    {filteredMaterials.length > 0 && (
-                      <div style={{ 
-                        position: 'absolute', 
-                        top: '100%', 
-                        left: 0, 
-                        right: 0, 
-                        zIndex: 1000, 
-                        backgroundColor: 'var(--bg-card)', 
-                        border: '1px solid var(--border)', 
-                        borderRadius: '8px', 
-                        marginTop: '5px', 
-                        boxShadow: 'var(--shadow-lg)',
-                        maxHeight: '200px',
-                        overflowY: 'auto'
-                      }}>
-                        {filteredMaterials.map(m => (
-                          <div 
-                            key={m.id} 
-                            onClick={() => addBudgetItem(m)} 
-                            style={{ padding: '12px', borderBottom: '1px solid var(--border)', cursor: 'pointer', transition: 'background 0.2s' }} 
-                            onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'var(--primary-glow)'}
-                            onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'transparent'}
-                          >
-                            <div style={{ fontWeight: '600', color: 'var(--text)', display: 'flex', justifyContent: 'space-between' }}>
-                              <span>{m.name}</span>
-                              <span style={{ color: 'var(--primary)', fontSize: '0.8rem' }}>Seleccionar &rarr;</span>
-                            </div>
-                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>$ {m.unitPrice} - {m.category}</div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                  
-                  {/* Custom specific materials (UND) */}
-                  <div id="material-edit-box" style={{ padding: '20px', border: selectedInventoryId ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '12px', backgroundColor: 'var(--bg-card)', marginBottom: '15px', position: 'relative' }}>
-                    {selectedInventoryId && (
-                      <div style={{ position: 'absolute', top: '-12px', left: '20px', backgroundColor: 'var(--primary)', color: 'var(--bg-deep)', padding: '2px 10px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                        CONFIGURANDO MATERIAL DEL CATÁLOGO
-                      </div>
-                    )}
-                    
-                    <label style={{ ...labelStyle, color: 'var(--text-secondary)', borderBottom: '1px solid var(--border)', paddingBottom: '5px', marginBottom: '15px', display: 'flex', justifyContent: 'space-between' }}>
-                      <span>Detalles del Ítem</span>
-                      {selectedInventoryId && (
-                         <button type="button" onClick={() => { setSelectedInventoryId(null); setCustomDescription(''); setCustomPrice(''); }} style={{ color: 'var(--danger)', background: 'none', border: 'none', fontSize: '0.7rem', cursor: 'pointer' }}>Cancelar</button>
-                      )}
-                    </label>
-
-                    <div style={inputGroupStyle}>
-                      <label style={labelStyle}>Descripción</label>
-                      <input type="text" className="form-input" value={customDescription} onChange={e => setCustomDescription(e.target.value)} placeholder="Ej: Válvula de bola 2 pulgadas" />
-                    </div>
-                    <div className="flex items-center gap-4 mb-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={customIsTaxed} onChange={e => setCustomIsTaxed(e.target.checked)} className="form-checkbox" />
-                        <span className="text-sm">Aplica IVA 15%</span>
-                      </label>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
-                      <div style={inputGroupStyle}>
-                        <label style={labelStyle}>Precio Unitario ($)</label>
-                        <input type="number" className="form-input" value={customPrice} onChange={e => setCustomPrice(e.target.value)} placeholder="0.00" />
-                      </div>
-                      <div style={inputGroupStyle}>
-                        <label style={labelStyle}>Cantidad (UND)</label>
-                        <input type="number" className="form-input" value={customQty} onChange={e => setCustomQty(Number(e.target.value))} />
-                      </div>
-                    </div>
-                    <button type="button" className={`btn ${selectedInventoryId ? 'btn-primary' : 'btn-secondary'} btn-sm btn-full`} onClick={() => addCustomBudgetItem(false)} disabled={!customDescription || !customPrice}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block'}}><path d="M12 5v14M5 12h14"/></svg>
-                      {selectedInventoryId ? 'Confirmar e Incluir al Presupuesto' : 'Añadir Material Extra'}
-                    </button>
-                  </div>
-                  
-                  {/* Global items (Servicios) */}
-                  <div style={{ padding: '20px', border: '1px solid var(--primary)', borderRadius: '12px', backgroundColor: 'var(--primary-glow)' }}>
-                    <label style={{ ...labelStyle, color: 'var(--primary)', borderBottom: '1px solid rgba(56, 189, 248, 0.2)', paddingBottom: '5px', marginBottom: '15px', display: 'flex', alignItems: 'center' }}>
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '8px'}}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                      Añadir Servicio / Ítem GLOBAL
-                    </label>
-                    <div style={inputGroupStyle}>
-                      <label style={labelStyle}>Descripción del Servicio GLOBAL *</label>
-                      <input type="text" className="form-input" value={globalDescription} onChange={e => setGlobalDescription(e.target.value)} placeholder="Ej: Construcción de Piscina 9M x 3M" />
-                    </div>
-                    <div style={inputGroupStyle}>
-                        <label style={labelStyle}>Precio Unitario ($) *</label>
-                        <input type="number" className="form-input" value={globalPrice} onChange={e => setGlobalPrice(e.target.value)} placeholder="0.00" />
-                    </div>
-                    <button type="button" className="btn btn-primary btn-sm btn-full" onClick={() => { addCustomBudgetItem(true); setPdfPreviewUrl(null); }} disabled={!globalDescription || !globalPrice}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block'}}><path d="M12 5v14M5 12h14"/></svg>
-                      Añadir a Presupuesto
-                    </button>
-                  </div>
-                </div>
-
-                <div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                    <h4 style={{ fontSize: '0.9rem', margin: 0, color: 'var(--text-secondary)' }}>Resumen del Presupuesto</h4>
-                  </div>
-                  <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'var(--bg-card)' }}>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table className="table">
-                        <thead>
-                          <tr>
-                            <th style={{ backgroundColor: 'var(--bg-deep)', width: '50px' }}>ITEM</th>
-                            <th style={{ backgroundColor: 'var(--bg-deep)' }}>DESCRIPCION</th>
-                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'center' }}>CANTIDAD</th>
-                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'right' }}>P/UNITARIO</th>
-                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'right' }}>TOTAL</th>
-                            <th style={{ backgroundColor: 'var(--bg-deep)', width: '40px' }}></th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {budgetItems.length === 0 ? (
-                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No hay items en el presupuesto</td></tr>
-                          ) : (
-                            budgetItems.map((item, idx) => (
-                              <tr key={idx}>
-                                <td style={{ fontSize: '0.75rem', textAlign: 'center' }}>{idx + 1}</td>
-                                <td style={{ fontSize: '0.85rem', fontWeight: '500', wordBreak: 'break-word', whiteSpace: 'pre-wrap', maxWidth: '250px' }}>{item.name}</td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>{item.unit || 'UND'}</span>
-                                  {item.quantity === 'GLOBAL' ? 'GLOBAL' : Number(item.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
-                                </td>
-                                <td style={{ textAlign: 'right', fontSize: '0.85rem' }}>$ {Number(item.estimatedCost).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>$ {((item.quantity === 'GLOBAL' ? 1 : Number(item.quantity)) * item.estimatedCost).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <button type="button" onClick={() => removeBudgetItem(idx)} style={{ color: 'var(--danger)', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '0 5px' }}>&times;</button>
-                                </td>
-                              </tr>
-                            ))
-                          )}
-                        </tbody>
-                        {budgetItems.length > 0 && (
-                          <tfoot style={{ backgroundColor: 'var(--bg-deep)' }}>
-                            <tr>
-                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', padding: '10px' }}>SUBTOTAL TARIFA 0%</td>
-                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.9rem' }}>$ {subtotal0.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                              <td></td>
-                            </tr>
-                            <tr>
-                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', padding: '10px' }}>SUBTOTAL TARIFA 15%</td>
-                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.9rem' }}>$ {subtotal15.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                              <td></td>
-                            </tr>
-                            <tr>
-                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', padding: '10px' }}>IVA 15%</td>
-                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.9rem' }}>$ {ivaAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                              <td></td>
-                            </tr>
-                            <tr style={{ backgroundColor: 'var(--primary-glow)' }}>
-                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.95rem', padding: '12px', color: 'var(--primary)' }}>TOTAL A PAGAR $</td>
-                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1.1rem', color: 'var(--primary)' }}>$ {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                              <td></td>
-                            </tr>
-                          </tfoot>
-                        )}
-                      </table>
-                    </div>
-                  </div>
-
-                  {/* Summary Actions */}
-                  {budgetItems.length > 0 && (
-                    <div style={{ padding: '15px 0', display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-                      <button 
-                        type="button" 
-                        className="btn btn-secondary btn-sm"
-                        onClick={() => generatePDF(true)}
-                        style={{ flex: 1 }}
-                      >
-                        Actualizar Vista Previa
-                      </button>
-                      <button 
-                        type="button" 
-                        className="btn btn-primary btn-sm"
-                        onClick={() => generatePDF(false)}
-                        style={{ flex: 1 }}
-                      >
-                        PDF Oficial
-                      </button>
-                    </div>
-                  )}
-
-                  {/* PDF Preview Iframe Section */}
-                  {pdfPreviewUrl && (
-                    <div className="animate-fade-in" style={{ marginTop: '25px', padding: '10px', border: '1px solid var(--primary)', borderRadius: '12px', backgroundColor: 'var(--bg-deep)' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
-                        <h4 style={{ margin: 0, fontSize: '0.8rem', color: 'var(--primary)', fontWeight: 'bold' }}>VISTA PREVIA REAL</h4>
-                        <button type="button" onClick={() => setPdfPreviewUrl(null)} style={{ color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '0.75rem' }}>Cerrar</button>
-                      </div>
-                      <iframe 
-                        src={pdfPreviewUrl} 
-                        style={{ width: '100%', height: '500px', border: 'none', borderRadius: '8px', backgroundColor: 'white' }} 
-                        title="PDF Preview"
-                      />
-                    </div>
-                  )}
-                </div>
-              </div>
+              <BudgetBuilder 
+                initialItems={budgetItems}
+                materials={materials}
+                onItemsChange={handleBudgetChange}
+                showPreviewActions={true}
+                onGeneratePDF={(preview) => generatePDF(preview)}
+              />
             </div>
           )}
         </div>

@@ -53,14 +53,14 @@ export default function QuotesListClient({ initialQuotes }: any) {
               <tr key={quote.id} style={{ borderBottom: '1px solid var(--border-color)' }}>
                 <td style={{ padding: '15px' }}>{quote.client.name}</td>
                 <td style={{ padding: '15px', color: 'var(--text-muted)' }}>{quote.project?.title || 'Sin proyecto'}</td>
-                <td style={{ padding: '15px' }}>{formatDateEcuador(quote.createdAt)}</td>
+                <td style={{ padding: '15px' }} suppressHydrationWarning>{formatDateEcuador(quote.createdAt)}</td>
                 <td style={{ padding: '15px' }}>
                   <span className={`status-badge status-${quote.status.toLowerCase()}`}>
                     {quote.status}
                   </span>
                 </td>
                 <td style={{ padding: '15px', textAlign: 'right', fontWeight: 'bold', color: 'var(--primary)' }}>
-                  $ {quote.totalAmount.toLocaleString()}
+                  $ {new Intl.NumberFormat('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(quote.totalAmount)}
                 </td>
                 <td style={{ padding: '15px', textAlign: 'center', display: 'flex', gap: '8px', justifyContent: 'center' }}>
                   <Link href={`/admin/cotizaciones/compuesto/${quote.id}`} className="btn btn-ghost btn-sm" title="Ver PDF">PDF</Link>

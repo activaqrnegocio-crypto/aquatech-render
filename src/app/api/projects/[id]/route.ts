@@ -50,18 +50,30 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    const updated = await prisma.project.update({
-      where: { id: Number(id) },
-      data: allowedFields,
-      include: {
-        client: true,
-        phases: true,
-        team: { include: { user: true } },
-        gallery: true,
-        expenses: { include: { user: true } },
-        chatMessages: { include: { user: true, phase: true, media: true }, orderBy: { createdAt: 'desc' } },
-        dayRecords: { include: { user: true } }
+    const updated = await prisma.$transaction(async (tx) => {
+      const proj = await tx.project.update({
+        where: { id: Number(id) },
+        data: allowedFields,
+        include: {
+          client: true,
+          phases: true,
+          team: { include: { user: true } },
+          gallery: true,
+          expenses: { include: { user: true } },
+          chatMessages: { include: { user: true, phase: true, media: true }, orderBy: { createdAt: 'desc' } },
+          dayRecords: { include: { user: true } }
+        }
+      })
+
+      // If project becomes ACTIVE, accept the associated quote
+      if (data.status === 'ACTIVO') {
+        await tx.quote.updateMany({
+          where: { projectId: proj.id, status: 'BORRADOR' },
+          data: { status: 'ACEPTADA' }
+        })
       }
+      
+      return proj
     })
 
     return NextResponse.json(updated)

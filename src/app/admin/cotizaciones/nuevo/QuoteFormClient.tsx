@@ -1,10 +1,18 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import MediaCapture from '@/components/MediaCapture'
+import BudgetBuilder, { BudgetItem } from '@/components/BudgetBuilder'
 
-export default function QuoteFormClient({ clients, materials, prefetchedProject, initialQuote }: any) {
+interface QuoteFormProps {
+  clients: any[]
+  materials: any[]
+  prefetchedProject?: any
+  initialQuote?: any
+}
+
+export default function QuoteFormClient({ clients, materials, prefetchedProject, initialQuote }: QuoteFormProps) {
   const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [clientData, setClientData] = useState({
@@ -21,10 +29,46 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
   const initialDate = initialQuote?.validUntil ? new Date(initialQuote.validUntil).toISOString().split('T')[0] : '';
   const [validUntil, setValidUntil] = useState(initialDate)
   
-  const [items, setItems] = useState<any[]>(initialQuote?.items || prefetchedProject?.items || [])
-  const [searchTerm, setSearchTerm] = useState('')
-  const [showAllInventory, setShowAllInventory] = useState(false)
-  
+  const initialItems = useMemo(() => {
+    if (initialQuote?.items) {
+      return initialQuote.items.map((item: any) => ({
+        materialId: item.materialId,
+        name: item.description || '',
+        quantity: Number(item.quantity || 1),
+        estimatedCost: Number(item.unitPrice || 0),
+        isTaxed: item.isTaxed ?? true,
+        discountPct: Number(item.discountPct || 0),
+        unit: item.material?.unit || 'UND',
+        code: item.material?.code || 'ESP'
+      }))
+    }
+    if (prefetchedProject?.budgetItems) {
+      return prefetchedProject.budgetItems.map((item: any) => ({
+        materialId: item.materialId,
+        name: item.name || '',
+        quantity: Number(item.quantity || 1),
+        estimatedCost: Number(item.estimatedCost || 0),
+        isTaxed: true,
+        discountPct: 0,
+        unit: item.unit || 'UND',
+        code: item.material?.code || 'ESP'
+      }))
+    }
+    return []
+  }, [initialQuote, prefetchedProject])
+
+  const [items, setItems] = useState<BudgetItem[]>(initialItems)
+  const [calculations, setCalculations] = useState({
+    subtotal0: 0,
+    subtotal15: 0,
+    totalBudget: 0,
+    discountTotal: 0,
+    ivaAmount: 0,
+    grandTotal: 0,
+    processed: [] as any[]
+  })
+
+  // Restore client states
   const getInitialMode = () => {
     if (initialQuote?.clientName === 'CONSUMIDOR FINAL') return 'CF';
     if (initialQuote?.clientId) return 'EXISTING';
@@ -37,15 +81,9 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
   )
   const [selectedClientId, setSelectedClientId] = useState(initialQuote?.clientId || prefetchedProject?.clientId || '')
   const [isFirstRender, setIsFirstRender] = useState(true)
-  
-  // Global Item States
-  const [globalDescription, setGlobalDescription] = useState('')
-  const [globalPrice, setGlobalPrice] = useState('')
-  const [globalIsTaxed, setGlobalIsTaxed] = useState(true)
 
   // Auto-fill client data when selection changes
   useEffect(() => {
-    // Skip auto-fill on first render if we are editing an existing quote
     if (isFirstRender && initialQuote) {
       setIsFirstRender(false)
       return
@@ -85,115 +123,10 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
     if (isFirstRender) setIsFirstRender(false)
   }, [clientMode, selectedClientId, clients, initialQuote, isFirstRender])
 
-  // Financial Calculations
-  const calculations = useMemo(() => {
-    let subtotal = 0
-    let discountTotal = 0
-    let subtotal0 = 0
-    let subtotal15 = 0
-
-    const processedItems = items.map(item => {
-      const q = item.quantity === 'GLOBAL' ? 1 : Number(item.quantity)
-      const basePrice = Number(item.unitPrice) * q
-      const discount = basePrice * (Number(item.discountPct || 0) / 100)
-      const itemTotal = basePrice - discount
-      
-      subtotal += basePrice
-      discountTotal += discount
-      
-      if (item.isTaxed === false) {
-        subtotal0 += itemTotal
-      } else {
-        subtotal15 += itemTotal
-      }
-
-      return { ...item, total: itemTotal }
-    })
-
-    const ivaAmount = subtotal15 * 0.15
-    const totalAmount = subtotal0 + subtotal15 + ivaAmount
-
-    return {
-      subtotal,
-      discountTotal,
-      subtotal0,
-      subtotal15,
-      ivaAmount,
-      totalAmount,
-      processedItems
-    }
-  }, [items])
-
-  const addItem = (materialId: number) => {
-    const mat = materials.find((m: any) => m.id === materialId)
-    if (!mat) return
-    
-    setItems([...items, {
-      materialId: mat.id,
-      description: mat.name,
-      code: mat.code,
-      quantity: 1,
-      unitPrice: Number(mat.unitPrice),
-      discountPct: 0,
-      isTaxed: true
-    }])
-    setSearchTerm('')
-    setShowAllInventory(false)
-  }
-
-  const addCustomItem = () => {
-    setItems([...items, {
-      materialId: null,
-      description: 'Nuevo Ítem Personalizado',
-      code: 'ESP',
-      quantity: 1,
-      unitPrice: 0,
-      discountPct: 0,
-      isTaxed: true,
-      total: 0
-    }])
-    setShowAllInventory(false)
-  }
-
-  const addGlobalItem = () => {
-    if (!globalDescription || !globalPrice) return;
-    setItems([...items, {
-      materialId: null,
-      description: globalDescription.toUpperCase(),
-      code: 'GLOBAL',
-      quantity: 'GLOBAL',
-      unitPrice: Number(globalPrice),
-      discountPct: 0,
-      isTaxed: globalIsTaxed
-    }])
-    setGlobalDescription('')
-    setGlobalPrice('')
-    setShowAllInventory(false)
-  }
-
-  const filteredMaterials = useMemo(() => {
-    if (!searchTerm.trim() && !showAllInventory) return []
-    const term = searchTerm.toLowerCase()
-    
-    if (showAllInventory && !searchTerm) {
-      return materials.slice(0, 100)
-    }
-
-    return (materials || []).filter((m: any) => 
-      m.name.toLowerCase().includes(term) || 
-      (m.code && m.code.toLowerCase().includes(term))
-    ).slice(0, 50)
-  }, [searchTerm, materials, showAllInventory])
-
-  const updateItem = (index: number, field: string, value: any) => {
-    const newItems = [...items]
-    newItems[index][field] = value
+  const handleBudgetChange = useCallback((newItems: BudgetItem[], newCalculations: typeof calculations) => {
     setItems(newItems)
-  }
-
-  const removeItem = (index: number) => {
-    setItems(items.filter((_, i) => i !== index))
-  }
+    setCalculations(newCalculations)
+  }, [])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -202,18 +135,25 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
     if (items.length === 0) return alert("Agrega al menos un item")
 
     const payload = {
-      clientId: selectedClientId,
+      clientId: selectedClientId ? Number(selectedClientId) : null,
       projectId: prefetchedProject?.id,
+      ...calculations,
+      totalAmount: calculations.grandTotal,
       ...clientData,
-      clientName: clientData.name,
-      clientRuc: clientData.ruc,
+      clientName: clientMode === 'CF' ? 'CONSUMIDOR FINAL' : clientData.name,
+      clientRuc: clientMode === 'CF' ? '9999999999999' : clientData.ruc,
       clientAddress: clientData.address,
       clientPhone: clientData.phone,
       clientAttention: clientData.attention,
-      ...calculations,
       notes,
       validUntil,
-      items: calculations.processedItems
+      items: calculations.processed.map((p: any) => ({
+         ...p,
+         unitPrice: p.estimatedCost, 
+         description: p.name,
+         total: p.lineTotal,
+         discountPct: p.discountPct || 0
+      }))
     }
 
     setLoading(true)
@@ -230,18 +170,15 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
              timestamp: tempId,
              status: 'pending'
           })
-          // Register Background Sync if supported (Chrome/Android mostly)
           if ('serviceWorker' in navigator && 'SyncManager' in window) {
             try {
               const swReg = await navigator.serviceWorker.ready
               // @ts-ignore
               await swReg.sync.register('sync-outbox')
-              console.log('[SW] Background Sync registered for outbox')
             } catch (ignored) { }
           }
 
           alert("Cotización guardada sin conexión. Se sincronizará en segundo plano cuando regreses a un área con cobertura.")
-          // Redirect to the offline preview using the actual database ID
           router.push(`/admin/cotizaciones/offline?id=${actualId}`)
        } catch (error) {
           alert("Error crítico accediendo a la base de datos local.")
@@ -279,66 +216,17 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
       
       <div style={{ display: 'grid', gap: '20px' }}>
         {/* Client Box */}
-        <div className="card">
+        <div className="card shadow-sm" style={{ padding: '25px', borderRadius: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h3 style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               Información del Cliente
             </h3>
             
-            {/* Toggle Nuevo/Existente/CF */}
             <div style={{ display: 'flex', backgroundColor: 'var(--bg-deep)', borderRadius: '30px', padding: '4px', border: '1px solid var(--border-color)', gap: '4px' }}>
-              <button 
-                type="button" 
-                onClick={() => setClientMode('EXISTING')}
-                style={{ 
-                  padding: '6px 14px', 
-                  borderRadius: '25px', 
-                  fontSize: '0.75rem', 
-                  fontWeight: 'bold',
-                  border: 'none',
-                  cursor: 'pointer',
-                  backgroundColor: clientMode === 'EXISTING' ? 'var(--primary)' : 'transparent',
-                  color: clientMode === 'EXISTING' ? 'white' : 'var(--text-muted)',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Existente
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setClientMode('NEW')}
-                style={{ 
-                  padding: '6px 14px', 
-                  borderRadius: '25px', 
-                  fontSize: '0.75rem', 
-                  fontWeight: 'bold',
-                  border: 'none',
-                  cursor: 'pointer',
-                  backgroundColor: clientMode === 'NEW' ? 'var(--primary)' : 'transparent',
-                  color: clientMode === 'NEW' ? 'white' : 'var(--text-muted)',
-                  transition: 'all 0.2s'
-                }}
-              >
-                Nuevo
-              </button>
-              <button 
-                type="button" 
-                onClick={() => setClientMode('CF')}
-                style={{ 
-                  padding: '6px 14px', 
-                  borderRadius: '25px', 
-                  fontSize: '0.75rem', 
-                  fontWeight: 'bold',
-                  border: 'none',
-                  cursor: 'pointer',
-                  backgroundColor: clientMode === 'CF' ? 'var(--secondary)' : 'transparent',
-                  color: clientMode === 'CF' ? 'white' : 'var(--text-muted)',
-                  transition: 'all 0.2s'
-                }}
-              >
-                CF
-              </button>
+              <button type="button" onClick={() => setClientMode('EXISTING')} className={`btn-pill ${clientMode === 'EXISTING' ? 'active' : ''}`}>Existente</button>
+              <button type="button" onClick={() => setClientMode('NEW')} className={`btn-pill ${clientMode === 'NEW' ? 'active' : ''}`}>Nuevo</button>
+              <button type="button" onClick={() => setClientMode('CF')} className={`btn-pill-alt ${clientMode === 'CF' ? 'active' : ''}`}>CF</button>
             </div>
           </div>
 
@@ -346,12 +234,7 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
             {clientMode === 'EXISTING' ? (
               <div className="form-group">
                 <label>Seleccionar Cliente Existente</label>
-                <select 
-                  className="form-input" 
-                  value={selectedClientId} 
-                  onChange={e => setSelectedClientId(e.target.value)} 
-                  required={clientMode === 'EXISTING'}
-                >
+                <select className="form-input" value={selectedClientId} onChange={e => setSelectedClientId(e.target.value)} required={clientMode === 'EXISTING'}>
                   <option value="">-- Selecciona --</option>
                   {clients.map((c: any) => (
                     <option key={c.id} value={c.id}>{c.name}</option>
@@ -361,23 +244,12 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
             ) : (
               <div className="form-group">
                 <label>Nombre del Cliente {clientMode === 'CF' ? '(CF)' : 'Nuevo'}</label>
-                <input 
-                  className="form-input" 
-                  value={clientData.name} 
-                  onChange={e => setClientData({...clientData, name: e.target.value})}
-                  placeholder={clientMode === 'CF' ? 'CONSUMIDOR FINAL' : 'Ej: Juan Pérez o Empresa S.A.'}
-                  required
-                />
+                <input className="form-input" value={clientData.name} onChange={e => setClientData({...clientData, name: e.target.value})} placeholder={clientMode === 'CF' ? 'CONSUMIDOR FINAL' : 'Ej: Juan Pérez'} required />
               </div>
             )}
            <div className="form-group">
               <label>Atención (Contacto)</label>
-              <input 
-                className="form-input" 
-                value={clientData.attention} 
-                onChange={e => setClientData({...clientData, attention: e.target.value})}
-                placeholder="Nombre de la persona de contacto"
-              />
+              <input className="form-input" value={clientData.attention} onChange={e => setClientData({...clientData, attention: e.target.value})} placeholder="Persona de contacto" />
             </div>
             <div className="form-group">
               <label>R.U.C / C.I.</label>
@@ -394,293 +266,67 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
           </div>
         </div>
 
-        {/* Items Box */}
-        <div className="card">
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
-            <h3 style={{ margin: 0 }}>Conceptos y Materiales</h3>
-            <div style={{ position: 'relative', width: '100%', maxWidth: '380px' }}>
-              <div style={{ position: 'relative' }}>
-                <input 
-                  type="text" 
-                  className="form-input" 
-                  placeholder="🔍 Buscar material o código..." 
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  style={{ paddingLeft: '35px' }}
-                />
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2" style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)' }}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-              </div>
-              
-              <div style={{ display: 'flex', gap: '10px', marginTop: '10px' }}>
-                <button 
-                  type="button" 
-                  className="btn btn-ghost btn-sm" 
-                  onClick={() => setShowAllInventory(!showAllInventory)}
-                  style={{ fontSize: '0.75rem', padding: '4px 12px' }}
-                >
-                  {showAllInventory ? '✕ Cerrar Inventario' : '📂 Ver Todo el Inventario'}
-                </button>
-                <button 
-                  type="button" 
-                  className="btn btn-primary btn-sm" 
-                  onClick={addCustomItem}
-                  style={{ fontSize: '0.75rem', padding: '4px 12px' }}
-                >
-                  + Ítem Personalizado
-                </button>
-              </div>
-
-              {/* Global Item UI */}
-              <div style={{ marginTop: '15px', padding: '15px', border: '1px solid var(--primary)', borderRadius: '12px', backgroundColor: 'var(--primary-glow)' }}>
-                <h4 style={{ fontSize: '0.8rem', color: 'var(--primary)', margin: '0 0 10px 0', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                  Añadir Concepto GLOBAL (Servicios)
-                </h4>
-                <div className="quote-global-fields">
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label style={{ fontSize: '0.7rem' }}>Descripción</label>
-                    <input className="form-input-sm" value={globalDescription} onChange={e => setGlobalDescription(e.target.value)} placeholder="Ej: Construcción de Piscina" />
-                  </div>
-                  <div className="form-group" style={{ margin: 0 }}>
-                    <label style={{ fontSize: '0.7rem' }}>Precio ($)</label>
-                    <input type="number" className="form-input-sm" value={globalPrice} onChange={e => setGlobalPrice(e.target.value)} />
-                  </div>
-                  <button type="button" className="btn btn-primary btn-sm" onClick={addGlobalItem} disabled={!globalDescription || !globalPrice}>
-                    Añadir
-                  </button>
-                </div>
-              </div>
-
-              {(searchTerm || showAllInventory) && (
-                <div style={{ 
-                  position: 'absolute', 
-                  top: '100%', 
-                  left: 0, 
-                  right: 0, 
-                  zIndex: 2000, 
-                  backgroundColor: 'var(--bg-card)', 
-                  border: '2px solid var(--primary)', 
-                  borderRadius: '12px', 
-                  marginTop: '8px', 
-                  boxShadow: '0 20px 40px -10px rgba(0, 0, 0, 0.5)',
-                  maxHeight: '300px',
-                  overflowY: 'auto',
-                  padding: '8px'
-                }}>
-                  {filteredMaterials.map((m: any) => (
-                    <div 
-                      key={m.id} 
-                      onClick={() => addItem(m.id)} 
-                      style={{ 
-                        padding: '12px', 
-                        borderRadius: '8px',
-                        cursor: 'pointer', 
-                        transition: 'all 0.2s',
-                        borderBottom: '1px solid var(--border-color)',
-                        marginBottom: '4px'
-                      }} 
-                      onMouseOver={(e) => {
-                        e.currentTarget.style.backgroundColor = 'var(--primary-glow)'
-                        e.currentTarget.style.transform = 'translateX(5px)'
-                      }}
-                      onMouseOut={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent'
-                        e.currentTarget.style.transform = 'translateX(0)'
-                      }}
-                    >
-                      <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--text-main)', display: 'flex', justifyContent: 'space-between' }}>
-                        <span>{m.name}</span>
-                        <span style={{ color: 'var(--primary)', fontSize: '0.75rem', fontWeight: 'bold' }}>+ AÑADIR</span>
-                      </div>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: '4px', fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                        <span>Código: {m.code || 'N/A'}</span>
-                        <span style={{ fontWeight: 'bold', color: 'var(--success)' }}>$ {Number(m.unitPrice).toFixed(2)}</span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-
-          <div style={{ display: 'grid', gap: '10px' }}>
-            {items.map((item, index) => (
-              <div key={index} className="quote-item-row" style={{ 
-                alignItems: 'center', 
-                padding: '16px', 
-                border: '1px solid var(--border-color)', 
-                borderRadius: '12px', 
-                backgroundColor: 'var(--bg-deep)',
-                transition: 'all 0.3s ease'
-              }}>
-                <div>
-                  <div style={{ fontSize: '0.65rem', color: 'var(--primary)', fontWeight: 'bold', marginBottom: '4px', opacity: 0.8 }}>{item.code || 'S/N'}</div>
-                  <input 
-                    className="form-input-sm" 
-                    value={item.description} 
-                    onChange={(e) => updateItem(index, 'description', e.target.value)} 
-                    style={{ padding: '8px 12px', width: '100%', fontSize: '0.9rem', border: '1px solid var(--border-color)' }} 
-                  />
-                </div>
-                <div style={{ minWidth: '70px' }}>
-                  <label style={{ fontSize: '0.65rem', display: 'block', marginBottom: '4px', color: 'var(--text-muted)' }}>CANT.</label>
-                  <input 
-                    type={item.quantity === 'GLOBAL' ? 'text' : 'number'} 
-                    className="form-input-sm" 
-                    value={item.quantity} 
-                    onChange={(e) => updateItem(index, 'quantity', item.quantity === 'GLOBAL' ? 'GLOBAL' : Number(e.target.value))} 
-                    readOnly={item.quantity === 'GLOBAL'}
-                    style={{ padding: '8px', width: '100%', backgroundColor: item.quantity === 'GLOBAL' ? 'rgba(56, 189, 248, 0.1)' : 'inherit' }} 
-                  />
-                </div>
-                <div style={{ minWidth: '90px' }}>
-                  <label style={{ fontSize: '0.65rem', display: 'block', marginBottom: '4px', color: 'var(--text-muted)' }}>P. UNIT ($)</label>
-                  <input type="number" step="0.01" className="form-input-sm" value={item.unitPrice} onChange={(e) => updateItem(index, 'unitPrice', Number(e.target.value))} style={{ padding: '8px', width: '100%' }} />
-                </div>
-                <div style={{ minWidth: '70px' }}>
-                  <label style={{ fontSize: '0.65rem', display: 'block', marginBottom: '4px', color: 'var(--text-muted)' }}>DESC %</label>
-                  <input type="number" className="form-input-sm" value={item.discountPct} onChange={(e) => updateItem(index, 'discountPct', Number(e.target.value))} style={{ padding: '8px', width: '100%' }} />
-                </div>
-                <div style={{ textAlign: 'center', minWidth: '60px' }}>
-                  <label style={{ fontSize: '0.65rem', display: 'block', marginBottom: '4px', color: 'var(--text-muted)' }}>IVA 15%</label>
-                  <input 
-                    type="checkbox" 
-                    checked={item.isTaxed} 
-                    onChange={(e) => updateItem(index, 'isTaxed', e.target.checked)} 
-                    style={{ width: '20px', height: '20px', cursor: 'pointer', accentColor: 'var(--primary)' }}
-                  />
-                </div>
-                <div style={{ textAlign: 'right', minWidth: '90px' }}>
-                  <label style={{ fontSize: '0.65rem', display: 'block', marginBottom: '4px', color: 'var(--text-muted)' }}>TOTAL</label>
-                  <div style={{ fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)' }}>
-                    $ {( (Number(item.unitPrice) * (item.quantity === 'GLOBAL' ? 1 : Number(item.quantity))) * (1 - (Number(item.discountPct || 0)/100)) ).toFixed(2)}
-                  </div>
-                </div>
-                <div className="quote-item-delete">
-                  <button 
-                    type="button" 
-                    onClick={() => removeItem(index)} 
-                    className="btn-ghost" 
-                    style={{ color: 'var(--danger)', padding: '8px', borderRadius: '50%', backgroundColor: 'rgba(239, 68, 68, 0.1)' }}
-                    title="Eliminar ítem"
-                  >
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            {items.length === 0 && (
-              <div style={{ textAlign: 'center', padding: '30px', border: '1px dashed var(--border-color)', borderRadius: '8px', color: 'var(--text-muted)' }}>
-                Usa el selector superior para añadir materiales al presupuesto.
-              </div>
-            )}
-          </div>
+        {/* BudgetBuilder Unified Section */}
+        <div className="card shadow-sm" style={{ padding: '25px', borderRadius: '16px' }}>
+          <BudgetBuilder 
+             initialItems={items}
+             materials={materials}
+             onItemsChange={handleBudgetChange}
+          />
         </div>
 
-        <div className="card">
+        {/* Notes Area */}
+        <div className="card shadow-sm" style={{ padding: '25px', borderRadius: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-            <label style={{ margin: 0 }}>Notas / Términos de Referencia</label>
-            <div style={{ width: '140px' }}>
-              <MediaCapture 
-                mode="audio" 
-                onCapture={(blob, type, text) => {
-                  setNotes((prev: string) => (prev ? prev + ' ' + text : text))
-                }}
-              />
-            </div>
-            <div style={{ width: '140px' }}>
-              <MediaCapture 
-                mode="video" 
-                onCapture={(blob, type, text) => {
-                  setNotes((prev: string) => (prev ? prev + ' ' + text : text))
-                }}
-              />
+            <label style={{ margin: 0, fontWeight: 'bold' }}>Notas / Términos de Referencia</label>
+            <div style={{ display: 'flex', gap: '10px' }}>
+              <MediaCapture mode="audio" onCapture={(b: Blob, t: string, text: string) => setNotes((prev: string) => (prev ? prev + ' ' + text : text))} />
+              <MediaCapture mode="video" onCapture={(b: Blob, t: string, text: string) => setNotes((prev: string) => (prev ? prev + ' ' + text : text))} />
             </div>
           </div>
-          <textarea 
-            className="form-input" 
-            style={{ height: '80px' }} 
-            value={notes} 
-            onChange={e => setNotes(e.target.value)}
-            placeholder="Ej: Entrega inmediata, validez de oferta 15 días..."
-          ></textarea>
+          <textarea className="form-input" style={{ height: '100px' }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Términos comerciales, validez, tiempos de entrega..."></textarea>
         </div>
       </div>
 
       {/* Summary Box */}
       <div style={{ position: 'sticky', top: '20px' }}>
-        <div className="card shadow-lg" style={{ borderTop: '4px solid var(--primary)' }}>
-          <h3 className="mb-md">Resumen Final</h3>
+        <div className="card shadow-lg" style={{ borderTop: '4px solid var(--primary)', borderRadius: '16px', padding: '25px' }}>
+          <h3 className="mb-md">Resumen de Cotización</h3>
           
           <div className="form-group mb-lg">
-            <label>Válida hasta</label>
+            <label>Validez de Oferta (Fecha)</label>
             <input type="date" className="form-input" value={validUntil} onChange={e => setValidUntil(e.target.value)} />
           </div>
 
-          <div style={{ display: 'grid', gap: '10px', fontSize: '0.95rem' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <span style={{ color: 'var(--text-muted)' }}>Subtotal Bruto</span>
-              <span>$ {calculations.subtotal.toFixed(2)}</span>
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', color: 'var(--danger)' }}>
-              <span>Total Descuentos</span>
-              <span>-$ {calculations.discountTotal.toFixed(2)}</span>
-            </div>
-            <div style={{ borderTop: '1px solid var(--border-color)', margin: '5px 0' }}></div>
+          <div style={{ display: 'grid', gap: '12px', fontSize: '0.95rem' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--text-muted)' }}>Subtotal Tarifa 0%</span>
-              <span>$ {calculations.subtotal0.toFixed(2)}</span>
+              <span style={{ fontWeight: '600' }}>$ {calculations.subtotal0.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--text-muted)' }}>Subtotal Tarifa 15%</span>
-              <span>$ {calculations.subtotal15.toFixed(2)}</span>
+              <span style={{ fontWeight: '600' }}>$ {calculations.subtotal15.toFixed(2)}</span>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between' }}>
               <span style={{ color: 'var(--text-muted)' }}>IVA 15%</span>
-              <span>$ {calculations.ivaAmount.toFixed(2)}</span>
+              <span style={{ fontWeight: '600' }}>$ {calculations.ivaAmount.toFixed(2)}</span>
             </div>
             
-            <div style={{ marginTop: '15px', padding: '15px', backgroundColor: 'var(--bg-deep)', borderRadius: '8px', border: '1px solid var(--primary-light)' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+            <div style={{ marginTop: '15px', padding: '20px', backgroundColor: 'var(--bg-deep)', borderRadius: '12px', border: '1px solid var(--primary-light)', boxShadow: 'inset 0 2px 4px rgba(0,0,0,0.1)' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '1.5rem', fontWeight: '800', color: 'var(--primary)' }}>
                 <span>TOTAL</span>
-                <span>$ {calculations.totalAmount.toFixed(2)}</span>
+                <span>$ {calculations.grandTotal.toFixed(2)}</span>
               </div>
             </div>
           </div>
 
-          <button 
-            type="submit" 
-            className="btn btn-primary" 
-            style={{ width: '100%', marginTop: '25px', padding: '15px', fontWeight: 'bold' }}
-            disabled={loading}
-          >
+          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '25px', padding: '15px', fontWeight: 'bold' }} disabled={loading}>
             {loading ? 'Guardando...' : (initialQuote ? 'ACTUALIZAR COTIZACIÓN' : 'CREAR COTIZACIÓN')}
           </button>
-          
-          <p style={{ textAlign: 'center', fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '15px' }}>
-            Se guardará una copia en el historial y se generará el PDF profesional.
-          </p>
         </div>
       </div>
 
       <style jsx>{`
-        .form-input-sm {
-          background-color: var(--bg-surface);
-          border: 1px solid var(--border-color);
-          border-radius: 4px;
-          color: var(--text-main);
-          outline: none;
-          width: 100%;
-          padding: 6px 8px;
-        }
-        .form-input-sm:focus {
-          border-color: var(--primary);
-        }
-        @keyframes slideUp {
-          from { opacity: 0; transform: translateY(10px); }
-          to { opacity: 1; transform: translateY(0); }
-        }
         .quote-form-layout {
           display: grid;
           grid-template-columns: 2.5fr 1fr;
@@ -695,46 +341,26 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
         .quote-full-width {
           grid-column: span 2;
         }
-        .quote-global-fields {
-          display: grid;
-          grid-template-columns: 2fr 1fr 1fr;
-          gap: 10px;
-          align-items: end;
+        .btn-pill, .btn-pill-alt {
+          padding: 6px 14px;
+          border-radius: 25px;
+          font-size: 0.75rem;
+          font-weight: bold;
+          border: none;
+          cursor: pointer;
+          background: transparent;
+          color: var(--text-muted);
+          transition: all 0.2s;
         }
-        .quote-item-row {
-          display: grid;
-          grid-template-columns: minmax(200px, 3.5fr) repeat(auto-fit, minmax(80px, 1fr)) 40px;
-          gap: 15px;
+        .btn-pill.active { background: var(--primary); color: white; }
+        .btn-pill-alt.active { background: var(--secondary); color: white; }
+        
+        @media (max-width: 992px) {
+          .quote-form-layout { grid-template-columns: 1fr; }
+          .quote-client-fields { grid-template-columns: 1fr; }
+          .quote-full-width { grid-column: span 1; }
         }
-        @media (max-width: 768px) {
-          .quote-form-layout {
-            grid-template-columns: 1fr;
-          }
-          .quote-client-fields {
-            grid-template-columns: 1fr;
-          }
-          .quote-full-width {
-            grid-column: span 1;
-          }
-          .quote-global-fields {
-            grid-template-columns: 1fr;
-          }
-          .quote-item-row {
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-          }
-          .quote-item-row > div:first-child {
-            grid-column: span 2;
-          }
-          .quote-item-delete {
-            grid-column: span 2;
-            text-align: right;
-            border-top: 1px solid var(--border-color);
-            padding-top: 10px;
-            margin-top: 5px;
-          }
-        }
-     `}</style>
+      `}</style>
     </form>
   )
 }

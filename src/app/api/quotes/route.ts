@@ -56,44 +56,78 @@ export async function POST(req: Request) {
     const operatorNotes = session?.user?.name ? 
       `[Generado por Operador: ${session.user.name}]\n${data.notes || ''}` : data.notes
 
-    const quote = await prisma.quote.create({
-      data: {
-        userId: session?.user?.id ? Number(session.user.id) : null,
-        clientId: finalClientId,
-        projectId: data.projectId ? Number(data.projectId) : null,
-        status: data.status || 'BORRADOR',
-        
-        // Snapshot client data
-        clientName: data.clientName,
-        clientRuc: data.clientRuc,
-        clientAddress: data.clientAddress,
-        clientPhone: data.clientPhone,
-        clientAttention: data.clientAttention,
+    const quote = await prisma.$transaction(async (tx) => {
+      const newQuote = await tx.quote.create({
+        data: {
+          userId: session?.user?.id ? Number(session.user.id) : null,
+          clientId: finalClientId as number,
+          projectId: data.projectId ? Number(data.projectId) : null,
+          status: data.status || 'BORRADOR',
+          
+          // Snapshot client data
+          clientName: data.clientName,
+          clientRuc: data.clientRuc,
+          clientAddress: data.clientAddress,
+          clientPhone: data.clientPhone,
+          clientAttention: data.clientAttention,
 
-        // Financial summary
-        subtotal: Number(data.subtotal || 0),
-        subtotal0: Number(data.subtotal0 || 0),
-        subtotal15: Number(data.subtotal15 || 0),
-        ivaAmount: Number(data.ivaAmount || 0),
-        discountTotal: Number(data.discountTotal || 0),
-        totalAmount: Number(data.totalAmount || 0),
+          // Financial summary
+          subtotal: Number(data.subtotal || 0),
+          subtotal0: Number(data.subtotal0 || 0),
+          subtotal15: Number(data.subtotal15 || 0),
+          ivaAmount: Number(data.ivaAmount || 0),
+          discountTotal: Number(data.discountTotal || 0),
+          totalAmount: Number(data.totalAmount || 0),
 
-        notes: operatorNotes,
-        validUntil: data.validUntil ? new Date(data.validUntil) : null,
-        items: {
-          create: items.map((item: any) => ({
+          notes: operatorNotes,
+          validUntil: data.validUntil ? new Date(data.validUntil) : null,
+          items: {
+            create: items.map((item: any) => ({
+              materialId: item.materialId ? Number(item.materialId) : null,
+              description: item.description,
+              quantity: item.quantity === 'GLOBAL' ? 1 : Number(item.quantity),
+              unitPrice: Number(item.unitPrice),
+              discountPct: Number(item.discountPct || 0),
+              isTaxed: item.isTaxed !== undefined ? Boolean(item.isTaxed) : true,
+              total: Number(item.total)
+            }))
+          }
+        },
+        include: { items: true }
+      })
+
+      // Sync to Project if linked
+      if (newQuote.projectId) {
+        // Delete all project budget items
+        await tx.budgetItem.deleteMany({
+          where: { projectId: newQuote.projectId }
+        })
+
+        // Create new project budget items based on quote items
+        await tx.budgetItem.createMany({
+          data: items.map((item: any) => ({
+            projectId: newQuote.projectId as number,
             materialId: item.materialId ? Number(item.materialId) : null,
-            description: item.description,
+            name: item.description || 'Sin descripción',
             quantity: item.quantity === 'GLOBAL' ? 1 : Number(item.quantity),
-            unitPrice: Number(item.unitPrice),
-            discountPct: Number(item.discountPct || 0),
-            isTaxed: item.isTaxed !== undefined ? Boolean(item.isTaxed) : true,
-            total: Number(item.total)
+            unit: 'UND', // Default, QuoteItem doesn't have unit
+            estimatedCost: Number(item.unitPrice)
           }))
-        }
-      },
-      include: { items: true }
-    })
+        })
+
+        // Update project total
+        await tx.project.update({
+          where: { id: newQuote.projectId },
+          data: { 
+            estimatedBudget: newQuote.totalAmount,
+            // If quote is already accepted, start project
+            status: newQuote.status === 'ACEPTADA' ? 'ACTIVO' : undefined
+          }
+        })
+      }
+
+      return newQuote
+    }, { timeout: 20000 })
     
     return NextResponse.json(quote)
   } catch (error) {

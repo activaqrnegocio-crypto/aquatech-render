@@ -4,6 +4,8 @@ import Link from 'next/link'
 import { getServerSession } from 'next-auth/next'
 import { authOptions } from '@/lib/auth'
 
+import { deepSerialize } from '@/lib/serializable'
+
 export const dynamic = 'force-dynamic'
 
 export default async function CotizacionesPage() {
@@ -33,20 +35,7 @@ export default async function CotizacionesPage() {
         </div>
       </div>
 
-      <QuotesListClient initialQuotes={quotes.map(q => ({ 
-        ...q, 
-        totalAmount: Number(q.totalAmount),
-        // @ts-ignore
-        subtotal: Number(q.subtotal || 0),
-        // @ts-ignore
-        subtotal0: Number(q.subtotal0 || 0),
-        // @ts-ignore
-        subtotal15: Number(q.subtotal15 || 0),
-        // @ts-ignore
-        ivaAmount: Number(q.ivaAmount || 0),
-        // @ts-ignore
-        discountTotal: Number(q.discountTotal || 0)
-      }))} />
+      <QuotesListClient initialQuotes={deepSerialize(quotes)} />
     </div>
   )
 }
