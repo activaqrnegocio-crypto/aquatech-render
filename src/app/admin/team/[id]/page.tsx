@@ -249,10 +249,20 @@ export default function TeamMemberPage() {
     })
 
     if (res.ok) {
-      await fetchAppointments()
       setIsModalOpen(false)
+      fetchAppointments()
     } else {
       throw new Error('Failed to save')
+    }
+  }
+
+  const handleDeleteAppointment = async (id: number) => {
+    const res = await fetch(`/api/appointments/${id}`, { method: 'DELETE' })
+    if (res.ok) {
+      setIsModalOpen(false)
+      fetchAppointments()
+    } else {
+      throw new Error('Failed to delete')
     }
   }
 
@@ -729,6 +739,7 @@ export default function TeamMemberPage() {
         isOpen={isModalOpen}
         onClose={() => setIsModalOpen(false)}
         onSave={handleSaveAppointment}
+        onDelete={handleDeleteAppointment}
         initialData={editingEvent}
         userId={Number(userId)}
         projects={allProjects}
