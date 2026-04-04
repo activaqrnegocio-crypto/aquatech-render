@@ -17,8 +17,8 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
   const [editingEvent, setEditingEvent] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
-  const fetchAppointments = async () => {
-    setLoading(true)
+  const fetchAppointments = async (silent = false) => {
+    if (!silent) setLoading(true)
     try {
       const url = `/api/appointments?userId=${selectedOperatorId}`
       const res = await fetch(url)
@@ -28,7 +28,7 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
     } catch (error) {
       console.error('Error fetching appointments:', error)
     } finally {
-      setLoading(false)
+      if (!silent) setLoading(false)
     }
   }
 
@@ -63,7 +63,7 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
         throw new Error('Failed to delete')
       }
       // Silently refresh in background to ensure sync
-      fetchAppointments()
+      fetchAppointments(true)
     } catch (error) {
       console.error('Error deleting appointment:', error)
       alert('No se pudo eliminar la tarea. Se restaurará en el calendario.')

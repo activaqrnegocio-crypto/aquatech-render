@@ -65,9 +65,10 @@ export default function CalendarAssistant() {
       if (!res.ok) throw new Error('Error al consultar la IA')
       const data = await res.json()
       
-      setMessages(prev => [...prev, { role: 'assistant', content: data.answer }])
+      setMessages(prev => [...prev, { role: 'assistant', content: data.answer || 'No encontré información relevante para esa consulta.' }])
     } catch (error) {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Lo siento, ocurrió un error al procesar tu solicitud.' }])
+      console.error('Chat AI Error:', error)
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Lo siento, ocurrió un error al procesar tu solicitud. Por favor, intenta de nuevo en unos momentos.' }])
     } finally {
       setIsLoading(false)
     }

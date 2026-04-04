@@ -97,7 +97,7 @@ export default function TeamMemberPage() {
 
   const fetchAllProjects = async () => {
     try {
-      const res = await fetch('/api/proyectos')
+      const res = await fetch('/api/projects')
       if (res.ok) {
           const data = await res.json()
           setAllProjects(data.proyectos || [])

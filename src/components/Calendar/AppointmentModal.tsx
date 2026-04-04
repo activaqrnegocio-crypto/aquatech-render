@@ -158,7 +158,9 @@ export default function AppointmentModal({
             >
               <option value="">No vinculado a proyecto</option>
               {projects.map(p => (
-                <option key={p.id} value={p.id}>{p.title}</option>
+                <option key={p.id} value={p.id}>
+                  {p.title} ({p.status === 'LEAD' ? 'Negociando' : p.status})
+                </option>
               ))}
             </select>
           </div>

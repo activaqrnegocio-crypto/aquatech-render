@@ -22,8 +22,8 @@ export default async function AdminCalendarPage() {
   })
 
   const projects = await prisma.project.findMany({
-    where: { status: 'ACTIVO' },
-    select: { id: true, title: true }
+    where: { status: { not: 'CANCELADO' } },
+    select: { id: true, title: true, status: true }
   })
 
   return <AdminCalendarClient operators={operators} projects={projects} />

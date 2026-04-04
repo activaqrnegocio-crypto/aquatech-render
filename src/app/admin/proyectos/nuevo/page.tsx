@@ -9,6 +9,7 @@ import MediaCapture from '@/components/MediaCapture'
 import BudgetBuilder, { BudgetItem } from '@/components/BudgetBuilder'
 import { generateProfessionalPDF } from '@/lib/pdf-generator'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
+import { PROJECT_TYPES, translateType, PROJECT_CATEGORIES, translateCategory } from '@/lib/constants'
 
 export default function NuevoProyectoPage() {
   const { data: session } = useSession()
@@ -355,11 +356,13 @@ export default function NuevoProyectoPage() {
       docId: preview ? 'VISTA-PREVIA' : `PRJ-${Date.now().toString().slice(-4)}`,
       notes: projectData.technicalSpecs?.description || 'DOCUMENTO PRELIMINAR',
       action: preview ? 'preview' : 'save',
-      sellerName: session?.user?.name || 'Aquatech'
+      sellerName: session?.user?.name || 'Aquatech',
+      // Ensure specific mapped labels are used if needed by generator
     })
 
     if (preview && typeof result === 'string') {
       setPdfPreviewUrl(result)
+      window.open(result, '_blank')
     }
   }
 

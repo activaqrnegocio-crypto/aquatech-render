@@ -12,6 +12,7 @@ import {
   generateProjectReportPDF, 
   addAquatechHeader 
 } from '@/lib/pdf-generator'
+import { useSession } from 'next-auth/react'
 import { formatToEcuador, ECUADOR_TIMEZONE, formatTimeEcuador, formatDateEcuador } from '@/lib/date-utils'
 
 import Link from 'next/link'
@@ -29,6 +30,10 @@ export default function ProjectExecutionClient({
   panelBase = '/admin/operador'
 }: any) {
   const router = useRouter()
+  const { data: session } = useSession()
+  const userRole = session?.user?.role
+  const isFieldStaff = userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA'
+  
   const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
   const view = searchParams.get('view') || 'records'
@@ -349,6 +354,12 @@ export default function ProjectExecutionClient({
         })
       }
 
+      if (!activeRecord && !pendingDayAction) {
+        alert("⚠️ JORNADA NO INICIADA: Debes pulsar 'Iniciar Jornada' antes de registrar gastos.")
+        setLoading(false)
+        return
+      }
+
       if (!location) {
         alert("⚠️ UBICACIÓN REQUERIDA: No podemos registrar el gasto sin coordenadas de GPS. Por favor activa la ubicación.")
         setLoading(false)
@@ -472,6 +483,12 @@ export default function ProjectExecutionClient({
         })
       }
 
+      if (!activeRecord && !pendingDayAction) {
+        alert("⚠️ JORNADA NO INICIADA: Debes pulsar 'Iniciar Jornada' antes de registrar avances o notas.")
+        setLoading(false)
+        return
+      }
+
       if (!location) {
         alert("⚠️ UBICACIÓN NO DETECTADA: Para bitácora de campo es obligatorio el GPS.")
         setLoading(false)
@@ -565,6 +582,12 @@ export default function ProjectExecutionClient({
         })
       }
       
+      if (isFieldStaff && !activeRecord) {
+        alert("⚠️ JORNADA NO INICIADA: Debes pulsar 'Iniciar Jornada' antes de subir archivos.")
+        setLoading(false)
+        return
+      }
+
       if (!location) {
         alert("⚠️ UBICACIÓN NO DETECTADA: Para subir imágenes a la galería es obligatorio el GPS.")
         setLoading(false)
@@ -803,19 +826,7 @@ export default function ProjectExecutionClient({
     }
   }
 
-  const generateReportePDF = () => {
-    try {
-      generateProjectReportPDF({
-        project,
-        clientName,
-        address: projectAddress || '',
-        chat: combinedChat,
-        expenses: allExpenses
-      });
-    } catch(err) {
-      console.error(err)
-    }
-  }
+  // Reporte de Obra removed for operators/subcontractors as per request
 
   const handleDeleteExpense = async (expenseId: number) => {
     if (!confirm('¿Seguro que deseas eliminar este gasto?')) return
@@ -935,13 +946,6 @@ export default function ProjectExecutionClient({
                       style={{ fontSize: '0.75rem', border: '1px solid var(--primary)', color: 'var(--primary)', flex: 1 }}
                     >
                       📄 Ficha del Proyecto
-                    </button>
-                    <button 
-                      onClick={() => generateReportePDF()}
-                      className="btn btn-primary" 
-                      style={{ fontSize: '0.75rem', flex: 1 }}
-                    >
-                      📑 Reporte de Obra
                     </button>
                   </div>
                 </div>
@@ -1617,13 +1621,46 @@ export default function ProjectExecutionClient({
               bottom: 0, 
               zIndex: 10 
             }}>
-              <label className="btn btn-ghost" style={{ padding: '10px', color: 'var(--primary)', cursor: 'pointer', flexShrink: 0 }} title="Tomar Foto/Video">
+              <label className="btn btn-ghost" style={{ padding: '10px', color: 'var(--primary)', cursor: (isFieldStaff && !activeRecord) ? 'not-allowed' : 'pointer', flexShrink: 0, opacity: (isFieldStaff && !activeRecord) ? 0.5 : 1 }} title="Tomar Foto/Video">
                 <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                <input type="file" accept="image/*,video/*" capture="environment" style={{ display: 'none' }} onChange={(e) => { const file = e.target.files?.[0]; if (file) handleSendMessage(null as any, '', activePhase as number, file) }} />
+                <input 
+                  type="file" 
+                  accept="image/*,video/*" 
+                  capture="environment" 
+                  style={{ display: 'none' }} 
+                  disabled={isFieldStaff && !activeRecord}
+                  onChange={(e) => { 
+                    if (isFieldStaff && !activeRecord) {
+                      alert('⚠️ DEBES INICIAR JORNADA antes de enviar archivos.')
+                      return
+                    }
+                    const file = e.target.files?.[0]; 
+                    if (file) handleSendMessage(null as any, '', activePhase as number, file) 
+                  }} 
+                />
               </label>
-              <form onSubmit={handleSendMessage} style={{ flex: 1, display: 'flex', gap: '8px' }}>
-                <input type="text" className="form-input" placeholder="Escribe un mensaje..." value={message} onChange={e => setMessage(e.target.value)} style={{ flex: 1, fontSize: isSmallScreen ? '0.85rem' : '0.9rem' }} />
-                <button type="submit" className="btn btn-primary" disabled={loading || !message.trim() || activePhase === undefined} style={{ flexShrink: 0 }}>
+              <form onSubmit={(e) => {
+                if (isFieldStaff && !activeRecord) {
+                  e.preventDefault()
+                  alert('⚠️ DEBES INICIAR JORNADA antes de enviar mensajes o notas.')
+                  return
+                }
+                handleSendMessage(e)
+              }} style={{ flex: 1, display: 'flex', gap: '8px' }}>
+                <input 
+                  type="text" 
+                  className="form-input" 
+                  placeholder={isFieldStaff && !activeRecord ? "Inicia jornada para enviar..." : "Escribe un mensaje..."}
+                  value={message} 
+                  onChange={e => setMessage(e.target.value)} 
+                  disabled={isFieldStaff && !activeRecord}
+                  style={{ 
+                    flex: 1, 
+                    fontSize: isSmallScreen ? '0.85rem' : '0.9rem',
+                    opacity: (isFieldStaff && !activeRecord) ? 0.6 : 1
+                  }} 
+                />
+                <button type="submit" className="btn btn-primary" disabled={loading || !message.trim() || activePhase === undefined || (isFieldStaff && !activeRecord)} style={{ flexShrink: 0 }}>
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
               </form>

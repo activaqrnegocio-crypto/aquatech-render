@@ -133,7 +133,9 @@ export async function POST(request: Request) {
           createdBy: Number(userId),
           estimatedBudget: budgetItems ? budgetItems.reduce((acc: number, item: any) => {
             const qty = item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0)
-            return acc + (qty * Number(item.estimatedCost || 0))
+            const sub = (qty * Number(item.estimatedCost || 0))
+            const iva = item.isTaxed ? (sub * 0.15) : 0
+            return acc + sub + iva
           }, 0) : 0,
           categoryList: categoryList ? JSON.stringify(categoryList) : null,
           contractTypeList: contractTypeList ? JSON.stringify(contractTypeList) : null,
@@ -201,13 +203,13 @@ export async function POST(request: Request) {
             clientAddress: newProject.client?.address,
             clientPhone: newProject.client?.phone,
 
-            // Financial summary (Simplified for now, match project total)
-            subtotal: subtotal,
-            subtotal0: subtotal, // Default to 0% for now if not specified
-            subtotal15: 0,
-            ivaAmount: 0,
+            // Financial summary - Calculate with actual item data
+            subtotal: (budgetItems || []).reduce((acc: number, item: any) => acc + ((item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0)) * Number(item.estimatedCost || 0)), 0),
+            subtotal0: (budgetItems || []).filter((item: any) => !item.isTaxed).reduce((acc: number, item: any) => acc + ((item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0)) * Number(item.estimatedCost || 0)), 0),
+            subtotal15: (budgetItems || []).filter((item: any) => item.isTaxed).reduce((acc: number, item: any) => acc + ((item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0)) * Number(item.estimatedCost || 0)), 0),
+            ivaAmount: (budgetItems || []).filter((item: any) => item.isTaxed).reduce((acc: number, item: any) => acc + ((item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0)) * Number(item.estimatedCost || 0) * 0.15), 0),
             discountTotal: 0,
-            totalAmount: subtotal,
+            totalAmount: newProject.estimatedBudget,
 
             items: {
               create: (budgetItems || []).map((item: any) => ({
@@ -216,7 +218,7 @@ export async function POST(request: Request) {
                 quantity: item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0),
                 unitPrice: Number(item.estimatedCost || 0),
                 total: (item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0)) * Number(item.estimatedCost || 0),
-                isTaxed: false, // Default to false to match estimatedBudget simplicity
+                isTaxed: !!item.isTaxed,
                 discountPct: 0
               }))
             }

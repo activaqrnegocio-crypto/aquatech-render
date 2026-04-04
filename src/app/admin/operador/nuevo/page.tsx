@@ -382,8 +382,12 @@ export default function NuevoProyectoPage() {
       sellerName: session?.user?.name || 'Aquatech'
     })
 
-    if (preview && typeof result === 'string') {
-      setPdfPreviewUrl(result)
+    if (preview) {
+      if (typeof result === 'string') {
+        setPdfPreviewUrl(result)
+      } else {
+        alert("No se pudo generar la vista previa. Intenta actualizar los datos.")
+      }
     }
   }
 
@@ -435,6 +439,20 @@ export default function NuevoProyectoPage() {
                     <div style={inputGroupStyle}>
                         <label style={labelStyle}>Título del Proyecto (o referencia del Lead) *</label>
                         <input type="text" className="form-input" placeholder="Ej. Piscina Residencial Familia Ruiz" value={projectData.title} onChange={e => setProjectData({...projectData, title: e.target.value})} autoFocus />
+                    </div>
+
+                    <div style={inputGroupStyle}>
+                        <label style={labelStyle}>Tipo de Proyecto *</label>
+                        <select 
+                            className="form-input" 
+                            value={projectData.type} 
+                            onChange={e => setProjectData({...projectData, type: e.target.value})}
+                        >
+                            <option value="INSTALLATION">Instalación Nueva</option>
+                            <option value="MAINTENANCE">Mantenimiento</option>
+                            <option value="REPAIR">Reparación</option>
+                            <option value="OTHER">Otro</option>
+                        </select>
                     </div>
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
@@ -999,8 +1017,8 @@ export default function NuevoProyectoPage() {
                               <td></td>
                             </tr>
                             <tr style={{ backgroundColor: 'var(--primary-glow)' }}>
-                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.95rem', padding: '12px', color: 'var(--primary)' }}>TOTAL A PAGAR $</td>
-                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1.1rem', color: 'var(--primary)' }}>$ {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1rem', padding: '14px', color: 'var(--primary)' }}>TOTAL A PAGAR (IVA 15% INCLUIDO)</td>
+                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1.25rem', color: 'var(--primary)' }}>$ {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
                               <td></td>
                             </tr>
                           </tfoot>

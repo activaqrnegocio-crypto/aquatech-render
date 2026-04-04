@@ -14,6 +14,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
       client: true,
       phases: { orderBy: { displayOrder: 'asc' } },
       team: { include: { user: true } },
+      gallery: true,
       expenses: { 
         orderBy: { date: 'desc' },
         include: { user: true }

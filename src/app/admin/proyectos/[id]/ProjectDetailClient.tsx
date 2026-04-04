@@ -9,6 +9,7 @@ import ProjectUploader, { ProjectFile } from '@/components/ProjectUploader'
 import { formatToEcuador, ECUADOR_TIMEZONE, getLocalNow, formatDateEcuador, formatTimeEcuador } from '@/lib/date-utils'
 import MediaCapture from '@/components/MediaCapture'
 import { useSession } from 'next-auth/react'
+import { PROJECT_TYPES, translateType, PROJECT_CATEGORIES, translateCategory } from '@/lib/constants'
 
 export default function ProjectDetailClient({ project, availableOperators = [] }: any) {
   const router = useRouter()
@@ -442,10 +443,10 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const completedPhases = project.phases.filter((p: any) => p.status === 'COMPLETADA').length
   const progressPercent = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0
 
-  // Presupuesto vs Gastos
-  const theoreticalBudget = Number(project.estimatedBudget) || 0
-  const ivaAmount = theoreticalBudget * 0.15
-  const grandTotal = theoreticalBudget + ivaAmount
+  // Presupuesto vs Gastos (EstimatedBudget now includes 15% IVA)
+  const grandTotal = Number(project.estimatedBudget) || 0
+  const theoreticalBudget = grandTotal / 1.15
+  const ivaAmount = grandTotal - theoreticalBudget
   const realExpenses = project.expenses
     .filter((exp: any) => !exp.isNote)
     .reduce((acc: number, exp: any) => acc + Number(exp.amount), 0)
@@ -774,7 +775,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       const infoRows = [
         ['Título', fullProject.title],
         ['Estado', fullProject.status === 'LEAD' ? 'Negociando' : fullProject.status === 'ACTIVO' ? 'Activo' : fullProject.status],
-        ['Tipo', fullProject.type || 'N/A'],
+        ['Tipo', translateType(fullProject.type)],
         ['Ciudad', fullProject.city || 'N/A'],
         ['Dirección', fullProject.address || 'N/A'],
         ['Fecha de Inicio', formatDate(fullProject.startDate)],
@@ -810,8 +811,8 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           startY: y,
           head: [['Campo', 'Valores']],
           body: [
-            ['Categorías', categories.join(', ') || 'N/A'],
-            ['Tipos de Contrato', contracts.join(', ') || 'N/A'],
+            ['Categorías', categories.map(c => translateCategory(c)).join(', ') || 'N/A'],
+            ['Tipos de Contrato', contracts.map(c => translateType(c)).join(', ') || 'N/A'],
           ],
           theme: 'grid',
           headStyles: { fillColor: [56, 189, 248], textColor: 255 },
@@ -1019,7 +1020,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           </div>
           <h2 style={{ fontSize: '2rem', margin: 0 }}>{project.title}</h2>
           <p style={{ color: 'var(--text-muted)', marginTop: '5px', fontSize: '1.1rem' }}>
-            {project.type} {project.subtype ? `— ${project.subtype}` : ''}
+            {translateType(project.type)} {project.subtype ? `— ${project.subtype}` : ''}
           </p>
         </div>
         <div style={{ textAlign: 'right' }}>
@@ -1078,15 +1079,17 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/></svg>
                   {isDownloadingPdf ? 'Generando...' : 'Descargar Ficha Técnica'}
                 </button>
-                <button 
-                  className="btn btn-primary" 
-                  onClick={() => handleDownload(`/api/projects/${project.id}/report`, `Reporte_${project.title.replace(/ /g, '_')}.pdf`)}
-                  disabled={isGenerating}
-                  style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '10px', fontSize: '0.85rem' }}
-                >
-                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                  {isGenerating ? 'Generando...' : 'Generar Reporte de Obra'}
-                </button>
+                {(session?.user?.role !== 'OPERADOR' && session?.user?.role !== 'SUBCONTRATISTA') && (
+                  <button 
+                    className="btn btn-primary" 
+                    onClick={() => handleDownload(`/api/projects/${project.id}/report`, `Reporte_${project.title.replace(/ /g, '_')}.pdf`)}
+                    disabled={isGenerating}
+                    style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '10px 20px', borderRadius: '10px', fontSize: '0.85rem' }}
+                  >
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    {isGenerating ? 'Generando...' : 'Generar Reporte de Obra'}
+                  </button>
+                )}
               </>
             ) : (
               <>
@@ -1193,7 +1196,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {(() => {
                         try { return JSON.parse(project.categoryList || '[]').map((c: string, i: number) => (
-                          <span key={i} style={{ padding: '4px 12px', borderRadius: '16px', fontSize: '0.8rem', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: 'var(--primary)', fontWeight: '600' }}>{c}</span>
+                          <span key={i} style={{ padding: '4px 12px', borderRadius: '16px', fontSize: '0.8rem', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: 'var(--primary)', fontWeight: '600' }}>{translateCategory(c)}</span>
                         )) } catch { return null }
                       })()}
                     </div>
@@ -1223,7 +1226,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {(() => {
                         try { return JSON.parse(project.contractTypeList || '[]').map((c: string, i: number) => (
-                          <span key={i} style={{ padding: '4px 12px', borderRadius: '16px', fontSize: '0.8rem', backgroundColor: 'rgba(34, 197, 94, 0.1)', color: 'var(--success)', fontWeight: '600' }}>{c}</span>
+                          <span key={i} style={{ padding: '4px 12px', borderRadius: '16px', fontSize: '0.8rem', backgroundColor: 'rgba(34, 197, 94, 0.1)', color: 'var(--success)', fontWeight: '600' }}>{translateType(c)}</span>
                         )) } catch { return null }
                       })()}
                     </div>

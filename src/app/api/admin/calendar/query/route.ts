@@ -15,7 +15,14 @@ export async function POST(req: Request) {
     }
 
     const { query, currentDate } = await req.json()
-    const referenceDate = currentDate ? new Date(currentDate) : getLocalNow()
+    
+    let referenceDate: Date
+    try {
+      referenceDate = currentDate ? new Date(currentDate) : getLocalNow()
+      if (isNaN(referenceDate.getTime())) throw new Error('Invalid date')
+    } catch {
+      referenceDate = getLocalNow()
+    }
 
     // Fetch active operators 
     const operators = await prisma.user.findMany({
@@ -62,7 +69,8 @@ export async function POST(req: Request) {
     // Call Groq
     const groqKey = process.env.GROQ_API_KEY
     if (!groqKey) {
-      return NextResponse.json({ error: 'AI key not configured' }, { status: 500 })
+      console.warn('AI Assistant Warning: GROQ_API_KEY is missing.')
+      return NextResponse.json({ answer: 'El servicio de IA no está configurado (falta GROQ_API_KEY). Por favor contacta al administrador.' }, { status: 200 })
     }
 
     const systemPrompt = `Eres el "Asistente Ejecutivo" de Aquatech. 

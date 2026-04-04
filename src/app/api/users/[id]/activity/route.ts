@@ -10,7 +10,9 @@ export async function GET(
   try {
     const { id } = await params
     const session = await getServerSession(authOptions)
-    if (!session || (session.user as any).role !== 'ADMIN') {
+    
+    const { isAdmin } = await import('@/lib/rbac')
+    if (!session || !isAdmin((session.user as any).role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
@@ -108,8 +110,12 @@ export async function GET(
       })
     })
 
-    // Global sort (latest first)
-    timeline.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    // Global sort (latest first). Handle potential null timestamps safely.
+    timeline.sort((a, b) => {
+      const timeA = a.timestamp ? new Date(a.timestamp).getTime() : 0
+      const timeB = b.timestamp ? new Date(b.timestamp).getTime() : 0
+      return timeB - timeA
+    })
 
     return NextResponse.json({
       userId,

@@ -60,6 +60,36 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
   }, [initialQuote, prefetchedProject])
 
   const [items, setItems, removeItems] = useLocalStorage<BudgetItem[]>('quote_draft_items', initialItems)
+
+  // CRITICAL FIX: If we have an initialQuote (EDIT MODE), we MUST override the localStorage drafts 
+  // with the database values to ensure the user is editing the correct data.
+  useEffect(() => {
+    if (initialQuote) {
+      setClientData({
+        name: initialQuote.clientName || '',
+        ruc: initialQuote.clientRuc || '',
+        address: initialQuote.clientAddress || '',
+        phone: initialQuote.clientPhone || '',
+        attention: initialQuote.clientAttention || ''
+      });
+      setNotes(initialQuote.notes || '');
+      setValidUntil(initialQuote.validUntil ? new Date(initialQuote.validUntil).toISOString().split('T')[0] : '');
+      
+      if (initialQuote.items) {
+        setItems(initialQuote.items.map((item: any) => ({
+          materialId: item.materialId,
+          name: item.description || '',
+          quantity: Number(item.quantity || 1),
+          estimatedCost: Number(item.unitPrice || 0),
+          isTaxed: item.isTaxed ?? true,
+          discountPct: Number(item.discountPct || 0),
+          unit: item.material?.unit || 'UND',
+          code: item.material?.code || 'ESP'
+        })));
+      }
+    }
+  }, [initialQuote]); 
+
   const [_, __, removeClientData] = useLocalStorage('quote_draft_client', { name: '', ruc: '', address: '', phone: '', attention: '' }) 
   const [___, ____, removeNotes] = useLocalStorage('quote_draft_notes', '')
   const [_____, ______, removeDate] = useLocalStorage('quote_draft_date', '')

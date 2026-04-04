@@ -10,7 +10,9 @@ export async function GET(
   try {
     const { id } = await params
     const session = await getServerSession(authOptions)
-    if (!session || (session.user as any).role !== 'ADMIN') {
+    
+    const { isAdmin } = await import('@/lib/rbac')
+    if (!session || !isAdmin((session.user as any).role)) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 

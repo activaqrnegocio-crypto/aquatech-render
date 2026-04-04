@@ -354,16 +354,25 @@ export default function Sidebar() {
         </nav>
 
         <div className="sidebar-footer">
-          <div className="sidebar-user" onClick={() => signOut({ callbackUrl: '/admin/login' })}>
-            <div className="sidebar-avatar">{userInitials}</div>
-            <div className="sidebar-user-info">
-              <div className="sidebar-user-name">{effectiveName}</div>
-              <div className="sidebar-user-role">
-                {effectiveRole === 'ADMIN' ? 'Administrador' : 
-                 effectiveRole === 'ADMINISTRADORA' ? 'Administradora' : 
-                 effectiveRole === 'SUBCONTRATISTA' ? 'Subcontratista' : 'Operador'}
+          <div className={`sidebar-user ${(effectiveRole === 'ADMIN' || effectiveRole === 'ADMINISTRADORA') ? 'admin-no-profile' : ''}`} onClick={() => signOut({ callbackUrl: '/admin/login' })}>
+            {(effectiveRole !== 'ADMIN' && effectiveRole !== 'ADMINISTRADORA') ? (
+              <>
+                <div className="sidebar-avatar">{userInitials}</div>
+                <div className="sidebar-user-info">
+                  <div className="sidebar-user-name">{effectiveName}</div>
+                  <div className="sidebar-user-role">
+                    {effectiveRole === 'SUBCONTRATISTA' ? 'Subcontratista' : 'Operador'}
+                  </div>
+                </div>
+              </>
+            ) : (
+              <div className="sidebar-user-info">
+                <div className="sidebar-user-name">Cerrar Sesión</div>
+                <div className="sidebar-user-role">
+                  {effectiveRole === 'ADMIN' ? 'Administrador' : 'Administradora'}
+                </div>
               </div>
-            </div>
+            )}
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
               <polyline points="16 17 21 12 16 7" />
