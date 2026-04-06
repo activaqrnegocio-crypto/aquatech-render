@@ -3,6 +3,7 @@ import { prisma as db } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import HeadlineSelector from '@/components/marketing/HeadlineSelector'
+import MarketingCalendar from '@/components/marketing/MarketingCalendar'
 // Importaremos más componentes según la fase (DualEditor, ClusterSelector)
 
 export default async function PipelineDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -105,6 +106,10 @@ export default async function PipelineDetailPage({ params }: { params: Promise<{
         )}
 
         {/* We will add more status handlers in next phases */}
+      </div>
+
+      <div className="mt-5">
+        <MarketingCalendar />
       </div>
       
     </div>

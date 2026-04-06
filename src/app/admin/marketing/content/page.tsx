@@ -16,6 +16,18 @@ export default async function ContentPipelinesPage() {
 
   return (
     <div className="pipelines-page">
+      <Link 
+        href="/admin/marketing" 
+        className="btn btn-outline-secondary mb-4"
+        style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', border: 'none', background: 'none', textDecoration: 'none', color: 'var(--text-color)', fontSize: '0.9rem' }}
+      >
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+          <line x1="19" y1="12" x2="5" y2="12"></line>
+          <polyline points="12 19 5 12 12 5"></polyline>
+        </svg>
+        Volver a Marketing
+      </Link>
+
       <div className="page-header d-flex justify-content-between align-items-center mb-4">
         <div>
           <h1 className="page-title" style={{ fontSize: '2rem', fontWeight: 'bold', color: 'var(--text-color)' }}>

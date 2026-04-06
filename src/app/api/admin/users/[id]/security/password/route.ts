@@ -11,9 +11,9 @@ export async function POST(
   try {
     const session = await getServerSession(authOptions)
     
-    // Only 'ADMIN' role (and specifically the super-admin ID 1) can reset passwords
-    if (!session || (session.user as any).role !== 'ADMIN' || Number((session.user as any).id) !== 1) {
-      return NextResponse.json({ error: 'Unauthorized: Solo el administrador de mayor nivel puede realizar esta acción.' }, { status: 401 })
+    // Only 'ADMIN' and 'SUPERADMIN' roles can reset passwords
+    if (!session || !['ADMIN', 'SUPERADMIN'].includes((session.user as any).role)) {
+      return NextResponse.json({ error: 'Unauthorized: Solo los administradores pueden realizar esta acción.' }, { status: 401 })
     }
 
     const { id } = await params

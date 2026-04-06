@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo, useEffect } from 'react'
+import { useState, useMemo, useEffect, useRef } from 'react'
 import MediaCapture from '@/components/MediaCapture'
 
 export interface BudgetItem {
@@ -43,6 +43,22 @@ export default function BudgetBuilder({
   // Global Items State
   const [globalDescription, setGlobalDescription] = useState('')
   const [globalPrice, setGlobalPrice] = useState('')
+
+  // Dropdown visibility and ref
+  const [showDropdown, setShowDropdown] = useState(false)
+  const dropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setShowDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // Sync internal items with parent if provided initially
   useEffect(() => {
@@ -159,15 +175,19 @@ export default function BudgetBuilder({
                 className="form-input" 
                 placeholder="🔍 Buscar en catálogo o inventario..." 
                 value={searchMaterial} 
-                onChange={e => setSearchMaterial(e.target.value)} 
+                onChange={e => {
+                  setSearchMaterial(e.target.value)
+                  setShowDropdown(true)
+                }} 
+                onFocus={() => setShowDropdown(true)}
                 style={{ paddingLeft: '35px' }}
               />
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', opacity: 0.5 }}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
             </div>
-            {filteredMaterials.length > 0 && (
-              <div className="catalog-dropdown">
+            {showDropdown && filteredMaterials.length > 0 && (
+              <div className="catalog-dropdown" ref={dropdownRef}>
                 {filteredMaterials.map(m => (
-                  <div key={m.id} onClick={() => selectFromCatalog(m)} className="catalog-item">
+                  <div key={m.id} onClick={() => { selectFromCatalog(m); setShowDropdown(false); }} className="catalog-item">
                     <div style={{ fontWeight: '600', color: 'var(--text)', display: 'flex', justifyContent: 'space-between' }}>
                       <span>{m.name}</span>
                       <span style={{ color: 'var(--primary)', fontSize: '0.8rem' }}>Seleccionar &rarr;</span>
@@ -197,7 +217,7 @@ export default function BudgetBuilder({
               <input type="text" className="form-input" value={customDescription} onChange={e => setCustomDescription(e.target.value)} placeholder="Ej: Válvula de bola 2 pulgadas" />
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '15px' }}>
               <div style={inputGroupStyle}>
                 <label style={labelStyle}>Precio Unitario ($)</label>
                 <input type="number" step="0.01" className="form-input" value={customPrice} onChange={e => setCustomPrice(e.target.value)} placeholder="0.00" />
@@ -208,7 +228,7 @@ export default function BudgetBuilder({
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '20px', marginBottom: '20px' }}>
                 <label className="checkbox-label">
                   <input type="checkbox" checked={customIsTaxed} onChange={e => setCustomIsTaxed(e.target.checked)} />
                   <span className="text-sm">Aplica IVA 15%</span>
@@ -342,7 +362,7 @@ export default function BudgetBuilder({
         }
         .budget-builder-grid {
           display: grid;
-          grid-template-columns: 1fr 1.5fr;
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1.5fr);
           gap: 30px;
         }
         .catalog-dropdown {
@@ -404,11 +424,12 @@ export default function BudgetBuilder({
         .table-container {
           border: 1px solid var(--border);
           border-radius: 12px;
-          overflow: hidden;
+          overflow-x: auto;
           background-color: var(--bg-card);
         }
         .budget-table {
           width: 100%;
+          min-width: 340px;
           border-collapse: collapse;
           font-size: 0.9rem;
         }
@@ -486,6 +507,7 @@ export default function BudgetBuilder({
         }
         .builder-actions .btn {
           flex: 1;
+          min-width: 140px;
         }
         .checkbox-label {
           display: flex;
@@ -510,7 +532,63 @@ export default function BudgetBuilder({
 
         @media (max-width: 992px) {
           .budget-builder-grid {
-            grid-template-columns: 1fr;
+            grid-template-columns: 1fr !important;
+            gap: 20px !important;
+          }
+          .budget-table th, .budget-table td {
+            padding: 8px 4px !important;
+            font-size: 0.7rem !important;
+          }
+          .tfoot-label {
+            font-size: 0.65rem !important;
+            padding: 8px !important;
+          }
+          .tfoot-value {
+            font-size: 0.75rem !important;
+          }
+          .tfoot-label-total {
+            font-size: 0.75rem !important;
+            padding: 10px !important;
+          }
+          .tfoot-value-total {
+            font-size: 1rem !important;
+          }
+          .edit-box, .global-box {
+            padding: 15px !important;
+          }
+          .builder-actions {
+            padding: 10px 0 !important;
+            gap: 8px !important;
+          }
+          .builder-actions .btn {
+            padding: 8px !important;
+            font-size: 0.75rem !important;
+            min-width: 120px !important;
+          }
+        }
+
+        @media (max-width: 480px) {
+          .budget-table th:nth-child(1), .budget-table td:nth-child(1) {
+            display: none;
+          }
+          .budget-table th:nth-child(6), .budget-table td:nth-child(6) {
+            width: 30px !important;
+          }
+          .item-desc {
+            max-width: 100px !important;
+            font-size: 0.65rem !important;
+          }
+          .tfoot-label, .tfoot-label-total {
+            padding: 6px 4px !important;
+            font-size: 0.6rem !important;
+          }
+          .tfoot-value-total {
+            font-size: 0.9rem !important;
+          }
+          .delete-btn {
+            width: 22px !important;
+            height: 22px !important;
+            font-size: 1rem !important;
           }
         }
       `}</style>

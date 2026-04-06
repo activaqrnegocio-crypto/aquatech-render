@@ -107,12 +107,12 @@ export default function AppointmentModal({
       backgroundColor: 'rgba(0,0,0,0.7)',
       backdropFilter: 'blur(4px)',
       display: 'flex',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       justifyContent: 'center',
       zIndex: 1000,
-      padding: 'var(--space-md)'
+      padding: '20px'
     }}>
-      <div className="card" style={{ width: '100%', maxWidth: '500px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-active)' }}>
+      <div className="card" style={{ width: '100%', maxWidth: '95vw', maxHeight: 'calc(100vh - 40px)', overflowY: 'auto', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-active)' }}>
         <div className="card-header">
           <h3 className="card-title">{initialData?.id ? 'Editar Agendamiento' : 'Nuevo Agendamiento'}</h3>
           <button className="btn btn-ghost" onClick={onClose} type="button">✕</button>
@@ -165,7 +165,7 @@ export default function AppointmentModal({
             </select>
           </div>
 
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 'var(--space-md)' }}>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 'var(--space-md)' }}>
             <div className="form-group">
               <label className="form-label">Inicio</label>
               <input 
@@ -212,7 +212,7 @@ export default function AppointmentModal({
             />
           </div>
 
-          <div style={{ display: 'flex', gap: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
+          <div style={{ display: 'flex', flexWrap: 'wrap', gap: 'var(--space-md)', marginTop: 'var(--space-md)' }}>
             {initialData?.id && onDelete && (
               <button 
                 type="button" 

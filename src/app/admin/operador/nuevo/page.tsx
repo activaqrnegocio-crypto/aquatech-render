@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -19,6 +19,7 @@ export default function NuevoProyectoPage() {
   const [projectData, setProjectData] = useState({
     title: '',
     type: 'INSTALLATION',
+    subtype: '',
     address: '',
     city: '',
     startDate: new Date().toISOString().split('T')[0],
@@ -26,6 +27,7 @@ export default function NuevoProyectoPage() {
     categoryList: [] as string[],
     otherCategory: '',
     contractTypeList: [] as string[],
+    otherContractType: '',
     technicalSpecs: {} as any,
     specsAudioUrl: '',
     status: 'LEAD'
@@ -105,6 +107,24 @@ export default function NuevoProyectoPage() {
   const [clients, setClients] = useState<any[]>([])
   const [clientSearchText, setClientSearchText] = useState('')
   const [showClientDropdown, setShowClientDropdown] = useState(false)
+  const clientDropdownRef = useRef<HTMLDivElement>(null)
+  const [showMaterialDropdown, setShowMaterialDropdown] = useState(false)
+  const materialDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(event.target as Node)) {
+        setShowClientDropdown(false)
+      }
+      if (materialDropdownRef.current && !materialDropdownRef.current.contains(event.target as Node)) {
+        setShowMaterialDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // Step 3: Fases
   const [phases, setPhases] = useState<any[]>([
@@ -182,12 +202,13 @@ export default function NuevoProyectoPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...projectData,
+          subtype: projectData.type === 'OTHER' ? projectData.subtype : '',
           client: clientData,
           phases: phases,
           team: selectedTeam,
           budgetItems: budgetItems,
           categoryList: projectData.categoryList.map(c => c === 'OTRO' ? (projectData.otherCategory || 'OTRO') : c),
-          contractTypeList: projectData.contractTypeList,
+          contractTypeList: projectData.contractTypeList.map(c => c === 'OTHER' ? (projectData.otherContractType || 'OTHER') : c),
           technicalSpecs: projectData.technicalSpecs,
           specsAudioUrl: projectData.specsAudioUrl,
           specsTranscription: projectData.technicalSpecs.description,
@@ -392,7 +413,7 @@ export default function NuevoProyectoPage() {
   }
 
   return (
-    <div className="p-6" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="p-6 new-project-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
       <div className="dashboard-header mb-6">
         <div>
           <h2>Crear Nuevo Proyecto</h2>
@@ -402,12 +423,12 @@ export default function NuevoProyectoPage() {
 
       {/* Stepper Wizard Component */}
       <div className="card mb-6" style={{ padding: '0', overflow: 'hidden' }}>
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-deep)', overflowX: 'auto', whiteSpace: 'nowrap' }}>
+        <div className="wizard-stepper" style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-deep)', overflowX: 'auto', whiteSpace: 'nowrap', WebkitOverflowScrolling: 'touch' as any }}>
           {[1, 2, 3, 4, 5].map((num, idx) => (
-            <div key={num} style={{
+            <div key={num} className="wizard-step" style={{
               flex: '1 0 auto', 
-              minWidth: '100px',
-              padding: '15px', 
+              minWidth: '80px',
+              padding: '12px 10px', 
               textAlign: 'center', 
               borderBottom: step === num ? '3px solid var(--primary)' : '3px solid transparent',
               color: step === num ? 'var(--primary)' : (step > num ? 'var(--success)' : 'var(--text-muted)'),
@@ -415,16 +436,16 @@ export default function NuevoProyectoPage() {
               cursor: 'default',
               position: 'relative'
             }}>
-              <div>Paso {num}</div>
-              <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-                {num === 1 ? 'General' : num === 2 ? 'Cliente' : num === 3 ? 'Especific.' : num === 4 ? 'Fases' : 'Presupuesto'}
+              <div style={{ fontSize: '0.85rem' }}>{num}</div>
+              <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                {num === 1 ? 'General' : num === 2 ? 'Cliente' : num === 3 ? 'Especific.' : num === 4 ? 'Fases' : 'Presup.'}
               </div>
               {idx < 4 && <div style={{ position: 'absolute', right: 0, top: '20%', height: '60%', width: '1px', backgroundColor: 'var(--border-color)' }} />}
             </div>
           ))}
         </div>
 
-        <div style={{ padding: '30px' }}>
+        <div className="wizard-content" style={{ padding: '20px' }}>
           {error && (
             <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', padding: '15px', borderRadius: '8px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
@@ -454,6 +475,19 @@ export default function NuevoProyectoPage() {
                             <option value="OTHER">Otro</option>
                         </select>
                     </div>
+
+                    {projectData.type === 'OTHER' && (
+                        <div style={inputGroupStyle} className="animate-fade-in">
+                            <label style={labelStyle}>Especificar otro tipo de proyecto *</label>
+                            <input 
+                                type="text" 
+                                className="form-input" 
+                                placeholder="Ej. Remodelación" 
+                                value={projectData.subtype} 
+                                onChange={e => setProjectData({...projectData, subtype: e.target.value})} 
+                            />
+                        </div>
+                    )}
 
                     <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px' }}>
                         <div style={inputGroupStyle}>
@@ -496,6 +530,19 @@ export default function NuevoProyectoPage() {
                             })}
                         </div>
                     </div>
+                    
+                    {projectData.contractTypeList.includes('OTHER') && (
+                        <div style={{ ...inputGroupStyle, marginTop: '15px' }} className="animate-fade-in">
+                            <label style={labelStyle}>Especificar otro tipo de contrato *</label>
+                            <input 
+                                type="text" 
+                                className="form-input" 
+                                placeholder="Ej: Asesoría Técnica" 
+                                value={projectData.otherContractType} 
+                                onChange={e => setProjectData({...projectData, otherContractType: e.target.value})} 
+                            />
+                        </div>
+                    )}
                 </div>
 
                 <div>
@@ -549,7 +596,7 @@ export default function NuevoProyectoPage() {
               <h3 style={{ marginBottom: '20px', color: 'var(--text)' }}>Información del Cliente</h3>
               
               <div style={{ ...inputGroupStyle, display: 'flex', gap: '15px', alignItems: 'flex-end', flexWrap: 'wrap' }}>
-                <div style={{ flex: 1, position: 'relative' }}>
+                <div style={{ flex: 1, position: 'relative' }} ref={clientDropdownRef}>
                   <label style={labelStyle}>¿Cliente Existente o Nuevo?</label>
                   <div style={{ position: 'relative' }}>
                     <input 
@@ -677,7 +724,7 @@ export default function NuevoProyectoPage() {
               
               {/* Audio/Video Spec Section */}
               <div className="mb-8">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                <div className="responsive-2col-equal" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
                   <div className="card-shadow-hover" style={{ backgroundColor: 'var(--bg-surface)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border)' }}>
                     <h4 style={{ margin: '0 0 15px 0', fontSize: '0.9rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
@@ -844,16 +891,16 @@ export default function NuevoProyectoPage() {
                 <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--primary)' }}>$ {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
               </div>
 
-              <div style={{ padding: '15px', backgroundColor: 'var(--primary-glow)', border: '1px solid var(--primary)', borderRadius: '8px', marginBottom: '25px', display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+              <div style={{ padding: '15px', backgroundColor: 'var(--primary-glow)', border: '1px solid var(--primary)', borderRadius: '8px', marginBottom: '25px', display: 'flex', gap: '15px', alignItems: 'flex-start' }} className="edit-box">
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
                 <div style={{ color: 'var(--text)' }}>
                     <h4 style={{ margin: '0 0 5px 0', fontSize: '1rem', color: 'var(--primary)' }}>Generación de Presupuesto Profesional</h4>
-                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>Agrega materiales del inventario o partidas personalizadas. Los ítems del catálogo pueden ser <strong>editados en cantidad y precio</strong> antes de añadirlos. Todo se desglosará con el **IVA 15%** en el documento final.</p>
+                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>Agrega materiales del inventario o partidas personalizadas. Los ítems del catálogo pueden ser <strong>editados en cantidad y precio</strong> antes de añadirlos.</p>
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '30px' }} className="responsive-grid">
-                <div>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '20px' }} className="responsive-grid">
+                <div ref={materialDropdownRef}>
                   <h4 style={{ fontSize: '0.9rem', marginBottom: '15px', color: 'var(--text-secondary)' }}>Añadir Materiales o Servicios</h4>
                   
                   {/* Buscador de Catálogo */}
@@ -863,9 +910,13 @@ export default function NuevoProyectoPage() {
                       className="form-input" 
                       placeholder="Buscar en catálogo..." 
                       value={searchMaterial} 
-                      onChange={e => setSearchMaterial(e.target.value)} 
+                      onChange={e => {
+                        setSearchMaterial(e.target.value)
+                        setShowMaterialDropdown(true)
+                      }} 
+                      onFocus={() => setShowMaterialDropdown(true)}
                     />
-                    {filteredMaterials.length > 0 && (
+                    {showMaterialDropdown && filteredMaterials.length > 0 && (
                       <div style={{ 
                         position: 'absolute', 
                         top: '100%', 
@@ -900,10 +951,10 @@ export default function NuevoProyectoPage() {
                   </div>
                   
                   {/* Custom specific materials (UND) */}
-                  <div id="material-edit-box" style={{ padding: '20px', border: selectedInventoryId ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '12px', backgroundColor: 'var(--bg-card)', marginBottom: '15px', position: 'relative' }}>
+                  <div id="material-edit-box" className="edit-box" style={{ border: selectedInventoryId ? '2px solid var(--primary)' : '1px solid var(--border)', borderRadius: '12px', backgroundColor: 'var(--bg-card)', marginBottom: '15px', position: 'relative' }}>
                     {selectedInventoryId && (
                       <div style={{ position: 'absolute', top: '-12px', left: '20px', backgroundColor: 'var(--primary)', color: 'var(--bg-deep)', padding: '2px 10px', borderRadius: '4px', fontSize: '0.7rem', fontWeight: 'bold' }}>
-                        CONFIGURANDO MATERIAL DEL CATÁLOGO
+                        CONFIGURANDO ÍTEM DEL CATÁLOGO
                       </div>
                     )}
                     
@@ -916,47 +967,43 @@ export default function NuevoProyectoPage() {
 
                     <div style={inputGroupStyle}>
                       <label style={labelStyle}>Descripción</label>
-                      <input type="text" className="form-input" value={customDescription} onChange={e => setCustomDescription(e.target.value)} placeholder="Ej: Válvula de bola 2 pulgadas" />
+                      <input type="text" className="form-input" value={customDescription} onChange={e => setCustomDescription(e.target.value)} placeholder="Ej: Válvula de bola" />
                     </div>
-                    <div className="flex items-center gap-4 mb-4">
-                      <label className="flex items-center gap-2 cursor-pointer">
-                        <input type="checkbox" checked={customIsTaxed} onChange={e => setCustomIsTaxed(e.target.checked)} className="form-checkbox" />
-                        <span className="text-sm">Aplica IVA 15%</span>
-                      </label>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(110px, 1fr))', gap: '10px', marginBottom: '15px' }}>
                       <div style={inputGroupStyle}>
-                        <label style={labelStyle}>Precio Unitario ($)</label>
+                        <label style={labelStyle}>Precio Unit. ($)</label>
                         <input type="number" className="form-input" value={customPrice} onChange={e => setCustomPrice(e.target.value)} placeholder="0.00" />
                       </div>
                       <div style={inputGroupStyle}>
-                        <label style={labelStyle}>Cantidad (UND)</label>
+                        <label style={labelStyle}>Cantidad</label>
                         <input type="number" className="form-input" value={customQty} onChange={e => setCustomQty(Number(e.target.value))} />
                       </div>
                     </div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '15px', cursor: 'pointer' }}>
+                      <input type="checkbox" checked={customIsTaxed} onChange={e => setCustomIsTaxed(e.target.checked)} style={{ width: '16px', height: '16px' }} />
+                      <span style={{ fontSize: '0.8rem', color: 'var(--text)' }}>Aplica IVA 15%</span>
+                    </label>
                     <button type="button" className={`btn ${selectedInventoryId ? 'btn-primary' : 'btn-secondary'} btn-sm btn-full`} onClick={() => addCustomBudgetItem(false)} disabled={!customDescription || !customPrice}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block'}}><path d="M12 5v14M5 12h14"/></svg>
-                      {selectedInventoryId ? 'Confirmar e Incluir al Presupuesto' : 'Añadir Material Extra'}
+                      {selectedInventoryId ? 'Actualizar e Incluir' : 'Añadir Material Extra'}
                     </button>
                   </div>
                   
                   {/* Global items (Servicios) */}
-                  <div style={{ padding: '20px', border: '1px solid var(--primary)', borderRadius: '12px', backgroundColor: 'var(--primary-glow)' }}>
+                  <div className="global-box" style={{ border: '1px solid var(--primary)', borderRadius: '12px', backgroundColor: 'var(--primary-glow)', padding: '15px' }}>
                     <label style={{ ...labelStyle, color: 'var(--primary)', borderBottom: '1px solid rgba(56, 189, 248, 0.2)', paddingBottom: '5px', marginBottom: '15px', display: 'flex', alignItems: 'center' }}>
                       <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '8px'}}><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-                      Añadir Servicio / Ítem GLOBAL
+                      Servicio / Ítem GLOBAL
                     </label>
                     <div style={inputGroupStyle}>
-                      <label style={labelStyle}>Descripción del Servicio GLOBAL *</label>
-                      <input type="text" className="form-input" value={globalDescription} onChange={e => setGlobalDescription(e.target.value)} placeholder="Ej: Construcción de Piscina 9M x 3M" />
+                      <label style={labelStyle}>Descripción GLOBAL *</label>
+                      <input type="text" className="form-input" value={globalDescription} onChange={e => setGlobalDescription(e.target.value)} placeholder="Ej: Construcción de Piscina" />
                     </div>
                     <div style={inputGroupStyle}>
-                        <label style={labelStyle}>Precio Unitario ($) *</label>
+                        <label style={labelStyle}>Precio Total ($) *</label>
                         <input type="number" className="form-input" value={globalPrice} onChange={e => setGlobalPrice(e.target.value)} placeholder="0.00" />
                     </div>
                     <button type="button" className="btn btn-primary btn-sm btn-full" onClick={() => { addCustomBudgetItem(true); setPdfPreviewUrl(null); }} disabled={!globalDescription || !globalPrice}>
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{marginRight: '6px', display: 'inline-block'}}><path d="M12 5v14M5 12h14"/></svg>
-                      Añadir a Presupuesto
+                      Añadir al Presupuesto
                     </button>
                   </div>
                 </div>
@@ -966,34 +1013,34 @@ export default function NuevoProyectoPage() {
                     <h4 style={{ fontSize: '0.9rem', margin: 0, color: 'var(--text-secondary)' }}>Resumen del Presupuesto</h4>
                   </div>
                   <div style={{ border: '1px solid var(--border)', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'var(--bg-card)' }}>
-                    <div style={{ overflowX: 'auto' }}>
-                      <table className="table">
+                    <div style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+                      <table className="table" style={{ width: '100%', minWidth: '340px' }}>
                         <thead>
                           <tr>
-                            <th style={{ backgroundColor: 'var(--bg-deep)', width: '50px' }}>ITEM</th>
-                            <th style={{ backgroundColor: 'var(--bg-deep)' }}>DESCRIPCION</th>
-                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'center' }}>CANTIDAD</th>
-                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'right' }}>P/UNITARIO</th>
-                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'right' }}>TOTAL</th>
-                            <th style={{ backgroundColor: 'var(--bg-deep)', width: '40px' }}></th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', width: '25px', fontSize: '0.65rem', padding: '10px 4px' }}>#</th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', fontSize: '0.65rem', padding: '10px 4px' }}>DESCRIPCIÓN</th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'center', fontSize: '0.65rem', padding: '10px 4px', width: '40px' }}>CANT.</th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'right', fontSize: '0.65rem', padding: '10px 4px', width: '55px' }}>UNIT</th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', textAlign: 'right', fontSize: '0.65rem', padding: '10px 4px', width: '55px' }}>TOTAL</th>
+                            <th style={{ backgroundColor: 'var(--bg-deep)', width: '25px', padding: '10px 4px' }}></th>
                           </tr>
                         </thead>
                         <tbody>
                           {budgetItems.length === 0 ? (
-                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontStyle: 'italic' }}>No hay items en el presupuesto</td></tr>
+                            <tr><td colSpan={6} style={{ textAlign: 'center', padding: '40px', color: 'var(--text-muted)', fontStyle: 'italic', fontSize: '0.8rem' }}>No hay ítems registrados</td></tr>
                           ) : (
                             budgetItems.map((item, idx) => (
                               <tr key={idx}>
-                                <td style={{ fontSize: '0.75rem', textAlign: 'center' }}>{idx + 1}</td>
-                                <td style={{ fontSize: '0.85rem', fontWeight: '500', wordBreak: 'break-word', whiteSpace: 'pre-wrap', maxWidth: '250px' }}>{item.name}</td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', display: 'block' }}>{item.unit || 'UND'}</span>
-                                  {item.quantity === 'GLOBAL' ? 'GLOBAL' : Number(item.quantity).toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                <td style={{ fontSize: '0.65rem', textAlign: 'center', padding: '8px 4px' }}>{idx + 1}</td>
+                                <td style={{ fontSize: '0.65rem', fontWeight: '500', padding: '8px 4px' }}>{item.name}</td>
+                                <td style={{ textAlign: 'center', fontSize: '0.65rem', padding: '8px 4px' }}>
+                                  <span style={{ fontSize: '0.55rem', color: 'var(--text-muted)', display: 'block' }}>{item.unit || 'UND'}</span>
+                                  {item.quantity === 'GLOBAL' ? 'GLB' : Number(item.quantity).toLocaleString(undefined, { minimumFractionDigits: 0 })}
                                 </td>
-                                <td style={{ textAlign: 'right', fontSize: '0.85rem' }}>$ {Number(item.estimatedCost).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)' }}>$ {((item.quantity === 'GLOBAL' ? 1 : Number(item.quantity)) * item.estimatedCost).toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
-                                <td style={{ textAlign: 'center' }}>
-                                  <button type="button" onClick={() => removeBudgetItem(idx)} style={{ color: 'var(--danger)', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1.2rem', padding: '0 5px' }}>&times;</button>
+                                <td style={{ textAlign: 'right', fontSize: '0.65rem', padding: '8px 4px' }}>${Number(item.estimatedCost).toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
+                                <td style={{ textAlign: 'right', fontWeight: '700', color: 'var(--primary)', fontSize: '0.65rem', padding: '8px 4px' }}>${((item.quantity === 'GLOBAL' ? 1 : Number(item.quantity)) * item.estimatedCost).toLocaleString(undefined, { minimumFractionDigits: 0 })}</td>
+                                <td style={{ textAlign: 'center', padding: '8px 4px' }}>
+                                  <button type="button" onClick={() => removeBudgetItem(idx)} style={{ color: 'var(--danger)', border: 'none', background: 'none', cursor: 'pointer', fontSize: '1rem' }}>&times;</button>
                                 </td>
                               </tr>
                             ))
@@ -1002,23 +1049,23 @@ export default function NuevoProyectoPage() {
                         {budgetItems.length > 0 && (
                           <tfoot style={{ backgroundColor: 'var(--bg-deep)' }}>
                             <tr>
-                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', padding: '10px' }}>SUBTOTAL TARIFA 0%</td>
-                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.9rem' }}>$ {subtotal0.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.75rem', padding: '8px' }}>SUBTOTAL 0%</td>
+                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.75rem' }}>$ {subtotal0.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                               <td></td>
                             </tr>
                             <tr>
-                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', padding: '10px' }}>SUBTOTAL TARIFA 15%</td>
-                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.9rem' }}>$ {subtotal15.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.75rem', padding: '8px' }}>SUBTOTAL 15%</td>
+                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.75rem' }}>$ {subtotal15.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                               <td></td>
                             </tr>
                             <tr>
-                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', padding: '10px' }}>IVA 15%</td>
-                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.9rem' }}>$ {ivaAmount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.75rem', padding: '8px' }}>IVA 15%</td>
+                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.75rem' }}>$ {ivaAmount.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                               <td></td>
                             </tr>
                             <tr style={{ backgroundColor: 'var(--primary-glow)' }}>
-                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1rem', padding: '14px', color: 'var(--primary)' }}>TOTAL A PAGAR (IVA 15% INCLUIDO)</td>
-                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1.25rem', color: 'var(--primary)' }}>$ {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</td>
+                              <td colSpan={4} style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '0.85rem', padding: '12px', color: 'var(--primary)' }}>TOTAL ESTIMADO</td>
+                              <td style={{ textAlign: 'right', fontWeight: 'bold', fontSize: '1rem', color: 'var(--primary)' }}>$ {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 1 })}</td>
                               <td></td>
                             </tr>
                           </tfoot>
@@ -1036,7 +1083,7 @@ export default function NuevoProyectoPage() {
                         onClick={() => generatePDF(true)}
                         style={{ flex: 1 }}
                       >
-                        Actualizar Vista Previa
+                        Vista Previa
                       </button>
                       <button 
                         type="button" 
@@ -1065,12 +1112,25 @@ export default function NuevoProyectoPage() {
                   )}
                 </div>
               </div>
+
+              {/* Notas del presupuesto - visible en todos los dispositivos */}
+              <div style={{ marginTop: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.85rem' }}>Notas / Observaciones del Presupuesto</label>
+                <textarea 
+                  className="form-input" 
+                  rows={3} 
+                  placeholder="Notas adicionales que aparecerán en el documento PDF..." 
+                  value={projectData.technicalSpecs.description || ''} 
+                  onChange={e => updateSpec('description', e.target.value)}
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+              </div>
             </div>
           )}
         </div>
 
         {/* Unified Project Uploader (Shows in all steps) */}
-        <div style={{ padding: '0 30px 30px 30px' }}>
+        <div style={{ padding: '0 20px 20px 20px' }}>
           <ProjectUploader 
             files={uploadedFiles} 
             onAddFile={(file) => setUploadedFiles(prev => [...prev, file])}
@@ -1080,7 +1140,7 @@ export default function NuevoProyectoPage() {
         </div>
 
         {/* Action Buttons */}
-        <div style={{ padding: '20px 30px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ padding: '15px 12px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '8px' }}>
           {step > 1 ? (
             <button type="button" className="btn btn-ghost" onClick={() => { setError(''); setStep(s => s - 1) }} disabled={loading}>
               &larr; Volver
@@ -1100,6 +1160,60 @@ export default function NuevoProyectoPage() {
           ) : null}
         </div>
       </div>
+
+      {/* Responsive styles for mobile */}
+      <style jsx>{`
+        @media (max-width: 768px) {
+          .new-project-page {
+            padding: 8px !important;
+          }
+          .wizard-content {
+            padding: 12px !important;
+          }
+          .responsive-2col-equal {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+          .btn-sm {
+            padding: 6px 12px !important;
+            font-size: 0.75rem !important;
+          }
+          .edit-box, .global-box {
+            padding: 10px !important;
+          }
+          .form-input {
+            padding: 6px 8px !important;
+            font-size: 0.8rem !important;
+          }
+          .table th, .table td {
+            padding: 10px 2px !important;
+            font-size: 0.6rem !important;
+          }
+          .wizard-steps {
+            gap: 8px !important;
+            padding: 8px !important;
+          }
+          .responsive-grid {
+             grid-template-columns: 1fr !important;
+             gap: 12px !important;
+          }
+          h3 { font-size: 1.1rem !important; }
+          h4 { font-size: 0.9rem !important; }
+        }
+        .edit-box {
+          padding: 20px;
+        }
+        .global-box {
+          padding: 20px;
+        }
+        .wizard-stepper::-webkit-scrollbar {
+          display: none;
+        }
+        .wizard-stepper {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   )
 }

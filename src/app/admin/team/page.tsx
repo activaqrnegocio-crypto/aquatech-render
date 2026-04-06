@@ -121,7 +121,7 @@ export default function TeamPage() {
 
   return (
     <div className="operator-dashboard">
-      <div className="operator-header">
+      <div className="operator-header" style={{ marginBottom: '30px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
         <div>
           <h2 className="page-title">Gestión de Equipo</h2>
           <p className="page-subtitle">Administra los accesos y funciones de tu personal.</p>
@@ -129,7 +129,7 @@ export default function TeamPage() {
         <button 
           className="btn btn-primary" 
           onClick={() => setShowModal(true)}
-          style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '12px 24px' }}
+          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', padding: '12px 24px', width: '100%', maxWidth: '280px' }}
         >
           <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
             <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><path d="M20 8v6M23 11h-6"/>
@@ -334,11 +334,11 @@ function UserCard({ user, onDelete, formatDate, currentUserRole }: { user: any, 
   return (
     <Link 
       href={`/admin/team/${user.id}`}
-      className="card h-full p-0 overflow-hidden" style={{ 
+      className="card h-full p-0 overflow-hidden user-card-mobile" style={{ 
       display: 'block', textDecoration: 'none',
       borderRadius: '24px', 
       border: isSuperAdminUser ? `2px solid ${statusColor}40` : '1px solid var(--border-color)',
-      minHeight: '340px',
+      minHeight: '280px',
       transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
       position: 'relative',
       boxShadow: isSuperAdminUser ? `0 20px 40px ${statusColor}10` : 'none'
@@ -354,56 +354,56 @@ function UserCard({ user, onDelete, formatDate, currentUserRole }: { user: any, 
 
         <div style={{ position: 'relative', zIndex: 1, display: 'flex', flexDirection: 'column', height: '100%', justifyContent: 'space-between' }}>
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '24px' }}>
-              <div style={{ 
-                  padding: '6px 14px', 
-                  borderRadius: '20px', 
-                  fontSize: '0.7rem', 
-                  fontWeight: '800',
-                  backgroundColor: `${statusColor}15`,
-                  color: statusColor,
-                  textTransform: 'uppercase',
-                  letterSpacing: '0.1em',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '6px'
-              }}>
-                {isSuperAdminUser && (
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
-                )}
-                {user.role === 'SUPERADMIN' ? 'Super Administrador' : 
-                 user.role === 'ADMIN' ? 'Administrador' : 
-                 user.role === 'ADMINISTRADORA' ? 'Administradora' : 
-                 user.role === 'SUBCONTRATISTA' ? 'Subcontratista' : 'Operador'}
+              {/* Role Badge and Avatar Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '14px', marginBottom: '20px' }}>
+                <div style={{ 
+                    width: '60px', height: '60px', 
+                    borderRadius: '16px', 
+                    backgroundColor: 'var(--bg-surface)', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    justifyContent: 'center', 
+                    fontSize: '1.5rem', 
+                    color: statusColor, 
+                    fontWeight: '800', 
+                    border: `2px solid ${statusColor}25`,
+                    boxShadow: `0 8px 16px ${statusColor}10`,
+                    overflow: 'hidden',
+                    flexShrink: 0
+                }}>
+                  {user.image ? (
+                      <img src={user.image} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      user.name.substring(0, 2).toUpperCase()
+                    )}
+                </div>
+                <div style={{ minWidth: 0, flex: 1 }}>
+                  <div style={{ 
+                      padding: '4px 10px', 
+                      borderRadius: '12px', 
+                      fontSize: '0.62rem', 
+                      fontWeight: '800',
+                      backgroundColor: `${statusColor}15`,
+                      color: statusColor,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.05em',
+                      display: 'inline-flex',
+                      alignItems: 'center',
+                      gap: '4px',
+                      marginBottom: '6px'
+                  }}>
+                    {isSuperAdminUser && (
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2L4.5 20.29l.71.71L12 18l6.79 3 .71-.71z"/></svg>
+                    )}
+                    {user.role === 'SUPERADMIN' ? 'Super Admin' : 
+                     user.role === 'ADMIN' ? 'Admin' : 
+                     user.role === 'ADMINISTRADORA' ? 'Oficina' : 
+                     user.role === 'SUBCONTRATISTA' ? 'Sub' : 'Operador'}
+                  </div>
+                  <h3 style={{ margin: 0, fontSize: '1.15rem', fontWeight: '800', color: 'var(--text)', lineHeight: '1.2', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</h3>
+                  <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontWeight: '500' }}>@{user.username}</div>
+                </div>
               </div>
-            </div>
-
-            <div style={{ display: 'flex', alignItems: 'center', gap: '18px', marginBottom: '28px' }}>
-              <div style={{ 
-                  width: '70px', height: '70px', 
-                  borderRadius: '20px', 
-                  backgroundColor: 'var(--bg-surface)', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  justifyContent: 'center', 
-                  fontSize: '1.8rem', 
-                  color: statusColor, 
-                  fontWeight: '800', 
-                  border: `2px solid ${statusColor}25`,
-                  boxShadow: `0 12px 24px ${statusColor}10`,
-                  overflow: 'hidden'
-              }}>
-                {user.image ? (
-                    <img src={user.image} alt={user.name} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  ) : (
-                    user.name.substring(0, 2).toUpperCase()
-                  )}
-              </div>
-              <div>
-                <h3 style={{ margin: 0, fontSize: '1.3rem', fontWeight: '800', color: 'var(--text)', lineHeight: '1.1' }}>{user.name}</h3>
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '6px', fontWeight: '500' }}>@{user.username}</div>
-              </div>
-            </div>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '14px', marginBottom: '24px' }}>
               {user.phone && (
@@ -413,9 +413,9 @@ function UserCard({ user, onDelete, formatDate, currentUserRole }: { user: any, 
                 </div>
               )}
               {user.email && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.85rem', color: 'var(--text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-                  {user.email}
+                <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '0.82rem', color: 'var(--text-muted)', overflow: 'hidden', wordBreak: 'break-all' }}>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ flexShrink: 0 }}><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                  <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{user.email}</span>
                 </div>
               )}
             </div>
@@ -458,6 +458,23 @@ function UserCard({ user, onDelete, formatDate, currentUserRole }: { user: any, 
           </div>
         </div>
       </div>
+      <style jsx>{`
+        @media (max-width: 600px) {
+          .user-card-mobile {
+            min-height: 220px !important;
+            padding: 20px !important;
+          }
+          .user-card-mobile h3 {
+            font-size: 1.1rem !important;
+          }
+          .operator-header {
+            margin-bottom: 20px !important;
+          }
+          .operator-header h2 {
+            font-size: 1.4rem !important;
+          }
+        }
+      `}</style>
     </Link>
   )
 }

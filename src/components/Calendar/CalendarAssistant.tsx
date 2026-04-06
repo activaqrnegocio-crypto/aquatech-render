@@ -220,8 +220,8 @@ export default function CalendarAssistant() {
       <style jsx>{`
         .calendar-ai-assistant {
           position: fixed;
-          bottom: 30px;
-          right: 30px;
+          bottom: 20px;
+          right: 20px;
           z-index: 1000;
           font-family: inherit;
         }
@@ -277,6 +277,7 @@ export default function CalendarAssistant() {
         /* Chat Window */
         .chat-window {
           width: 380px;
+          maxWidth: calc(100vw - 40px);
           height: 550px;
           background: rgba(255, 255, 255, 0.85);
           backdrop-filter: blur(15px);

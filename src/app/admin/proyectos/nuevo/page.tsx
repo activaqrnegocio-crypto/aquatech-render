@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
@@ -22,6 +22,7 @@ export default function NuevoProyectoPage() {
   const [projectData, setProjectData, removeProjectData] = useLocalStorage('project_draft_data', {
     title: '',
     type: 'INSTALLATION',
+    subtype: '',
     address: '',
     city: '',
     startDate: new Date().toISOString().split('T')[0],
@@ -29,6 +30,7 @@ export default function NuevoProyectoPage() {
     categoryList: [] as string[],
     otherCategory: '',
     contractTypeList: [] as string[],
+    otherContractType: '',
     technicalSpecs: {} as any,
     specsAudioUrl: '',
     status: 'LEAD'
@@ -108,6 +110,19 @@ export default function NuevoProyectoPage() {
   const [clients, setClients] = useState<any[]>([])
   const [clientSearchText, setClientSearchText] = useState('')
   const [showClientDropdown, setShowClientDropdown] = useState(false)
+  const clientDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    function handleClickOutside(event: MouseEvent) {
+      if (clientDropdownRef.current && !clientDropdownRef.current.contains(event.target as Node)) {
+        setShowClientDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
 
   // Step 3: Fases
   const [phases, setPhases, removePhases] = useLocalStorage<any[]>('project_draft_phases', [
@@ -202,12 +217,13 @@ export default function NuevoProyectoPage() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...projectData,
+          subtype: projectData.type === 'OTHER' ? projectData.subtype : '',
           client: clientData,
           phases: phases,
           team: selectedTeam,
           budgetItems: budgetItems,
           categoryList: projectData.categoryList.map(c => c === 'OTRO' ? (projectData.otherCategory || 'OTRO') : c),
-          contractTypeList: projectData.contractTypeList,
+          contractTypeList: projectData.contractTypeList.map(c => c === 'OTHER' ? (projectData.otherContractType || 'OTHER') : c),
           technicalSpecs: projectData.technicalSpecs,
           specsAudioUrl: projectData.specsAudioUrl,
           specsTranscription: projectData.technicalSpecs.description,
@@ -367,7 +383,7 @@ export default function NuevoProyectoPage() {
   }
 
   return (
-    <div className="p-6" style={{ maxWidth: '1200px', margin: '0 auto' }}>
+    <div className="p-6 new-project-page" style={{ maxWidth: '1200px', margin: '0 auto' }}>
       <div className="dashboard-header mb-6">
         <div>
           <h2>Crear Nuevo Proyecto</h2>
@@ -376,12 +392,14 @@ export default function NuevoProyectoPage() {
       </div>
 
       {/* Stepper Wizard Component */}
-      <div className="card mb-6" style={{ padding: '0', overflow: 'visible' }}>
-        <div style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-deep)' }}>
+      <div className="card mb-6" style={{ padding: '0', overflow: 'hidden' }}>
+        <style>{`.wizard-stepper::-webkit-scrollbar { display: none; } .wizard-stepper { -ms-overflow-style: none; scrollbar-width: none; }`}</style>
+        <div className="wizard-stepper" style={{ display: 'flex', borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-deep)', overflowX: 'auto', whiteSpace: 'nowrap', WebkitOverflowScrolling: 'touch' }}>
           {[1, 2, 3, 4, 5, 6].map((num, idx) => (
-            <div key={num} style={{
-              flex: 1, 
-              padding: '15px', 
+            <div key={num} className="wizard-step" style={{
+              flex: '1 0 auto', 
+              minWidth: '85px',
+              padding: '12px 10px', 
               textAlign: 'center', 
               borderBottom: step === num ? '3px solid var(--primary)' : '3px solid transparent',
               color: step === num ? 'var(--primary)' : (step > num ? 'var(--success)' : 'var(--text-muted)'),
@@ -389,16 +407,16 @@ export default function NuevoProyectoPage() {
               cursor: 'default',
               position: 'relative'
             }}>
-              <div>Paso {num}</div>
-              <div style={{ fontSize: '0.8rem', opacity: 0.8 }}>
-                {num === 1 ? 'General' : num === 2 ? 'Cliente' : num === 3 ? 'Especific.' : num === 4 ? 'Fases' : num === 5 ? 'Equipo' : 'Presupuesto'}
+              <div style={{ fontSize: '0.85rem' }}>{num}</div>
+              <div style={{ fontSize: '0.7rem', opacity: 0.8 }}>
+                {num === 1 ? 'General' : num === 2 ? 'Cliente' : num === 3 ? 'Especific.' : num === 4 ? 'Fases' : num === 5 ? 'Equipo' : 'Presup.'}
               </div>
               {idx < 5 && <div style={{ position: 'absolute', right: 0, top: '20%', height: '60%', width: '1px', backgroundColor: 'var(--border-color)' }} />}
             </div>
           ))}
         </div>
 
-        <div style={{ padding: '30px' }}>
+        <div className="wizard-content" style={{ padding: '20px' }}>
           {error && (
             <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.1)', color: 'var(--danger)', padding: '15px', borderRadius: '8px', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4m0 4h.01"/></svg>
@@ -408,7 +426,7 @@ export default function NuevoProyectoPage() {
 
           {step === 1 && (
             <div className="animate-fade-in">
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '40px' }}>
+              <div className="responsive-2col" style={{ display: 'grid', gridTemplateColumns: '1fr 1.2fr', gap: '30px' }}>
                 <div>
                     <div style={{ ...inputGroupStyle, marginBottom: '25px' }}>
                         <label style={labelStyle}>Etapa del Proyecto *</label>
@@ -447,7 +465,34 @@ export default function NuevoProyectoPage() {
                         <input type="text" className="form-input" placeholder="Ej. Piscina Residencial Familia Ruiz" value={projectData.title} onChange={e => setProjectData({...projectData, title: e.target.value})} autoFocus />
                     </div>
 
-                    <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                    <div style={inputGroupStyle}>
+                        <label style={labelStyle}>Tipo de Proyecto *</label>
+                        <select 
+                            className="form-input" 
+                            value={projectData.type} 
+                            onChange={e => setProjectData({...projectData, type: e.target.value})}
+                        >
+                            <option value="INSTALLATION">Instalación Nueva</option>
+                            <option value="MAINTENANCE">Mantenimiento</option>
+                            <option value="REPAIR">Reparación</option>
+                            <option value="OTHER">Otro</option>
+                        </select>
+                    </div>
+
+                    {projectData.type === 'OTHER' && (
+                        <div style={inputGroupStyle} className="animate-fade-in">
+                            <label style={labelStyle}>Especificar otro tipo de proyecto *</label>
+                            <input 
+                                type="text" 
+                                className="form-input" 
+                                placeholder="Ej. Remodelación" 
+                                value={projectData.subtype} 
+                                onChange={e => setProjectData({...projectData, subtype: e.target.value})} 
+                            />
+                        </div>
+                    )}
+
+                    <div className="responsive-2col-equal" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
                         <div style={inputGroupStyle}>
                             <label style={labelStyle}>Fecha de Inicio Prevista</label>
                             <input type="date" className="form-input" value={projectData.startDate} onChange={e => setProjectData({...projectData, startDate: e.target.value})} />
@@ -488,6 +533,19 @@ export default function NuevoProyectoPage() {
                             })}
                         </div>
                     </div>
+
+                    {projectData.contractTypeList.includes('OTHER') && (
+                        <div style={{ ...inputGroupStyle, marginTop: '15px' }} className="animate-fade-in">
+                            <label style={labelStyle}>Especificar otro tipo de contrato *</label>
+                            <input 
+                                type="text" 
+                                className="form-input" 
+                                placeholder="Ej: Asesoría Técnica" 
+                                value={projectData.otherContractType} 
+                                onChange={e => setProjectData({...projectData, otherContractType: e.target.value})} 
+                            />
+                        </div>
+                    )}
                 </div>
 
                 <div>
@@ -541,7 +599,7 @@ export default function NuevoProyectoPage() {
               <h3 style={{ marginBottom: '20px', color: 'var(--text)' }}>Información del Cliente</h3>
               
               <div style={{ ...inputGroupStyle, display: 'flex', gap: '15px', alignItems: 'flex-end', zIndex: 50, position: 'relative' }}>
-                <div style={{ flex: 1, position: 'relative' }}>
+                <div style={{ flex: 1, position: 'relative' }} ref={clientDropdownRef}>
                   <label style={labelStyle}>¿Cliente Existente o Nuevo?</label>
                   <input 
                     type="text" 
@@ -659,7 +717,7 @@ export default function NuevoProyectoPage() {
               
               {/* Audio/Video Spec Section */}
               <div className="mb-8">
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '20px' }}>
+                <div className="responsive-2col-equal" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px', marginBottom: '20px' }}>
                   <div className="card-shadow-hover" style={{ backgroundColor: 'var(--bg-surface)', padding: '20px', borderRadius: '16px', border: '1px solid var(--border)' }}>
                     <h4 style={{ margin: '0 0 15px 0', fontSize: '0.9rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                       <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
@@ -873,16 +931,16 @@ export default function NuevoProyectoPage() {
 
           {step === 6 && (
             <div className="animate-fade-in" style={{ position: 'relative' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
                 <h3 style={{ margin: 0, color: 'var(--text)' }}>Presupuesto Estimado</h3>
                 <div style={{ fontSize: '1.4rem', fontWeight: 'bold', color: 'var(--primary)' }}>$ {grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</div>
               </div>
 
-              <div style={{ padding: '15px', backgroundColor: 'var(--primary-glow)', border: '1px solid var(--primary)', borderRadius: '8px', marginBottom: '25px', display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
+              <div style={{ padding: '12px 15px', backgroundColor: 'var(--primary-glow)', border: '1px solid var(--primary)', borderRadius: '8px', marginBottom: '20px', display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" style={{ flexShrink: 0, marginTop: '2px' }}><path d="M14 2H6a2 2 0 0 0-2 2v16c0 1.1.9 2 2 2h12a2 2 0 0 0 2-2V8l-6-6z"/><path d="M14 3v5h5M16 13H8M16 17H8M10 9H8"/></svg>
-                <div style={{ color: 'var(--text)' }}>
-                    <h4 style={{ margin: '0 0 5px 0', fontSize: '1rem', color: 'var(--primary)' }}>Generación de Presupuesto Profesional</h4>
-                    <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: '1.5' }}>Agrega materiales del catálogo o servicios globales. Este componente garantiza que el presupuesto del proyecto sea idéntico al de las cotizaciones, facilitando la conversión final.</p>
+                <div style={{ color: 'var(--text)', minWidth: 0 }}>
+                    <h4 style={{ margin: '0 0 5px 0', fontSize: '0.95rem', color: 'var(--primary)' }}>Presupuesto Profesional</h4>
+                    <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)', lineHeight: '1.4' }}>Agrega materiales del catálogo o servicios globales.</p>
                 </div>
               </div>
 
@@ -893,12 +951,25 @@ export default function NuevoProyectoPage() {
                 showPreviewActions={true}
                 onGeneratePDF={(preview) => generatePDF(preview)}
               />
+
+              {/* Notas del presupuesto - visible en todos los dispositivos */}
+              <div style={{ marginTop: '20px' }}>
+                <label style={{ display: 'block', marginBottom: '8px', color: 'var(--text-muted)', fontWeight: '600', fontSize: '0.85rem' }}>Notas / Observaciones del Presupuesto</label>
+                <textarea 
+                  className="form-input" 
+                  rows={3} 
+                  placeholder="Notas adicionales que aparecerán en el documento PDF del presupuesto..." 
+                  value={projectData.technicalSpecs.description || ''} 
+                  onChange={e => updateSpec('description', e.target.value)}
+                  style={{ width: '100%', resize: 'vertical' }}
+                />
+              </div>
             </div>
           )}
         </div>
 
         {/* Unified Project Uploader (Shows in all steps) */}
-        <div style={{ padding: '0 30px 30px 30px' }}>
+        <div style={{ padding: '0 20px 20px 20px' }}>
           <ProjectUploader 
             files={uploadedFiles} 
             onAddFile={(file) => setUploadedFiles(prev => [...prev, file])}
@@ -908,7 +979,7 @@ export default function NuevoProyectoPage() {
         </div>
 
         {/* Action Buttons */}
-        <div style={{ padding: '20px 30px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
+        <div style={{ padding: '15px 20px', borderTop: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
           {step > 1 ? (
             <button type="button" className="btn btn-ghost" onClick={() => { setError(''); setStep(s => s - 1) }} disabled={loading}>
               &larr; Volver
@@ -917,7 +988,7 @@ export default function NuevoProyectoPage() {
             <Link href="/admin/proyectos" className="btn btn-ghost">Cancelar</Link>
           )}
 
-          {step < 10 ? ( // Note: Check final step count, was 6 but let's be safe
+          {step < 10 ? (
              step < 6 ? (
                <button type="button" className="btn btn-primary" onClick={handleNext}>Continuar &rarr;</button>
              ) : (
@@ -928,6 +999,44 @@ export default function NuevoProyectoPage() {
           ) : null}
         </div>
       </div>
+
+      {/* Responsive styles for mobile */}
+      <style jsx>{`
+        @media (max-width: 768px) {
+          .new-project-page {
+            padding: 8px !important;
+          }
+          .wizard-content {
+            padding: 12px !important;
+          }
+          .responsive-2col,
+          .responsive-2col-equal {
+            grid-template-columns: 1fr !important;
+            gap: 12px !important;
+          }
+          .form-input {
+            padding: 8px 10px !important;
+            font-size: 0.85rem !important;
+          }
+          .btn {
+            padding: 8px 16px !important;
+            font-size: 0.8rem !important;
+          }
+          .wizard-steps {
+            gap: 8px !important;
+            padding: 8px !important;
+          }
+          h3 { font-size: 1.1rem !important; }
+          h4 { font-size: 0.9rem !important; }
+        }
+        .wizard-stepper::-webkit-scrollbar {
+          display: none;
+        }
+        .wizard-stepper {
+          -ms-overflow-style: none;
+          scrollbar-width: none;
+        }
+      `}</style>
     </div>
   )
 }

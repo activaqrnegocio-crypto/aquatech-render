@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { createContentPipelineAction } from '@/actions/marketing'
+import MarketingCalendar from '@/components/marketing/MarketingCalendar'
 
 const LOADING_PHRASES = [
   "Iniciando el motor de Inteligencia Artificial...",
@@ -164,6 +165,10 @@ export default function NewPipelinePage() {
             </form>
           </>
         )}
+      </div>
+
+      <div className="mt-5" style={{ opacity: loading ? 0.3 : 1, pointerEvents: loading ? 'none' : 'auto', transition: 'opacity 0.3s' }}>
+        <MarketingCalendar />
       </div>
 
       <style jsx>{`

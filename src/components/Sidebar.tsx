@@ -163,6 +163,7 @@ export default function Sidebar() {
   const effectiveRole = String(session?.user?.role || offlineUser?.role || 'OPERATOR').toUpperCase()
   const effectiveName = session?.user?.name || offlineUser?.name || 'Usuario'
   const isAdmin = effectiveRole.includes('ADMIN')
+  const isSuperAdmin = effectiveRole === 'SUPERADMIN'
   const isSubcontratista = effectiveRole === 'SUBCONTRATISTA'
 
   const projectIdMatch = pathname.match(/\/admin\/(operador|subcontratista)\/proyecto\/(\d+)/)
@@ -240,7 +241,17 @@ export default function Sidebar() {
     }] : [])
   ]
 
-  const navItems = isAdmin ? adminNavItems : dynamicOperatorNavItems as NavSection[]
+  const filteredAdminNavItems = adminNavItems.map(section => ({
+    ...section,
+    items: section.items.filter(item => {
+      if (!isSuperAdmin && (item.label === 'Marketing' || item.label === 'Blog')) {
+        return false
+      }
+      return true
+    })
+  }))
+
+  const navItems = isAdmin ? filteredAdminNavItems : dynamicOperatorNavItems as NavSection[]
 
   const isActive = (href: string) => {
     if (href === '/admin') return pathname === '/admin'
@@ -390,7 +401,9 @@ export default function Sidebar() {
               { label: 'Dashboard', href: '/admin', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
               { label: 'Proyectos', href: '/admin/proyectos', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg> },
               { label: 'Inventario', href: '/admin/inventario', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> },
-              { label: 'Marketing', href: '/admin/marketing', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 12 20 22 4 22 4 12" /><rect x="2" y="7" width="20" height="5" /><line x1="12" y1="22" x2="12" y2="7" /><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" /></svg> },
+              ...(effectiveRole === 'SUPERADMIN' ? [
+                { label: 'Marketing', href: '/admin/marketing', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 12 20 22 4 22 4 12" /><rect x="2" y="7" width="20" height="5" /><line x1="12" y1="22" x2="12" y2="7" /><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" /></svg> },
+              ] : []),
               { label: 'Cotizaciones', href: '/admin/cotizaciones', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg> },
             ].map((item) => (
               <Link

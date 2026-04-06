@@ -258,10 +258,10 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
   return (
     <form onSubmit={handleSubmit} className="quote-form-layout">
       
-      <div style={{ display: 'grid', gap: '20px' }}>
+      <div style={{ display: 'grid', gap: '20px', minWidth: 0 }}>
         {/* Client Box */}
         <div className="card shadow-sm" style={{ padding: '25px', borderRadius: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px', flexWrap: 'wrap', gap: '15px' }}>
             <h3 style={{ color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '10px', margin: 0 }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
               Información del Cliente
@@ -321,7 +321,7 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
 
         {/* Notes Area */}
         <div className="card shadow-sm" style={{ padding: '25px', borderRadius: '16px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
             <label style={{ margin: 0, fontWeight: 'bold' }}>Notas / Términos de Referencia</label>
             <div style={{ display: 'flex', gap: '10px' }}>
               <MediaCapture mode="audio" onCapture={(b: Blob, t: string, text: string) => setNotes((prev: string) => (prev ? prev + ' ' + text : text))} />
@@ -376,6 +376,8 @@ export default function QuoteFormClient({ clients, materials, prefetchedProject,
           grid-template-columns: 2.5fr 1fr;
           gap: 20px;
           align-items: start;
+          min-width: 0;
+          width: 100%;
         }
         .quote-client-fields {
           display: grid;

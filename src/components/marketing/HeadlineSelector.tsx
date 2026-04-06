@@ -143,26 +143,39 @@ export default function HeadlineSelector({ pipeline }: { pipeline: any }) {
 
       <div style={{ textAlign: 'right' }}>
         <button 
-          className="btn btn-primary" 
+          className={`btn btn-primary ${selectedId ? 'animate-pulse-btn' : ''}`} 
           onClick={handleConfirm}
           disabled={!selectedId || loading}
           style={{ 
-            padding: '0.8rem 2rem', 
-            fontSize: '1rem', 
-            fontWeight: '600', 
-            borderRadius: '8px',
+            padding: '1rem 2.5rem', 
+            fontSize: '1.1rem', 
+            fontWeight: 'bold', 
+            borderRadius: '12px',
             display: 'inline-flex',
             alignItems: 'center',
-            gap: '10px'
+            gap: '12px',
+            boxShadow: selectedId ? '0 10px 15px -3px rgba(8, 145, 178, 0.3)' : 'none',
+            transition: 'all 0.3s ease'
           }}
         >
-          Continuar y Generar Artículo
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          Siguiente Paso: Redactar Artículo
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
             <line x1="5" y1="12" x2="19" y2="12"></line>
             <polyline points="12 5 19 12 12 19"></polyline>
           </svg>
         </button>
       </div>
+
+      <style jsx>{`
+        @keyframes pulse-btn {
+          0% { transform: scale(1); box-shadow: 0 10px 15px -3px rgba(8, 145, 178, 0.3); }
+          50% { transform: scale(1.02); box-shadow: 0 15px 25px -5px rgba(8, 145, 178, 0.4); }
+          100% { transform: scale(1); box-shadow: 0 10px 15px -3px rgba(8, 145, 178, 0.3); }
+        }
+        .animate-pulse-btn {
+          animation: pulse-btn 2s infinite ease-in-out;
+        }
+      `}</style>
     </div>
   )
 }

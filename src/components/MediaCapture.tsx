@@ -42,30 +42,45 @@ export default function MediaCapture({
   const videoRef = useRef<HTMLVideoElement>(null)
   const chunksRef = useRef<Blob[]>([])
 
+  const getSupportedMimeType = (mediaType: 'audio' | 'video'): string => {
+    const candidates = mediaType === 'video'
+      ? ['video/webm;codecs=vp9,opus', 'video/webm;codecs=vp8,opus', 'video/webm', 'video/mp4']
+      : ['audio/webm;codecs=opus', 'audio/webm', 'audio/ogg', 'audio/mp4']
+    
+    for (const mime of candidates) {
+      if (typeof MediaRecorder !== 'undefined' && MediaRecorder.isTypeSupported(mime)) {
+        return mime
+      }
+    }
+    return '' // Let browser choose default
+  }
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: true,
-        video: mode === 'video'
+        video: mode === 'video' ? { facingMode: 'environment' } : false
       })
 
       if (mode === 'video' && videoRef.current) {
         videoRef.current.srcObject = stream
       }
 
-      const options = { mimeType: mode === 'video' ? 'video/webm' : 'audio/webm' }
+      const supportedMime = getSupportedMimeType(mode)
+      const options: MediaRecorderOptions = supportedMime ? { mimeType: supportedMime } : {}
       const recorder = new MediaRecorder(stream, options)
+      const actualMime = recorder.mimeType || (mode === 'video' ? 'video/webm' : 'audio/webm')
       
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data)
       }
 
       recorder.onstop = async () => {
-        const blob = new Blob(chunksRef.current, { type: options.mimeType })
+        const blob = new Blob(chunksRef.current, { type: actualMime })
         setMediaBlob(blob)
         setPreviewUrl(URL.createObjectURL(blob))
         
-        // Auto-transcribe
+        // Auto-transcribe, then always call onCapture even if transcription fails
         await handleTranscription(blob)
         
         // Clean up stream
@@ -79,7 +94,7 @@ export default function MediaCapture({
       startTimer()
     } catch (err) {
       console.error('Error starting recording:', err)
-      alert('Error: No se pudo acceder a la cámara o micrófono.')
+      alert('Error: No se pudo acceder a la cámara o micrófono. Verifica los permisos del navegador.')
     }
   }
 
@@ -93,9 +108,12 @@ export default function MediaCapture({
 
   const handleTranscription = async (blob: Blob) => {
     setIsProcessing(true)
+    let transcribedText = ''
     try {
       const formData = new FormData()
-      formData.append('file', blob, mode === 'video' ? 'video.webm' : 'audio.webm')
+      // Always send as audio MIME for best Groq compatibility
+      const ext = mode === 'video' ? 'video.webm' : 'audio.webm'
+      formData.append('file', blob, ext)
 
       const res = await fetch('/api/media/transcribe', {
         method: 'POST',
@@ -105,18 +123,16 @@ export default function MediaCapture({
       if (!res.ok) throw new Error('Transcription failed')
       
       const data = await res.json()
-      setTranscription(data.text)
-      
-      if (!transcriptionOnly) {
-          onCapture(blob, mode, data.text)
-      } else {
-          onCapture(blob, mode, data.text)
-      }
+      transcribedText = data.text || ''
+      setTranscription(transcribedText)
     } catch (err) {
       console.error('Transcription error:', err)
-      setTranscription('Error al transcribir.')
+      setTranscription(mode === 'video' ? '(Video guardado sin transcripción)' : 'Error al transcribir.')
     } finally {
       setIsProcessing(false)
+      // ALWAYS call onCapture so the parent can upload to gallery
+      // even if transcription failed
+      onCapture(blob, mode, transcribedText)
     }
   }
 
@@ -202,12 +218,17 @@ export default function MediaCapture({
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '15px' }}>
-        {mode === 'video' && (isRecording || previewUrl) && (
-          <div style={{ width: '100%', maxWidth: '320px', aspectRatio: '16/9', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'black', position: 'relative' }}>
-            {isRecording ? (
-              <video ref={videoRef} autoPlay muted playsInline style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              <video src={previewUrl!} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        {mode === 'video' && (
+          <div style={{ display: (isRecording || previewUrl) ? 'block' : 'none', width: '100%', maxWidth: '320px', aspectRatio: '16/9', borderRadius: '12px', overflow: 'hidden', backgroundColor: 'black', position: 'relative', margin: '0 auto' }}>
+            <video 
+              ref={videoRef} 
+              autoPlay 
+              muted 
+              playsInline 
+              style={{ display: isRecording ? 'block' : 'none', width: '100%', height: '100%', objectFit: 'cover' }} 
+            />
+            {!isRecording && previewUrl && (
+              <video src={previewUrl} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             )}
           </div>
         )}
