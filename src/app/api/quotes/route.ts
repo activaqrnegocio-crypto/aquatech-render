@@ -37,16 +37,25 @@ export async function POST(req: Request) {
 
     // Create client if it's a new one
     if (!finalClientId && data.clientName) {
-      const newClient = await prisma.client.create({
-        data: {
-          name: data.clientName,
-          ruc: data.clientRuc || '',
-          address: data.clientAddress || '',
-          phone: data.clientPhone || '',
-          // Add other default fields if necessary
-        }
+      // Prevent creating duplicate clients by name
+      const existingClient = await prisma.client.findFirst({
+        where: { name: data.clientName }
       })
-      finalClientId = newClient.id
+
+      if (existingClient) {
+        finalClientId = existingClient.id
+      } else {
+        const newClient = await prisma.client.create({
+          data: {
+            name: data.clientName,
+            ruc: data.clientRuc || '',
+            address: data.clientAddress || '',
+            phone: data.clientPhone || '',
+            // Add other default fields if necessary
+          }
+        })
+        finalClientId = newClient.id
+      }
     }
 
     if (!finalClientId) {

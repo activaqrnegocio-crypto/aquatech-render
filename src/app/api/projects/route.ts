@@ -99,18 +99,27 @@ export async function POST(request: Request) {
       let targetClientId = clientId ? Number(clientId) : null
 
       if (!targetClientId && client?.name) {
-        const createdClient = await tx.client.create({
-          data: {
-            name: client.name,
-            ruc: client.ruc || null,
-            email: client.email || null,
-            phone: client.phone || null,
-            address: client.address || null,
-            city: client.city || null,
-            notes: client.notes || null,
-          }
+        // Prevent creating duplicate clients by name (e.g. CONSUMIDOR FINAL)
+        const existingClient = await tx.client.findFirst({
+          where: { name: client.name }
         })
-        targetClientId = createdClient.id
+
+        if (existingClient) {
+          targetClientId = existingClient.id
+        } else {
+          const createdClient = await tx.client.create({
+            data: {
+              name: client.name,
+              ruc: client.ruc || null,
+              email: client.email || null,
+              phone: client.phone || null,
+              address: client.address || null,
+              city: client.city || null,
+              notes: client.notes || null,
+            }
+          })
+          targetClientId = createdClient.id
+        }
       }
 
       // 2. Map Legacy Type from CategoryList if needed

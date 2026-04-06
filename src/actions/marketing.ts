@@ -3,6 +3,7 @@
 import { prisma as db } from '@/lib/prisma'
 import { authOptions } from '@/lib/auth'
 import { getServerSession } from 'next-auth'
+import { revalidatePath } from 'next/cache'
 
 export async function createContentPipelineAction(idea: string, ideaContext: string) {
   try {
@@ -140,6 +141,20 @@ export async function selectHeadlineAction(pipelineId: number, headlineId: numbe
     const session = await getServerSession(authOptions) as any
     if (!session?.user?.email) throw new Error('No autorizado')
 
+    // 0. VERIFICAR SI YA EXISTE UN ARTÍCULO PILAR PARA EVITAR LOOPS
+    const existingPillar = await db.pipelineArticle.findFirst({
+      where: { pipelineId, type: 'PILLAR' }
+    })
+
+    if (existingPillar) {
+      await db.contentPipeline.update({
+        where: { id: pipelineId },
+        data: { status: 'REVIEWING_ARTICLES' }
+      })
+      revalidatePath(`/admin/marketing/content/${pipelineId}`)
+      return { success: true }
+    }
+
     // 1. Marcar el pipeline con status 'WRITING' y guardar el headline seleccionado
     await db.headlineOption.updateMany({
       where: { pipelineId },
@@ -158,7 +173,6 @@ export async function selectHeadlineAction(pipelineId: number, headlineId: numbe
     })
 
     // Confirm that we don't already have the pillar article
-    const existingPillar = pipeline.articles.find((a: any) => a.type === 'PILLAR')
     if (!existingPillar) {
       // 2. Generar Artículo Pilar con GROQ
       const groqKey = process.env.GROQ_API_KEY
@@ -167,7 +181,7 @@ export async function selectHeadlineAction(pipelineId: number, headlineId: numbe
       if (!groqKey) {
         articleMarkdown = `# ${selectedHeadline.headline}\n\nEste es un artículo pilar autogenerado simulado porque no hay API key de GROQ.\n\n## Subtema 1\nContenido del subtema.\n\n## Subtema 2\nContenido del subtema.`
       } else {
-        const prompt = `Escribe un Artículo Pilar (aproximadamente 1800-2500 palabras) sobre: "${selectedHeadline.headline}".
+        const prompt = `Escribe un Artículo Pilar (aproximadamente 1200-1500 palabras) sobre: "${selectedHeadline.headline}".
 Keyword focal objetivo: "${selectedHeadline.keyword}".
 Contexto de la idea original: "${pipeline.ideaContext || pipeline.idea}".
 Marca: Aquatech (empresa en Ecuador de soluciones hidráulicas, piscinas, spas).
@@ -175,31 +189,42 @@ Tono: Técnico pero accesible, profesional, persuasivo.
 
 Estructura requerida:
 - H1 (ya dado)
-- Introducción atractiva.
-- Varios H2 con contenido profundo.
-- Algunos H3 si aplica.
-- Conclusión.
+- Introducción atractiva con gancho.
+- Varios H2 con contenido profundo (mínimo 5 secciones).
+- Algunos H3 para detalles técnicos.
+- Conclusión con llamada a la acción (CTA) sugerida.
 
 Retorna SOLO el contenido en formato Markdown. No devuelvas ningún JSON ni saludos. Sólo Markdown puro.`
 
-        const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${groqKey}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            model: 'llama-3.3-70b-versatile',
-            messages: [{ role: 'user', content: prompt }]
+        try {
+          const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${groqKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: 'llama-3.3-70b-versatile',
+              messages: [{ role: 'user', content: prompt }]
+            })
           })
-        })
 
-        if (!groqResponse.ok) {
-          throw new Error('Falló la generación del Pilar en GROQ')
+          if (!groqResponse.ok) {
+            const errBody = await groqResponse.text()
+            throw new Error(`Falló GROQ: ${errBody}`)
+          }
+
+          const data = await groqResponse.json()
+          articleMarkdown = data.choices[0].message.content
+        } catch (genError: any) {
+          console.error('Error generando artículo:', genError)
+          // Revertimos status para que el usuario pueda reintentar
+          await db.contentPipeline.update({
+            where: { id: pipelineId },
+            data: { status: 'HEADLINES' }
+          })
+          throw genError
         }
-
-        const data = await groqResponse.json()
-        articleMarkdown = data.choices[0].message.content
       }
 
       // 3. Guardar el PipelineArticle
@@ -215,13 +240,109 @@ Retorna SOLO el contenido en formato Markdown. No devuelvas ningún JSON ni salu
         }
       })
       
-      // Update pipeline status to REVIEWING_ARTICLES automatically if preferred, 
-      // but let's keep it WRITING so the UI knows we are editing the pillar.
+      // 4. ACTUALIZAR ESTADO PARA QUE LA UI AVANCE
+      await db.contentPipeline.update({
+        where: { id: pipelineId },
+        data: { status: 'REVIEWING_ARTICLES' }
+      })
     }
 
     return { success: true }
   } catch (error: any) {
     console.error('Error selectHeadlineAction:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Acción para refinar un artículo usando IA basado en el feedback del usuario.
+ */
+export async function refineArticleAction(articleId: number, feedback: string, currentContent: string) {
+  try {
+    const groqKey = process.env.GROQ_API_KEY
+    if (!groqKey) throw new Error('GROQ_API_KEY no configurada')
+
+    const prompt = `Eres un editor experto de contenido SEO para Aquatech.
+Tu objetivo es modificar el siguiente Artículo Pilar basado estrictamente en el feedback del usuario.
+
+REQUERIMIENTO DEL USUARIO: "${feedback}"
+
+TEXTO ACTUAL (MARKDOWN):
+---
+${currentContent}
+---
+
+Instrucciones:
+1. Aplica el cambio solicitado (añadir, quitar, reescribir, cambiar tono, etc).
+2. Mantén el formato Markdown profesional.
+3. Si el usuario pide "hacerla de nuevo", genera una nueva versión mejorada manteniendo el tema.
+4. Si el usuario pide "añadir una sección", intégrala de forma natural.
+5. Retorna EXCLUSIVAMENTE el nuevo Markdown completo. No digas "Aquí tienes el cambio", ni "Entendido". Sólo Markdown.`
+
+    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${groqKey}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'llama-3.3-70b-versatile',
+        messages: [{ role: 'user', content: prompt }]
+      })
+    })
+
+    if (!groqResponse.ok) {
+      const err = await groqResponse.text()
+      throw new Error(`Error en GROQ: ${err}`)
+    }
+
+    const data = await groqResponse.json()
+    const newContent = data.choices[0].message.content
+
+    // Guardamos en DB para persistencia
+    await db.pipelineArticle.update({
+      where: { id: articleId },
+      data: { 
+        content: newContent,
+        status: 'AI_GENERATED' // O USER_REVIEWING
+      }
+    })
+
+    return { success: true, newContent }
+  } catch (error: any) {
+    console.error('Error refineArticleAction:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Guarda manualmente el contenido editado por el usuario.
+ */
+export async function updateArticleContentAction(articleId: number, content: string) {
+  try {
+    await db.pipelineArticle.update({
+      where: { id: articleId },
+      data: { content, status: 'USER_REVIEWING' }
+    })
+    return { success: true }
+  } catch (error: any) {
+    console.error('Error updateArticleContentAction:', error)
+    return { success: false, error: error.message }
+  }
+}
+
+/**
+ * Acción de rescate/forzado de estado para el pipeline.
+ */
+export async function forcePipelineStatusAction(pipelineId: number, status: any) {
+  try {
+    await db.contentPipeline.update({
+      where: { id: pipelineId },
+      data: { status }
+    })
+    revalidatePath(`/admin/marketing/content/${pipelineId}`)
+    return { success: true }
+  } catch (error: any) {
     return { success: false, error: error.message }
   }
 }

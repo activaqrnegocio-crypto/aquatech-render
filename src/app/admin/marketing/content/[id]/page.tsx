@@ -4,7 +4,8 @@ import { notFound } from 'next/navigation'
 import Link from 'next/link'
 import HeadlineSelector from '@/components/marketing/HeadlineSelector'
 import MarketingCalendar from '@/components/marketing/MarketingCalendar'
-// Importaremos más componentes según la fase (DualEditor, ClusterSelector)
+// ULTIMATE LOCAL RESOLUTION
+import { UltraLocalEditor } from './ArticleEditorView'
 
 export default async function PipelineDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const resolvedParams = await params;
@@ -31,7 +32,7 @@ export default async function PipelineDetailPage({ params }: { params: Promise<{
   const status = pipeline.status
 
   return (
-    <div className="pipeline-detail-page" style={{ maxWidth: '1000px', margin: '0 auto', padding: '2rem' }}>
+    <div className="pipeline-detail-page" style={{ maxWidth: '100vw', margin: '0 2rem', padding: '2rem' }}>
       
       <Link 
         href="/admin/marketing/content" 
@@ -100,10 +101,20 @@ export default async function PipelineDetailPage({ params }: { params: Promise<{
         {status === 'WRITING' && (
           <div className="card shadow-sm p-5 text-center" style={{ background: 'var(--card-bg)', borderRadius: '12px', border: '1px solid var(--border-color)' }}>
             <h2 style={{ color: 'var(--text-color)' }}>Redactando Artículo Pilar...</h2>
-            <p style={{ color: 'var(--text-muted)' }}>La IA de Groq está trabajando en el Markdown de ~2000 palabras.</p>
-            {/* Aquí luego llamaremos a ArticleDualEditor */}
+            <p style={{ color: 'var(--text-muted)' }}>La IA de Groq está trabajando en el Markdown de ~1200-1500 palabras.</p>
+            <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginTop: '1rem' }}>Si esto demora más de 2 minutos, intenta refrescar la página.</p>
           </div>
         )}
+
+        {status === 'REVIEWING_ARTICLES' && (() => {
+          const pillarArticle = pipeline.articles?.find((a: any) => a.type === 'PILLAR')
+          return (
+            <UltraLocalEditor 
+              article={pillarArticle} 
+              pipelineId={pipeline.id} 
+            />
+          )
+        })()}
 
         {/* We will add more status handlers in next phases */}
       </div>

@@ -98,19 +98,35 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
     const { id } = await params
     const projectId = Number(id)
 
-    // Delete in transaction to handle related quotes (unlinking)
+    // Delete in transaction to handle related quotes and orphaned clients
     await prisma.$transaction(async (tx) => {
-      // 1. Unlink quotes (set projectId to null) because they should persist 
-      // but MySQL might have RESTRICT by default on the FK.
-      await tx.quote.updateMany({
-        where: { projectId: projectId },
-        data: { projectId: null }
+      // 0. Get the project to find its clientId
+      const project = await tx.project.findUnique({
+        where: { id: projectId },
+        select: { clientId: true }
+      })
+
+      // 1. Delete quotes associated with this project (instead of unlinking them)
+      await tx.quote.deleteMany({
+        where: { projectId: projectId }
       })
 
       // 2. Delete the project (cascades to phases, budgetItems, teams, etc. based on schema)
       await tx.project.delete({
         where: { id: projectId }
       })
+
+      // 3. Clean up the client if it is now orphaned (no other projects, no other quotes)
+      if (project?.clientId) {
+        const remainingProjects = await tx.project.count({ where: { clientId: project.clientId } })
+        const remainingQuotes = await tx.quote.count({ where: { clientId: project.clientId } })
+        
+        if (remainingProjects === 0 && remainingQuotes === 0) {
+          await tx.client.delete({
+            where: { id: project.clientId }
+          })
+        }
+      }
     })
 
     return NextResponse.json({ success: true })

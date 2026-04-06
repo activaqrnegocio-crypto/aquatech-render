@@ -2,6 +2,7 @@ import React from 'react'
 import Link from 'next/link'
 import { prisma as db } from '@/lib/prisma'
 import { formatDateEcuador } from '@/lib/date-utils'
+import MarketingCalendar from '@/components/marketing/MarketingCalendar'
 
 export const dynamic = 'force-dynamic'
 
@@ -96,6 +97,12 @@ export default async function ContentPipelinesPage() {
           ))}
         </div>
       )}
+      <div className="mt-5 pt-5 pb-5" style={{ borderTop: '2px solid var(--border-color)', marginTop: '4rem' }}>
+        <h2 style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--text-color)', marginBottom: '1.5rem' }}>
+          Calendario Editorial (Social Media)
+        </h2>
+        <MarketingCalendar />
+      </div>
     </div>
   )
 }

@@ -22,7 +22,28 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 export async function DELETE(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
-    await prisma.quote.delete({ where: { id: Number(id) } })
+    const quoteId = Number(id)
+
+    await prisma.$transaction(async (tx) => {
+      const quote = await tx.quote.findUnique({
+        where: { id: quoteId },
+        select: { clientId: true }
+      })
+
+      await tx.quote.delete({ where: { id: quoteId } })
+
+      if (quote?.clientId) {
+        const remainingProjects = await tx.project.count({ where: { clientId: quote.clientId } })
+        const remainingQuotes = await tx.quote.count({ where: { clientId: quote.clientId } })
+        
+        if (remainingProjects === 0 && remainingQuotes === 0) {
+          await tx.client.delete({
+            where: { id: quote.clientId }
+          })
+        }
+      }
+    })
+
     return NextResponse.json({ success: true })
   } catch (error) {
     return NextResponse.json({ error: 'Error deleting quote' }, { status: 500 })
