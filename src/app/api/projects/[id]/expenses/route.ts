@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { uploadToBunny } from '@/lib/bunny'
-import { getLocalNow } from '@/lib/date-utils'
+import { getLocalNow, forceEcuadorTZ } from '@/lib/date-utils'
 import { isAdmin } from '@/lib/rbac'
 
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -32,7 +32,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     const { amount, description, date, createdAt, lat, lng, receiptPhoto, isNote } = await req.json()
-    const expenseDate = new Date(date || createdAt || getLocalNow())
+    const expenseDate = new Date(forceEcuadorTZ(date || createdAt) || new Date())
 
     let receiptUrl = null
     if (receiptPhoto && typeof receiptPhoto === 'string' && receiptPhoto.startsWith('data:image')) {
@@ -56,7 +56,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         userId,
         lat: lat ? Number(lat) : null,
         lng: lng ? Number(lng) : null,
-        createdAt: createdAt ? new Date(createdAt) : undefined,
+        createdAt: createdAt ? new Date(forceEcuadorTZ(createdAt)) : undefined,
         receiptUrl,
         isNote: !!isNote
       }
@@ -85,7 +85,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           : `${session.user.name} registró un gasto: $ ${Number(amount).toFixed(2)} (${description})`,
         lat: lat ? Number(lat) : null,
         lng: lng ? Number(lng) : null,
-        createdAt: createdAt ? new Date(createdAt) : undefined,
+        createdAt: createdAt ? new Date(forceEcuadorTZ(createdAt)) : undefined,
       }
     })
 

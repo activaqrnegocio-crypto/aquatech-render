@@ -34,6 +34,22 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
     redirect('/admin/operador')
   }
 
+  // Mark chat as seen for this user
+  await prisma.projectView.upsert({
+    where: {
+      userId_projectId: {
+        userId,
+        projectId
+      }
+    },
+    update: { lastSeen: new Date() },
+    create: {
+      userId,
+      projectId,
+      lastSeen: new Date()
+    }
+  })
+
   // Reload all chat messages for this project with user info
   const chatMessages = await prisma.chatMessage.findMany({
     where: { projectId },

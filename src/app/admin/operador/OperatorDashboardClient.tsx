@@ -17,6 +17,7 @@ const CheckCircle2 = ({ size = 24, style, className, fill = 'none' }: any) => <s
 const Clock = ({ size = 24, style, className }: any) => <svg {...svgProps(size, style, className)}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
 const ListTodo = ({ size = 24, style, className }: any) => <svg {...svgProps(size, style, className)}><rect width="18" height="18" x="3" y="3" rx="2"/><path d="m9 10 2 2 4-4"/><path d="M7 16h10"/></svg>
 const Plus = ({ size = 24, style, className }: any) => <svg {...svgProps(size, style, className)}><path d="M12 5v14M5 12h14"/></svg>
+const MessageCircle = ({ size = 24, style, className }: any) => <svg {...svgProps(size, style, className)}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
 
 interface OperatorDashboardClientProps {
   user: any
@@ -33,6 +34,10 @@ export default function OperatorDashboardClient({
 }: OperatorDashboardClientProps) {
   const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS' | 'CALENDARIO'>('TAREAS')
   const [appointments, setAppointments] = useState(initialAppointments)
+
+  const totalUnread = useMemo(() => {
+    return activeProjects.reduce((acc, p) => acc + (p.unreadCount || 0), 0)
+  }, [activeProjects])
 
   const todayTasks = useMemo(() => {
     const today = getLocalNow()
@@ -89,6 +94,7 @@ export default function OperatorDashboardClient({
         </button>
         <button className={`tab ${activeTab === 'PROYECTOS' ? 'active' : ''}`} onClick={() => setActiveTab('PROYECTOS')}>
            <Briefcase size={16} style={{marginRight: '8px'}}/> Mis Proyectos ({activeProjects.length})
+           {totalUnread > 0 && <span className="tab-badge">{totalUnread}</span>}
         </button>
         <button className={`tab ${activeTab === 'CALENDARIO' ? 'active' : ''}`} onClick={() => setActiveTab('CALENDARIO')}>
            <CalendarIcon size={16} style={{marginRight: '8px'}}/> Agenda Semanal
@@ -148,7 +154,14 @@ export default function OperatorDashboardClient({
                     </span>
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{project.phases.length} fases</span>
                   </div>
-                  <h3 style={{ margin: '0 0 10px 0', fontSize: '1.1rem', color: 'var(--text)' }}>{project.title}</h3>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)', flex: 1 }}>{project.title}</h3>
+                    {project.unreadCount > 0 && (
+                      <span className="unread-dot-badge" title="Mensajes sin leer">
+                        {project.unreadCount}
+                      </span>
+                    )}
+                  </div>
                   <div style={{ marginTop: 'auto' }}>
                     <div className="progress-bar" style={{ height: '4px' }}>
                       <div className="progress-fill" style={{ width: `${progress}%` }}></div>
@@ -172,6 +185,31 @@ export default function OperatorDashboardClient({
           </div>
         )}
       </div>
+      <style jsx>{`
+        .tab-badge {
+          background: var(--danger);
+          color: white;
+          font-size: 0.7rem;
+          padding: 2px 6px;
+          border-radius: 10px;
+          margin-left: 8px;
+          font-weight: bold;
+        }
+        .unread-dot-badge {
+          background: var(--danger);
+          color: white;
+          font-size: 0.75rem;
+          min-width: 20px;
+          height: 20px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 10px;
+          font-weight: bold;
+          box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+          margin-left: 10px;
+        }
+      `}</style>
     </div>
   )
 }

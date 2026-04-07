@@ -111,7 +111,7 @@ export default function BudgetBuilder({
       m.name.toLowerCase().includes(term) || 
       (m.code && m.code.toLowerCase().includes(term)) ||
       (m.category && m.category.toLowerCase().includes(term))
-    ).slice(0, 10)
+    )
   }, [searchMaterial, materials])
 
   const selectFromCatalog = (m: any) => {

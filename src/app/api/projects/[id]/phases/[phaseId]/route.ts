@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getLocalNow } from '@/lib/date-utils'
+import { getLocalNow, forceEcuadorTZ } from '@/lib/date-utils'
 
 export async function PATCH(
   req: Request,
@@ -14,7 +14,7 @@ export async function PATCH(
 
     const { id, phaseId } = await params
     const { status, createdAt, title, description, estimatedDays } = await req.json()
-    const timestamp = createdAt ? new Date(createdAt) : getLocalNow()
+    const timestamp = createdAt ? new Date(forceEcuadorTZ(createdAt)) : new Date()
 
     // Validate if user belongs to the project team
     const teamMember = await prisma.projectTeam.findUnique({
@@ -61,7 +61,7 @@ export async function PATCH(
       if (nextPhase && nextPhase.status === 'PENDIENTE') {
         await prisma.projectPhase.update({
           where: { id: nextPhase.id },
-          data: { status: 'EN_PROGRESO', startedAt: getLocalNow() }
+          data: { status: 'EN_PROGRESO', startedAt: new Date() }
         })
       }
     }

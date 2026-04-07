@@ -4,9 +4,15 @@
  */
 
 export const ECUADOR_TIMEZONE = 'America/Guayaquil';
+if (typeof process !== 'undefined') {
+  process.env.TZ = ECUADOR_TIMEZONE;
+}
 
 /**
  * Obtiene un objeto Date que representa el "ahora" en la zona horaria de Ecuador.
+ * ⚠️ ADVERTENCIA: No usar para guardar en la base de datos (Prisma/MySQL).
+ * Para almacenamiento usar siempre `new Date()` (UTC puro).
+ * Usar esta función SOLO para comparaciones en el cliente o lógica de visualización inmediata.
  */
 export function getLocalNow(): Date {
   const now = new Date();

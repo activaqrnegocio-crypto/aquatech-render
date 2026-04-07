@@ -352,7 +352,7 @@ export default function NuevoProyectoPage() {
   const filteredMaterials = searchMaterial.trim() === '' ? [] : materials.filter(m => 
     m.name.toLowerCase().includes(searchMaterial.toLowerCase()) || 
     m.category?.toLowerCase().includes(searchMaterial.toLowerCase())
-  ).slice(0, 5)
+  )
 
   // Calculate detailed totals for project
   const { subtotal0, subtotal15, totalBudget } = budgetItems.reduce((acc, item) => {

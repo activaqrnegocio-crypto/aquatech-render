@@ -3,7 +3,7 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { sendWhatsAppMessage } from '@/lib/whatsapp'
-import { formatTimeEcuador } from '@/lib/date-utils'
+import { formatTimeEcuador, forceEcuadorTZ } from '@/lib/date-utils'
 import { isAdmin as checkIsAdmin } from '@/lib/rbac'
 
 export async function GET(request: Request) {
@@ -33,10 +33,10 @@ export async function GET(request: Request) {
 
     if (start && end) {
       where.startTime = {
-        gte: new Date(start),
+        gte: new Date(forceEcuadorTZ(start)),
       }
       where.endTime = {
-        lte: new Date(end),
+        lte: new Date(forceEcuadorTZ(end)),
       }
     }
 
@@ -74,8 +74,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
-    const start = new Date(startTime)
-    const end = new Date(endTime)
+    const start = new Date(forceEcuadorTZ(startTime))
+    const end = new Date(forceEcuadorTZ(endTime))
     if (end <= start) {
       return NextResponse.json({ error: 'La fecha de fin debe ser posterior a la de inicio' }, { status: 400 })
     }
@@ -84,8 +84,8 @@ export async function POST(request: Request) {
       data: {
         title,
         description,
-        startTime: new Date(startTime),
-        endTime: new Date(endTime),
+        startTime: start,
+        endTime: end,
         userId: Number(userId),
         projectId: projectId ? Number(projectId) : null,
       },

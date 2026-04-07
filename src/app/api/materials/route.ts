@@ -22,7 +22,10 @@ export async function GET(req: Request) {
         ],
         isActive: true
       },
-      orderBy: { name: 'asc' }
+      orderBy: [
+        { category: 'asc' },
+        { name: 'asc' }
+      ]
     })
     
     return NextResponse.json(materials)

@@ -89,6 +89,35 @@ html, body {
   --mobile-nav-height: 64px;
 }
 
+/* Notification Badges */
+.notification-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 4px;
+  background-color: var(--danger);
+  color: white;
+  font-size: 0.7rem;
+  font-weight: 700;
+  border-radius: 9999px;
+  margin-left: auto;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.4);
+  animation: badge-pop 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+}
+
+.notification-badge.small {
+  min-width: 1rem;
+  height: 1rem;
+  font-size: 0.6rem;
+}
+
+@keyframes badge-pop {
+  0% { transform: scale(0.5); opacity: 0; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
 /* ──────────────────────────────────────
    RESET & BASE
    ────────────────────────────────────── */

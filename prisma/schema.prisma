@@ -29,6 +29,7 @@ model User {
   expenses         Expense[]
   phaseCompletions PhaseCompletion[]
   projectTeams     ProjectTeam[]
+  projectViews     ProjectView[]
   createdProjects  Project[]         @relation("ProjectCreator")
   createdQuotes    Quote[]           @relation("QuoteCreator")
 
@@ -82,6 +83,7 @@ model Project {
   gallery            ProjectGalleryItem[]
   phases             ProjectPhase[]
   team               ProjectTeam[]
+  views              ProjectView[]
   client             Client?              @relation(fields: [clientId], references: [id])
   creator            User?                @relation("ProjectCreator", fields: [createdBy], references: [id])
   quotes             Quote[]
@@ -299,6 +301,18 @@ model MediaFile {
 
   @@index([messageId], map: "media_files_message_id_fkey")
   @@map("media_files")
+}
+
+model ProjectView {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  projectId Int      @map("project_id")
+  lastSeen  DateTime @default(now()) @map("last_seen")
+  user      User     @relation(fields: [userId], references: [id])
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, projectId])
+  @@map("project_views")
 }
 
 model ProjectGalleryItem {

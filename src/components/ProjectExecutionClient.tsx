@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition, useMemo } from 'react'
+import { useState, useEffect, useTransition, useMemo, useRef } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import ProjectUploader, { ProjectFile } from '@/components/ProjectUploader'
 import { db } from '@/lib/db'
@@ -40,6 +40,47 @@ export default function ProjectExecutionClient({
   const [activeTab, setActiveTab] = useLocalStorage<'records' | 'chat'>(`project_${project.id}_active_tab`, view as 'records' | 'chat')
   const [handleDownloadLoading, setHandleDownloadLoading] = useState<string | null>(null)
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<any>(null)
+  const [liveChat, setLiveChat] = useState(initialChat || [])
+
+  // --- REAL-TIME POLLING (Optimized: ref avoids dependency loop) ---
+  const liveChatRef = useRef(liveChat)
+  liveChatRef.current = liveChat
+
+  useEffect(() => {
+    const markAsSeen = async () => {
+      try {
+        await fetch('/api/notifications/summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: project.id })
+        })
+      } catch (e) { /* silent */ }
+    }
+    markAsSeen()
+
+    const pollInterval = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const msgs = liveChatRef.current
+        const lastMsg = msgs[msgs.length - 1]
+        const since = lastMsg ? lastMsg.createdAt : project.createdAt
+        const resp = await fetch(`/api/projects/${project.id}/messages?since=${encodeURIComponent(new Date(since).toISOString())}`)
+        if (resp.ok) {
+          const newMsgs = await resp.json()
+          if (newMsgs?.length > 0) {
+            const existingIds = new Set(msgs.map((m: any) => m.id))
+            const uniqueNew = newMsgs.filter((m: any) => !existingIds.has(m.id))
+            if (uniqueNew.length > 0) {
+              setLiveChat((prev: any) => [...prev, ...uniqueNew])
+              markAsSeen()
+            }
+          }
+        }
+      } catch (err) { /* silent */ }
+    }, 5000)
+
+    return () => clearInterval(pollInterval)
+  }, [project.id]) // Stable dependency
 
   // Calculate my total real expenses (not notes)
   const myTotalSpent = useMemo(() => {
@@ -675,7 +716,7 @@ export default function ProjectExecutionClient({
   }, [project.gallery])
 
   const combinedChat = [
-    ...initialChat,
+    ...liveChat,
     ...pendingItems
       .filter((item: any) => item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD')
       .map((item: any) => ({

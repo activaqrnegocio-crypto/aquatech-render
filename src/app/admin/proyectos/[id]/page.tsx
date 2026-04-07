@@ -11,26 +11,29 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
   const project = await prisma.project.findUnique({
     where: { id: Number(id) },
     include: {
-      client: true,
-      phases: { orderBy: { displayOrder: 'asc' } },
-      team: { include: { user: true } },
-      gallery: true,
+      client: {
+        select: { id: true, name: true, ruc: true, phone: true, email: true, city: true, address: true }
+      },
+      phases: { 
+        orderBy: { displayOrder: 'asc' },
+        select: { id: true, title: true, description: true, status: true, displayOrder: true, estimatedDays: true, estimatedHours: true, startedAt: true, completedAt: true }
+      },
+      team: { include: { user: { select: { id: true, name: true, phone: true, role: true } } } },
+      gallery: {
+        orderBy: { createdAt: 'desc' },
+        take: 50,
+        select: { id: true, url: true, filename: true, mimeType: true, createdAt: true }
+      },
       expenses: { 
         orderBy: { date: 'desc' },
-        include: { user: true }
-      },
-      dayRecords: { 
-        orderBy: { createdAt: 'desc' },
-        take: 15, // Only recent logs
-        include: { user: true }
+        select: { id: true, amount: true, description: true, date: true, isNote: true, category: true, receiptUrl: true, userId: true, createdAt: true, user: { select: { name: true } } }
       },
       chatMessages: {
-        orderBy: { createdAt: 'desc' },
-        take: 100, // Fetch more for media enrichment
+        orderBy: { createdAt: 'asc' },
+        take: 50,
         include: { 
-          user: true, 
-          phase: true,
-          media: true 
+          user: { select: { id: true, name: true, role: true } }, 
+          media: { select: { id: true, url: true, filename: true, mimeType: true } }
         }
       }
     }

@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getLocalNow } from '@/lib/date-utils'
+// Timestamps are stored as proper UTC; display conversion happens in the frontend via formatTimeEcuador()
 
 // Iniciar día
 export async function POST(req: Request) {
@@ -12,7 +12,7 @@ export async function POST(req: Request) {
       
     const { projectId, location, createdAt } = await req.json()
     const userId = Number(session.user.id)
-    const startTime = createdAt ? new Date(createdAt) : getLocalNow()
+    const startTime = createdAt ? new Date(createdAt) : new Date()
 
     // Check if there is an active day record for this user and project
     const existing = await prisma.dayRecord.findFirst({
@@ -58,7 +58,7 @@ export async function PUT(req: Request) {
     if (!session) return Response.json({ error: 'Unauthorized' }, { status: 401 })
       
     const { recordId, projectId, location, createdAt } = await req.json()
-    const endTime = createdAt ? new Date(createdAt) : getLocalNow()
+    const endTime = createdAt ? new Date(createdAt) : new Date()
 
     const record = await prisma.dayRecord.update({
       where: { id: Number(recordId) },

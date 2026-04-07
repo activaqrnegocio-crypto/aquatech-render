@@ -27,7 +27,7 @@ export default async function OperatorDashboard() {
   const userId = Number(session.user.id)
 
   // Fetch data in parallel
-  const [activeProjects, activeDayRecord, appointments] = await Promise.all([
+  const [activeProjects, activeDayRecord, appointments, userViews] = await Promise.all([
     prisma.project.findMany({
       where: {
         team: { some: { userId } },
@@ -54,8 +54,30 @@ export default async function OperatorDashboard() {
         where: { userId },
         orderBy: { startTime: 'asc' },
         include: { project: { select: { title: true } } }
+    }),
+    prisma.projectView.findMany({
+      where: { userId }
     })
   ])
+
+  // Calculate unread counts for each project
+  const projectsWithUnread = await Promise.all(activeProjects.map(async (project: any) => {
+    const view = userViews.find((v: any) => v.projectId === project.id);
+    const lastSeen = view?.lastSeen || new Date(0);
+
+    const unreadCount = await prisma.chatMessage.count({
+      where: {
+        projectId: project.id,
+        userId: { not: userId },
+        createdAt: { gt: lastSeen }
+      }
+    });
+
+    return {
+      ...project,
+      unreadCount
+    };
+  }));
 
   // Build URLs for offline use
   const prefetchUrls = [
@@ -72,7 +94,7 @@ export default async function OperatorDashboard() {
       <OfflinePrefetcher urls={prefetchUrls} />
       <OperatorDashboardClient 
         user={session.user}
-        activeProjects={activeProjects}
+        activeProjects={projectsWithUnread}
         activeDayRecord={activeDayRecord}
         appointments={appointments}
       />

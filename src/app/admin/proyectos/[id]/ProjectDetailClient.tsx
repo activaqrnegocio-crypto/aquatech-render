@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useTransition } from 'react'
+import { useState, useTransition, useEffect, useRef, useCallback } from 'react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import Link from 'next/link'
@@ -106,6 +106,46 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const [editClientEmail, setEditClientEmail] = useState(project.client?.email || '')
   const [editClientCity, setEditClientCity] = useState(project.client?.city || '')
   const [editClientAddress, setEditClientAddress] = useState(project.client?.address || '')
+
+  // --- REAL-TIME POLLING & SEEN STATUS (Optimized with ref to avoid re-render loops) ---
+  const chatMessagesRef = useRef(chatMessages)
+  chatMessagesRef.current = chatMessages
+
+  useEffect(() => {
+    const markAsSeen = async () => {
+      try {
+        await fetch('/api/notifications/summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: project.id })
+        })
+      } catch (e) { /* silent */ }
+    }
+    markAsSeen()
+
+    const pollInterval = setInterval(async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const msgs = chatMessagesRef.current
+        const lastMsg = msgs[msgs.length - 1]
+        const since = lastMsg ? lastMsg.createdAt : project.createdAt
+        const resp = await fetch(`/api/projects/${project.id}/messages?since=${encodeURIComponent(new Date(since).toISOString())}`)
+        if (resp.ok) {
+          const newMsgs = await resp.json()
+          if (newMsgs?.length > 0) {
+            const existingIds = new Set(msgs.map((m: any) => m.id))
+            const uniqueNew = newMsgs.filter((m: any) => !existingIds.has(m.id))
+            if (uniqueNew.length > 0) {
+              setChatMessages((prev: any) => [...prev, ...uniqueNew])
+              markAsSeen()
+            }
+          }
+        }
+      } catch (err) { /* silent */ }
+    }, 5000) // 5s is more than enough, reduces server load by 40%
+
+    return () => clearInterval(pollInterval)
+  }, [project.id]) // Stable dependency — never re-creates the interval
 
   const CATEGORIES = [
     { id: 'PISCINA', label: 'Piscina' },
@@ -1000,15 +1040,16 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                   style={{
                     padding: '6px 14px', borderRadius: '20px', fontSize: '0.8rem', fontWeight: 'bold',
                     backgroundColor: currentStatus === 'LEAD' ? 'rgba(234, 179, 8, 0.15)' : currentStatus === 'ACTIVO' ? 'rgba(56, 189, 248, 0.15)' : 'rgba(156, 163, 175, 0.15)',
-                    color: currentStatus === 'LEAD' ? 'var(--warning)' : currentStatus === 'ACTIVO' ? 'var(--primary)' : 'var(--text-muted)',
+                    color: currentStatus === 'LEAD' ? '#fbbf24' : currentStatus === 'ACTIVO' ? '#38bdf8' : '#9ca3af',
                     border: '1px solid currentColor',
                     cursor: 'pointer', appearance: 'auto',
-                    textTransform: 'uppercase'
+                    textTransform: 'uppercase',
+                    outline: 'none'
                   }}
                 >
-                  <option value="LEAD">Negociando</option>
-                  <option value="ACTIVO">Activo</option>
-                  <option value="ARCHIVADO">Archivado</option>
+                  <option value="LEAD" style={{ backgroundColor: '#0f172a', color: '#fbbf24' }}>Negociando</option>
+                  <option value="ACTIVO" style={{ backgroundColor: '#0f172a', color: '#38bdf8' }}>Activo</option>
+                  <option value="ARCHIVADO" style={{ backgroundColor: '#0f172a', color: '#9ca3af' }}>Archivado</option>
                 </select>
               {project.creator && (
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -1358,471 +1399,8 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         </div>
       </div>
 
-      <div className="grid-3" style={{ marginBottom: '30px', alignItems: 'stretch' }}>
-        {/* COMPARATIVA DE GASTOS */}
-        <div className="card" style={{ minWidth: 0, borderLeft: `4px solid ${isCostoExcedido ? 'var(--danger)' : 'var(--success)'}`, padding: '24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-              Inversión: Teórico vs Real
-            </h3>
-            {isCostoExcedido && <span style={{ color: 'var(--danger)', fontSize: '0.8rem', fontWeight: 'bold', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '4px 12px', borderRadius: '12px' }}>EXCEDIDO</span>}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Barra Teórica */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem', alignItems: 'center' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Presupuesto (Teórico)</span>
-                {isEditingBudget ? (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <input 
-                      type="number" 
-                      value={editBudget} 
-                      onChange={e => setEditBudget(e.target.value)} 
-                      className="form-input" 
-                      style={{ width: '90px', padding: '2px 6px', fontSize: '0.85rem' }} 
-                    />
-                    <button onClick={handleSaveBudget} className="btn btn-primary" style={{ padding: '2px 8px', fontSize: '0.8rem' }}>✓</button>
-                    <button onClick={() => { setIsEditingBudget(false); setEditBudget(project.estimatedBudget); }} className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: '0.8rem' }}>✕</button>
-                  </div>
-                ) : (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                    <span style={{ fontWeight: 'bold' }}>$ {theoreticalBudget.toFixed(2)}</span>
-                    <button 
-                      onClick={() => setIsEditingBudget(true)}
-                      title="Editar Presupuesto"
-                      className="btn btn-ghost"
-                      style={{ padding: '2px 8px', fontSize: '0.75rem', height: 'auto', minHeight: '0', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--primary)', border: '1px solid rgba(56, 189, 248, 0.3)' }}
-                    >
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                      Editar
-                    </button>
-                  </div>
-                )}
-              </div>
-              <div className="progress-bar" style={{ height: '14px', backgroundColor: 'var(--bg-surface)', borderRadius: '7px' }}>
-                <div className="progress-fill" style={{ width: '100%', backgroundColor: 'var(--primary)', borderRadius: '7px', opacity: 0.7 }}></div>
-              </div>
-            </div>
-
-            {/* Barra Real */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem' }}>
-                <span style={{ color: isCostoExcedido ? 'var(--danger)' : 'var(--text-muted)' }}>Gastado (Real)</span>
-                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                  <button 
-                    onClick={() => {
-                      setActiveTab('EXPENSES')
-                      setIsExpenseModalOpen(true)
-                    }}
-                    title="Registrar Gasto Directo"
-                    style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px' }}
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                    Agregar Gasto o Nota
-                  </button>
-                  <span style={{ fontWeight: 'bold', color: isCostoExcedido ? 'var(--danger)' : 'var(--success)' }}>$ {realExpenses.toFixed(2)}</span>
-                </div>
-              </div>
-
-              <div className="progress-bar" style={{ height: '22px', backgroundColor: 'var(--bg-surface)', borderRadius: '11px' }}>
-                <div className="progress-fill" style={{ 
-                  width: `${expenseRatio}%`, 
-                  backgroundColor: isCostoExcedido ? 'var(--danger)' : 'var(--success)',
-                  borderRadius: '11px',
-                  boxShadow: isCostoExcedido ? '0 0 10px rgba(239, 68, 68, 0.3)' : 'none'
-                }}></div>
-              </div>
-            </div>
-          </div>
-          
-          <div style={{ marginTop: '15px', fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-             {isCostoExcedido 
-               ? `Exceso de $ ${(realExpenses - theoreticalBudget).toFixed(2)} sobre el presupuesto.`
-               : `Restante: $ ${(theoreticalBudget - realExpenses).toFixed(2)} (${(100 - (realExpenses/theoreticalBudget*100)).toFixed(1)}%)`
-             }
-          </div>
-
-          {project.expenses.filter((e: any) => !e.isNote).length > 0 && (
-            <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid var(--border-color)' }}>
-              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '10px' }}>Últimos Gastos:</div>
-              {project.expenses.filter((e: any) => !e.isNote).slice(0, 5).map((exp: any) => (
-                <div key={exp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    {exp.receiptUrl && (
-                      <div 
-                        style={{ width: '28px', height: '28px', borderRadius: '4px', overflow: 'hidden', cursor: 'pointer', border: '1px solid var(--border-color)', flexShrink: 0 }}
-                        onClick={() => window.open(exp.receiptUrl, '_blank')}
-                      >
-                        <img src={exp.receiptUrl} alt="Recibo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                      </div>
-                    )}
-                    <span style={{ color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px', fontSize: '0.85rem' }}>
-                      {exp.description}
-                    </span>
-                  </div>
-                  <span style={{ color: 'var(--warning)', fontWeight: 'bold', fontSize: '0.85rem' }}>$ {Number(exp.amount).toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-
-          {project.expenses.filter((e: any) => e.isNote).length > 0 && (
-            <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid var(--border-color)' }}>
-              <div style={{ color: 'var(--primary)', fontSize: '0.8rem', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
-                Notas / Asignaciones
-              </div>
-              {project.expenses.filter((e: any) => e.isNote).slice(0, 5).map((exp: any) => (
-                <div key={exp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{ color: 'var(--primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px', fontSize: '0.85rem' }}>
-                      <strong>[NOTA]</strong> {exp.description}
-                    </span>
-                  </div>
-                  <span style={{ color: 'var(--text-muted)', fontWeight: 'bold', fontSize: '0.85rem' }}>$ {Number(exp.amount).toFixed(2)}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-
-        {/* COMPARATIVA DE TIEMPO */}
-        <div className="card" style={{ minWidth: 0, borderLeft: `4px solid ${isTiempoExcedido ? 'var(--warning)' : 'var(--primary)'}`, padding: '24px' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-            <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-              Tiempo: Teórico vs Real
-            </h3>
-            {isTiempoExcedido && <span style={{ color: 'var(--warning)', fontSize: '0.8rem', fontWeight: 'bold', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '4px 12px', borderRadius: '12px' }}>DEMORADO</span>}
-          </div>
-
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            {/* Barra Teórica */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem' }}>
-                <span style={{ color: 'var(--text-muted)' }}>Días Estimados (Teórico)</span>
-                <span style={{ fontWeight: 'bold' }}>{theoreticalDays} días</span>
-              </div>
-              <div className="progress-bar" style={{ height: '14px', backgroundColor: 'var(--bg-surface)', borderRadius: '7px' }}>
-                <div className="progress-fill" style={{ width: '100%', backgroundColor: 'var(--text-muted)', borderRadius: '7px', opacity: 0.5 }}></div>
-              </div>
-            </div>
-
-            {/* Barra Real */}
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem' }}>
-                <span style={{ color: isTiempoExcedido ? 'var(--warning)' : 'var(--text-muted)' }}>Días Transcurridos (Real)</span>
-                <span style={{ fontWeight: 'bold', color: isTiempoExcedido ? 'var(--warning)' : 'var(--primary)' }}>{realDays} días</span>
-              </div>
-              <div className="progress-bar" style={{ height: '22px', backgroundColor: 'var(--bg-surface)', borderRadius: '11px' }}>
-                <div className="progress-fill" style={{ 
-                  width: `${timeRatio}%`, 
-                  backgroundColor: isTiempoExcedido ? 'var(--warning)' : 'var(--primary)',
-                  borderRadius: '11px',
-                  boxShadow: isTiempoExcedido ? '0 0 10px rgba(245, 158, 11, 0.3)' : 'none'
-                }}></div>
-              </div>
-            </div>
-          </div>
-
-          <div style={{ marginTop: '15px', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
-             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
-                Inicio: {formatDate(project.startDate)}
-             </span>
-             <span>Progreso: {progressPercent}%</span>
-          </div>
-
-          <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
-             <div>
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Fases Completadas</div>
-                <div style={{ fontWeight: 'bold' }}>{completedPhases} / {totalPhases}</div>
-             </div>
-             <div style={{ textAlign: 'right' }}>
-                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Estado Actual</div>
-                <div style={{ fontWeight: 'bold', color: 'var(--primary)', textTransform: 'capitalize' }}>{project.status.toLowerCase()}</div>
-             </div>
-          </div>
-        </div>
-
-        {/* CLIENTE RAPID VIEW */}
-        <div className="card" style={{ minWidth: 0 }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '15px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            Información del Cliente
-          </h3>
-          <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '10px' }}>{project.client?.name || 'Cliente sin nombre'}</div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              {project.client?.phone || 'Sin teléfono'}
-            </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              <span style={{ wordBreak: 'break-all', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {project.client?.email || 'Sin email'}
-              </span>
-            </div>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginTop: '2px' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              <span>{project.address || project.client?.address || 'Sin dirección'}</span>
-            </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
-        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
-          <div style={{ padding: '20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text)' }}>Fases de Trabajo</h3>
-            {!isEditingPhases ? (
-              <button 
-                onClick={() => {
-                  setIsEditingPhases(true)
-                  setEditingPhases([...project.phases])
-                }} 
-                className="btn btn-ghost btn-sm"
-              >
-                Editar Fases
-              </button>
-            ) : (
-              <div style={{ display: 'flex', gap: '8px' }}>
-                <button onClick={() => setIsEditingPhases(false)} className="btn btn-ghost btn-sm" disabled={isSavingPhases}>Cancelar</button>
-                <button onClick={handleSavePhases} className="btn btn-primary btn-sm" disabled={isSavingPhases}>{isSavingPhases ? 'Guardando...' : 'Guardar Cambios'}</button>
-              </div>
-            )}
-          </div>
-          <div style={{ padding: '20px' }}>
-            {(!isEditingPhases ? project.phases : editingPhases).map((phase: any, idx: number) => (
-              <div key={phase.id} style={{ display: 'flex', gap: '20px', marginBottom: idx === project.phases.length - 1 ? 0 : '30px', position: 'relative' }}>
-                {idx !== project.phases.length - 1 && (
-                  <div style={{ position: 'absolute', left: '15px', top: '35px', bottom: '-35px', width: '2px', backgroundColor: phase.status === 'COMPLETADA' ? 'var(--success)' : 'var(--border-color)', zIndex: 0 }} />
-                )}
-                
-                <div style={{ 
-                  width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0, zIndex: 1,
-                  backgroundColor: phase.status === 'COMPLETADA' ? 'var(--success)' : (phase.status === 'EN_PROGRESO' || phase.status === 'ACTIVO' ? 'var(--warning)' : 'var(--bg-surface)'),
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: phase.status === 'PENDIENTE' ? 'var(--text-muted)' : 'var(--bg-deep)'
-                }}>
-                  {phase.status === 'COMPLETADA' ? (
-                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
-                  ) : (
-                    <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{idx + 1}</span>
-                  )}
-                </div>
-
-                <div style={{ flex: 1, backgroundColor: 'var(--bg-surface)', padding: '15px', borderRadius: '8px', border: phase.status === 'EN_PROGRESO' || phase.status === 'ACTIVO' ? '1px solid var(--warning)' : '1px solid var(--border-color)' }}>
-                  {!isEditingPhases ? (
-                    <>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                        <h4 style={{ margin: 0, fontSize: '1rem', color: phase.status === 'COMPLETADA' ? 'var(--success)' : 'var(--text)' }}>
-                          {phase.title}
-                        </h4>
-                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                          {phase.status === 'COMPLETADA' ? 'Completada' : phase.status === 'EN_PROGRESO' || phase.status === 'ACTIVO' ? 'En Progreso' : 'Pendiente'}
-                        </span>
-                      </div>
-                      {phase.description && <p style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{phase.description}</p>}
-                      {phase.estimatedDays && (
-                        <div style={{ fontSize: '0.8rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                          {phase.estimatedDays} días est.
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                      <div style={{ display: 'flex', gap: '10px' }}>
-                        <input 
-                          type="text" 
-                          value={phase.title} 
-                          onChange={e => {
-                            const newPhases = [...editingPhases]
-                            newPhases[idx].title = e.target.value
-                            setEditingPhases(newPhases)
-                          }}
-                          className="form-input"
-                          style={{ flex: 1, fontSize: '0.9rem' }}
-                          placeholder="Título de la fase"
-                        />
-                        <select 
-                          value={phase.status} 
-                          onChange={e => {
-                            const newPhases = [...editingPhases]
-                            newPhases[idx].status = e.target.value
-                            setEditingPhases(newPhases)
-                          }}
-                          className="form-input"
-                          style={{ width: '130px', fontSize: '0.8rem' }}
-                        >
-                          <option value="PENDIENTE">Pendiente</option>
-                          <option value="EN_PROGRESO">En Progreso</option>
-                          <option value="COMPLETADA">Completada</option>
-                        </select>
-                      </div>
-                      <textarea 
-                        value={phase.description || ''} 
-                        onChange={e => {
-                          const newPhases = [...editingPhases]
-                          newPhases[idx].description = e.target.value
-                          setEditingPhases(newPhases)
-                        }}
-                        className="form-input"
-                        style={{ width: '100%', fontSize: '0.85rem', minHeight: '60px' }}
-                        placeholder="Descripción de la fase..."
-                      />
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Días Est.</label>
-                        <input 
-                          type="number" 
-                          value={phase.estimatedDays || 0} 
-                          onChange={e => {
-                            const newPhases = [...editingPhases]
-                            newPhases[idx].estimatedDays = Number(e.target.value)
-                            setEditingPhases(newPhases)
-                          }}
-                          className="form-input"
-                          style={{ width: '80px', fontSize: '0.8rem' }}
-                        />
-                      </div>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
-        <div>
-          {/* Equipo */}
-          <div className="card" style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                Equipo Asignado
-              </h3>
-              {!isEditingTeam ? (
-                <button onClick={() => setIsEditingTeam(true)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }}>Editar</button>
-              ) : (
-                <div style={{ display: 'flex', gap: '5px' }}>
-                  <button onClick={() => setIsEditingTeam(false)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', color: 'var(--text-muted)' }} disabled={isSavingTeam}>Cancelar</button>
-                  <button onClick={handleSaveTeam} className="btn btn-primary btn-sm" style={{ padding: '4px 8px' }} disabled={isSavingTeam}>{isSavingTeam ? '...' : 'Guardar'}</button>
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {!isEditingTeam ? (
-                <>
-                  {project.team.map((member: any) => (
-                    <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px' }}>
-                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>
-                        {member.user.name.substring(0,2).toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.95rem', color: 'var(--text)' }}>{member.user.name}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{member.user.phone || 'Sin número'}</div>
-                      </div>
-                    </div>
-                  ))}
-                  {project.team.length === 0 && (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', padding: '10px' }}>No hay operadores asignados.</div>
-                  )}
-                </>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
-                  {availableOperators.map((op: any) => (
-                    <label key={op.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={selectedTeam.includes(op.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedTeam([...selectedTeam, op.id])
-                          else setSelectedTeam(selectedTeam.filter(id => id !== op.id))
-                        }}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
-                      />
-                      <div>
-                        <div style={{ fontSize: '0.95rem' }}>{op.name}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{op.phone || 'Sin WhatsApp'}</div>
-                      </div>
-                    </label>
-                  ))}
-                  {availableOperators.length === 0 && (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No hay operadores registrados en el sistema.</div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Actividad Reciente */}
-          <div className="card">
-            <h3 style={{ fontSize: '1.1rem', marginBottom: '15px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-              Actividad Reciente
-            </h3>
-            
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {project.chatMessages.slice(0, 5).map((msg: any) => (
-                <div key={msg.id} style={{ display: 'flex', gap: '10px' }}>
-                  <div style={{ width: '28px', height: '28px', borderRadius: '50%', backgroundColor: 'var(--bg-surface)', flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem', color: 'var(--primary)', fontWeight: 'bold' }}>
-                    {msg.user.name.substring(0,2).toUpperCase()}
-                  </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline' }}>
-                      <span style={{ fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--text)' }}>{msg.user.name}</span>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-                        {formatDateTime(msg.createdAt)}
-                      </span>
-                    </div>
-                    {msg.phase && (
-                      <div style={{ fontSize: '0.7rem', color: 'var(--primary)', marginBottom: '4px' }}>
-                        Fase: {msg.phase.title}
-                      </div>
-                    )}
-                    <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)', backgroundColor: 'var(--bg-surface)', padding: '8px 12px', borderRadius: '0 8px 8px 8px', marginTop: '2px' }}>
-                      {msg.type === 'IMAGE' ? (
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                            Foto de avance
-                          </div>
-                          {msg.media && msg.media.length > 0 && (
-                            <img 
-                              src={msg.media[0].url} 
-                              alt="Avance de obra" 
-                              style={{ width: '100%', borderRadius: '4px', objectFit: 'cover', maxHeight: '150px' }} 
-                            />
-                          )}
-                        </div>
-                      ) : (
-                        msg.content
-                      )}
-                    </div>
-                  </div>
-                </div>
-              ))}
-              {project.chatMessages.length === 0 && (
-                <div style={{ textAlign: 'center', color: 'var(--text-muted)', fontSize: '0.9rem', padding: '10px' }}>Sin actividad aún.</div>
-              )}
-            </div>
-            
-            {project.chatMessages.length > 5 && (
-              <Link href={`/admin/proyectos/${project.id}/bitacora`} className="btn btn-ghost btn-sm" style={{ width: '100%', marginTop: '15px', fontSize: '0.8rem', border: '1px solid var(--border-color)' }}>
-                Ver Bitácora Completa ({project.chatMessages.length - 5} más)
-              </Link>
-            )}
-          </div>
-        </div>
-      </div>
-
       {/* SECCIÓN DE PESTAÑAS (TABS) */}
-      <div style={{ marginTop: '40px', width: '100%' }}>
+      <div style={{ marginBottom: '30px', width: '100%' }}>
         {/* Tab Navigation */}
         <div style={{ 
           display: 'flex', 
@@ -1834,9 +1412,9 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           scrollbarWidth: 'none'
         }}>
           {[
-            { id: 'BITACORA', label: 'Bitácora', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> },
-            { id: 'GALLERY', label: 'Galería', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg> },
-            { id: 'EXPENSES', label: 'Gastos', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg> }
+            { id: 'BITACORA', label: 'Bitácora', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>, activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.1)' },
+            { id: 'GALLERY', label: 'Galería', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.1)' },
+            { id: 'EXPENSES', label: 'Gastos', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>, activeColor: 'var(--success)', bgColor: 'rgba(34, 197, 94, 0.1)' }
           ].map(tab => (
             <button
               key={tab.id}
@@ -1845,14 +1423,18 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 display: 'flex',
                 alignItems: 'center',
                 gap: '8px',
-                padding: '10px 20px',
-                borderRadius: '12px',
-                backgroundColor: activeTab === tab.id ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
-                color: activeTab === tab.id ? 'var(--bg-deep)' : 'var(--text)',
-                border: 'none',
+                padding: '12px 24px',
+                borderRadius: '14px',
+                backgroundColor: activeTab === tab.id ? tab.activeColor : 'rgba(255,255,255,0.03)',
+                color: activeTab === tab.id ? 'var(--bg-deep)' : tab.activeColor,
+                border: `1px solid ${activeTab === tab.id ? tab.activeColor : 'rgba(255,255,255,0.1)'}`,
                 cursor: 'pointer',
-                fontWeight: 'bold',
-                transition: 'all 0.3s ease',
+                fontWeight: '800',
+                fontSize: '0.95rem',
+                textTransform: 'uppercase',
+                letterSpacing: '0.5px',
+                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
+                boxShadow: activeTab === tab.id ? `0 4px 15px ${tab.bgColor}` : 'none',
                 whiteSpace: 'nowrap'
               }}
             >
@@ -2129,6 +1711,411 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
               </div>
             </div>
           )}
+        </div>
+      </div>
+
+      <div style={{ display: 'grid', gridTemplateColumns: '2fr 1fr', gap: '20px' }}>
+        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+          <div style={{ padding: '20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text)' }}>Fases de Trabajo</h3>
+            {!isEditingPhases ? (
+              <button 
+                onClick={() => {
+                  setIsEditingPhases(true)
+                  setEditingPhases([...project.phases])
+                }} 
+                className="btn btn-ghost btn-sm"
+              >
+                Editar Fases
+              </button>
+            ) : (
+              <div style={{ display: 'flex', gap: '8px' }}>
+                <button onClick={() => setIsEditingPhases(false)} className="btn btn-ghost btn-sm" disabled={isSavingPhases}>Cancelar</button>
+                <button onClick={handleSavePhases} className="btn btn-primary btn-sm" disabled={isSavingPhases}>{isSavingPhases ? 'Guardando...' : 'Guardar Cambios'}</button>
+              </div>
+            )}
+          </div>
+          <div style={{ padding: '20px' }}>
+            {(!isEditingPhases ? project.phases : editingPhases).map((phase: any, idx: number) => (
+              <div key={phase.id} style={{ display: 'flex', gap: '20px', marginBottom: idx === project.phases.length - 1 ? 0 : '30px', position: 'relative' }}>
+                {idx !== project.phases.length - 1 && (
+                  <div style={{ position: 'absolute', left: '15px', top: '35px', bottom: '-35px', width: '2px', backgroundColor: phase.status === 'COMPLETADA' ? 'var(--success)' : 'var(--border-color)', zIndex: 0 }} />
+                )}
+                
+                <div style={{ 
+                  width: '32px', height: '32px', borderRadius: '50%', flexShrink: 0, zIndex: 1,
+                  backgroundColor: phase.status === 'COMPLETADA' ? 'var(--success)' : (phase.status === 'EN_PROGRESO' || phase.status === 'ACTIVO' ? 'var(--warning)' : 'var(--bg-surface)'),
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', color: phase.status === 'PENDIENTE' ? 'var(--text-muted)' : 'var(--bg-deep)'
+                }}>
+                  {phase.status === 'COMPLETADA' ? (
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M20 6L9 17l-5-5"/></svg>
+                  ) : (
+                    <span style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>{idx + 1}</span>
+                  )}
+                </div>
+
+                <div style={{ flex: 1, backgroundColor: 'var(--bg-surface)', padding: '15px', borderRadius: '8px', border: phase.status === 'EN_PROGRESO' || phase.status === 'ACTIVO' ? '1px solid var(--warning)' : '1px solid var(--border-color)' }}>
+                  {!isEditingPhases ? (
+                    <>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
+                        <h4 style={{ margin: 0, fontSize: '1rem', color: phase.status === 'COMPLETADA' ? 'var(--success)' : 'var(--text)' }}>
+                          {phase.title}
+                        </h4>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
+                          {phase.status === 'COMPLETADA' ? 'Completada' : phase.status === 'EN_PROGRESO' || phase.status === 'ACTIVO' ? 'En Progreso' : 'Pendiente'}
+                        </span>
+                      </div>
+                      {phase.description && <p style={{ margin: '0 0 10px 0', fontSize: '0.9rem', color: 'var(--text-muted)', lineHeight: 1.5 }}>{phase.description}</p>}
+                      {phase.estimatedDays && (
+                        <div style={{ fontSize: '0.8rem', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                          {phase.estimatedDays} días est.
+                        </div>
+                      )}
+                    </>
+                  ) : (
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                      <div style={{ display: 'flex', gap: '10px' }}>
+                        <input 
+                          type="text" 
+                          value={phase.title} 
+                          onChange={e => {
+                            const newPhases = [...editingPhases]
+                            newPhases[idx].title = e.target.value
+                            setEditingPhases(newPhases)
+                          }}
+                          className="form-input"
+                          style={{ flex: 1, fontSize: '0.9rem' }}
+                          placeholder="Título de la fase"
+                        />
+                        <select 
+                          value={phase.status} 
+                          onChange={e => {
+                            const newPhases = [...editingPhases]
+                            newPhases[idx].status = e.target.value
+                            setEditingPhases(newPhases)
+                          }}
+                          className="form-input"
+                          style={{ width: '130px', fontSize: '0.8rem' }}
+                        >
+                          <option value="PENDIENTE">Pendiente</option>
+                          <option value="EN_PROGRESO">En Progreso</option>
+                          <option value="COMPLETADA">Completada</option>
+                        </select>
+                      </div>
+                      <textarea 
+                        value={phase.description || ''} 
+                        onChange={e => {
+                          const newPhases = [...editingPhases]
+                          newPhases[idx].description = e.target.value
+                          setEditingPhases(newPhases)
+                        }}
+                        className="form-input"
+                        style={{ width: '100%', fontSize: '0.85rem', minHeight: '60px' }}
+                        placeholder="Descripción de la fase..."
+                      />
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <label style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Días Est.</label>
+                        <input 
+                          type="number" 
+                          value={phase.estimatedDays || 0} 
+                          onChange={e => {
+                            const newPhases = [...editingPhases]
+                            newPhases[idx].estimatedDays = Number(e.target.value)
+                            setEditingPhases(newPhases)
+                          }}
+                          className="form-input"
+                          style={{ width: '80px', fontSize: '0.8rem' }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div>
+          {/* Equipo */}
+          <div className="card" style={{ marginBottom: '20px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Equipo Asignado
+              </h3>
+              {!isEditingTeam ? (
+                <button onClick={() => setIsEditingTeam(true)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }}>Editar</button>
+              ) : (
+                <div style={{ display: 'flex', gap: '5px' }}>
+                  <button onClick={() => setIsEditingTeam(false)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', color: 'var(--text-muted)' }} disabled={isSavingTeam}>Cancelar</button>
+                  <button onClick={handleSaveTeam} className="btn btn-primary btn-sm" style={{ padding: '4px 8px' }} disabled={isSavingTeam}>{isSavingTeam ? '...' : 'Guardar'}</button>
+                </div>
+              )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {!isEditingTeam ? (
+                <>
+                  {project.team.map((member: any) => (
+                    <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px' }}>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>
+                        {member.user.name.substring(0,2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.95rem', color: 'var(--text)' }}>{member.user.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{member.user.phone || 'Sin número'}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {project.team.length === 0 && (
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', padding: '10px' }}>No hay operadores asignados.</div>
+                  )}
+                </>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {availableOperators.map((op: any) => (
+                    <label key={op.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedTeam.includes(op.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedTeam([...selectedTeam, op.id])
+                          else setSelectedTeam(selectedTeam.filter(id => id !== op.id))
+                        }}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '0.95rem' }}>{op.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{op.phone || 'Sin WhatsApp'}</div>
+                      </div>
+                    </label>
+                  ))}
+                  {availableOperators.length === 0 && (
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No hay operadores registrados en el sistema.</div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div className="grid-3" style={{ marginBottom: '30px', alignItems: 'stretch' }}>
+        {/* COMPARATIVA DE GASTOS */}
+        <div className="card" style={{ minWidth: 0, borderLeft: `4px solid ${isCostoExcedido ? 'var(--danger)' : 'var(--success)'}`, padding: '24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              Inversión: Teórico vs Real
+            </h3>
+            {isCostoExcedido && <span style={{ color: 'var(--danger)', fontSize: '0.8rem', fontWeight: 'bold', backgroundColor: 'rgba(239, 68, 68, 0.1)', padding: '4px 12px', borderRadius: '12px' }}>EXCEDIDO</span>}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Barra Teórica */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem', alignItems: 'center' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Presupuesto (Teórico)</span>
+                {isEditingBudget ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <input 
+                      type="number" 
+                      value={editBudget} 
+                      onChange={e => setEditBudget(e.target.value)} 
+                      className="form-input" 
+                      style={{ width: '90px', padding: '2px 6px', fontSize: '0.85rem' }} 
+                    />
+                    <button onClick={handleSaveBudget} className="btn btn-primary" style={{ padding: '2px 8px', fontSize: '0.8rem' }}>✓</button>
+                    <button onClick={() => { setIsEditingBudget(false); setEditBudget(project.estimatedBudget); }} className="btn btn-ghost" style={{ padding: '2px 8px', fontSize: '0.8rem' }}>✕</button>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+                    <span style={{ fontWeight: 'bold' }}>$ {theoreticalBudget.toFixed(2)}</span>
+                    <button 
+                      onClick={() => setIsEditingBudget(true)}
+                      title="Editar Presupuesto"
+                      className="btn btn-ghost"
+                      style={{ padding: '2px 8px', fontSize: '0.75rem', height: 'auto', minHeight: '0', display: 'flex', alignItems: 'center', gap: '4px', color: 'var(--primary)', border: '1px solid rgba(56, 189, 248, 0.3)' }}
+                    >
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      Editar
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div className="progress-bar" style={{ height: '14px', backgroundColor: 'var(--bg-surface)', borderRadius: '7px' }}>
+                <div className="progress-fill" style={{ width: '100%', backgroundColor: 'var(--primary)', borderRadius: '7px', opacity: 0.7 }}></div>
+              </div>
+            </div>
+
+            {/* Barra Real */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem' }}>
+                <span style={{ color: isCostoExcedido ? 'var(--danger)' : 'var(--text-muted)' }}>Gastado (Real)</span>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <button 
+                    onClick={() => {
+                      setActiveTab('EXPENSES')
+                      setIsExpenseModalOpen(true)
+                    }}
+                    title="Registrar Gasto Directo"
+                    style={{ padding: '4px 8px', fontSize: '0.75rem', backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border-color)', borderRadius: '4px', cursor: 'pointer', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '4px' }}
+                  >
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                    Agregar Gasto o Nota
+                  </button>
+                  <span style={{ fontWeight: 'bold', color: isCostoExcedido ? 'var(--danger)' : 'var(--success)' }}>$ {realExpenses.toFixed(2)}</span>
+                </div>
+              </div>
+
+              <div className="progress-bar" style={{ height: '22px', backgroundColor: 'var(--bg-surface)', borderRadius: '11px' }}>
+                <div className="progress-fill" style={{ 
+                  width: `${expenseRatio}%`, 
+                  backgroundColor: isCostoExcedido ? 'var(--danger)' : 'var(--success)',
+                  borderRadius: '11px',
+                  boxShadow: isCostoExcedido ? '0 0 10px rgba(239, 68, 68, 0.3)' : 'none'
+                }}></div>
+              </div>
+            </div>
+          </div>
+          
+          <div style={{ marginTop: '15px', fontSize: '0.85rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+             {isCostoExcedido 
+               ? `Exceso de $ ${(realExpenses - theoreticalBudget).toFixed(2)} sobre el presupuesto.`
+               : `Restante: $ ${(theoreticalBudget - realExpenses).toFixed(2)} (${(100 - (realExpenses/theoreticalBudget*100)).toFixed(1)}%)`
+             }
+          </div>
+
+          {project.expenses.filter((e: any) => !e.isNote).length > 0 && (
+            <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid var(--border-color)' }}>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', marginBottom: '10px' }}>Últimos Gastos:</div>
+              {project.expenses.filter((e: any) => !e.isNote).slice(0, 5).map((exp: any) => (
+                <div key={exp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    {exp.receiptUrl && (
+                      <div 
+                        style={{ width: '28px', height: '28px', borderRadius: '4px', overflow: 'hidden', cursor: 'pointer', border: '1px solid var(--border-color)', flexShrink: 0 }}
+                        onClick={() => window.open(exp.receiptUrl, '_blank')}
+                      >
+                        <img src={exp.receiptUrl} alt="Recibo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                      </div>
+                    )}
+                    <span style={{ color: 'var(--text)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px', fontSize: '0.85rem' }}>
+                      {exp.description}
+                    </span>
+                  </div>
+                  <span style={{ color: 'var(--warning)', fontWeight: 'bold', fontSize: '0.85rem' }}>$ {Number(exp.amount).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {project.expenses.filter((e: any) => e.isNote).length > 0 && (
+            <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid var(--border-color)' }}>
+              <div style={{ color: 'var(--primary)', fontSize: '0.8rem', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+                Notas / Asignaciones
+              </div>
+              {project.expenses.filter((e: any) => e.isNote).slice(0, 5).map((exp: any) => (
+                <div key={exp.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 0', borderBottom: '1px solid rgba(255,255,255,0.03)' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <span style={{ color: 'var(--primary)', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '150px', fontSize: '0.85rem' }}>
+                      <strong>[NOTA]</strong> {exp.description}
+                    </span>
+                  </div>
+                  <span style={{ color: 'var(--text-muted)', fontWeight: 'bold', fontSize: '0.85rem' }}>$ {Number(exp.amount).toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* COMPARATIVA DE TIEMPO */}
+        <div className="card" style={{ minWidth: 0, borderLeft: `4px solid ${isTiempoExcedido ? 'var(--warning)' : 'var(--primary)'}`, padding: '24px' }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+            <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+              Tiempo: Teórico vs Real
+            </h3>
+            {isTiempoExcedido && <span style={{ color: 'var(--warning)', fontSize: '0.8rem', fontWeight: 'bold', backgroundColor: 'rgba(245, 158, 11, 0.1)', padding: '4px 12px', borderRadius: '12px' }}>DEMORADO</span>}
+          </div>
+
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+            {/* Barra Teórica */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem' }}>
+                <span style={{ color: 'var(--text-muted)' }}>Días Estimados (Teórico)</span>
+                <span style={{ fontWeight: 'bold' }}>{theoreticalDays} días</span>
+              </div>
+              <div className="progress-bar" style={{ height: '14px', backgroundColor: 'var(--bg-surface)', borderRadius: '7px' }}>
+                <div className="progress-fill" style={{ width: '100%', backgroundColor: 'var(--text-muted)', borderRadius: '7px', opacity: 0.5 }}></div>
+              </div>
+            </div>
+
+            {/* Barra Real */}
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px', fontSize: '0.9rem' }}>
+                <span style={{ color: isTiempoExcedido ? 'var(--warning)' : 'var(--text-muted)' }}>Días Transcurridos (Real)</span>
+                <span style={{ fontWeight: 'bold', color: isTiempoExcedido ? 'var(--warning)' : 'var(--primary)' }}>{realDays} días</span>
+              </div>
+              <div className="progress-bar" style={{ height: '22px', backgroundColor: 'var(--bg-surface)', borderRadius: '11px' }}>
+                <div className="progress-fill" style={{ 
+                  width: `${timeRatio}%`, 
+                  backgroundColor: isTiempoExcedido ? 'var(--warning)' : 'var(--primary)',
+                  borderRadius: '11px',
+                  boxShadow: isTiempoExcedido ? '0 0 10px rgba(245, 158, 11, 0.3)' : 'none'
+                }}></div>
+              </div>
+            </div>
+          </div>
+
+          <div style={{ marginTop: '15px', fontSize: '0.85rem', color: 'var(--text-muted)', display: 'flex', justifyContent: 'space-between' }}>
+             <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                Inicio: {formatDate(project.startDate)}
+             </span>
+             <span>Progreso: {progressPercent}%</span>
+          </div>
+
+          <div style={{ marginTop: '20px', paddingTop: '15px', borderTop: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
+             <div>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Fases Completadas</div>
+                <div style={{ fontWeight: 'bold' }}>{completedPhases} / {totalPhases}</div>
+             </div>
+             <div style={{ textAlign: 'right' }}>
+                <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Estado Actual</div>
+                <div style={{ fontWeight: 'bold', color: 'var(--primary)', textTransform: 'capitalize' }}>{project.status.toLowerCase()}</div>
+             </div>
+          </div>
+        </div>
+
+        {/* CLIENTE RAPID VIEW */}
+        <div className="card" style={{ minWidth: 0 }}>
+          <h3 style={{ fontSize: '1.1rem', marginBottom: '15px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+            Información del Cliente
+          </h3>
+          <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '10px' }}>{project.client?.name || 'Cliente sin nombre'}</div>
+          
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+              {project.client?.phone || 'Sin teléfono'}
+            </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              <span style={{ wordBreak: 'break-all', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                {project.client?.email || 'Sin email'}
+              </span>
+            </div>
+            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginTop: '2px' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+              <span>{project.address || project.client?.address || 'Sin dirección'}</span>
+            </div>
+            </div>
+          </div>
         </div>
       </div>
 

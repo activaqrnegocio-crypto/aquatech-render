@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { getLocalNow } from '@/lib/date-utils'
+import { getLocalNow, forceEcuadorTZ } from '@/lib/date-utils'
 import { isAdmin, isOperator } from '@/lib/rbac'
 
 export async function GET(request: Request) {
@@ -38,24 +38,15 @@ export async function GET(request: Request) {
 
     const projects = await prisma.project.findMany({
       where: whereClause,
-      include: {
-        client: {
-          select: { name: true }
-        },
-        creator: {
-          select: { name: true }
-        },
-        phases: {
-          select: {
-            id: true,
-            status: true,
-            estimatedDays: true
-          },
-          orderBy: { displayOrder: 'asc' }
-        },
-        team: {
-          select: { id: true }
-        }
+      select: {
+        id: true,
+        title: true,
+        status: true,
+        createdAt: true,
+        estimatedBudget: true,
+        client: { select: { name: true } },
+        phases: { select: { status: true, estimatedDays: true } },
+        team: { select: { id: true } }
       },
       orderBy: { createdAt: 'desc' }
     })
@@ -139,7 +130,7 @@ export async function POST(request: Request) {
           type: mappedType as any,
           subtype: subtype || null,
           status: isOp ? 'LEAD' : (status || 'ACTIVO'),
-          startDate: startDate ? new Date(startDate) : getLocalNow(),
+          startDate: startDate ? new Date(forceEcuadorTZ(startDate)) : new Date(),
           endDate: endDate ? new Date(endDate) : null,
           address: address || null,
           city: city || null,

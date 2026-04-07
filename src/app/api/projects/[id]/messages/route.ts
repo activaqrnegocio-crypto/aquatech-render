@@ -4,6 +4,40 @@ import { authOptions } from '@/lib/auth'
 import { NextResponse } from 'next/server'
 import { uploadToBunny } from '@/lib/bunny'
 
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    const { id } = await params
+    const session = await getServerSession(authOptions)
+    if (!session) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+
+    const { searchParams } = new URL(req.url)
+    const since = searchParams.get('since')
+
+    const messages = await prisma.chatMessage.findMany({
+      where: {
+        projectId: Number(id),
+        ...(since ? { createdAt: { gt: new Date(since) } } : {})
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            name: true,
+            role: true
+          }
+        },
+        media: true
+      },
+      orderBy: { createdAt: 'asc' }
+    })
+
+    return NextResponse.json(messages)
+  } catch (error) {
+    console.error('[API Messages GET ERROR]:', error)
+    return NextResponse.json({ error: 'Error fetching messages' }, { status: 500 })
+  }
+}
+
 export async function POST(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params

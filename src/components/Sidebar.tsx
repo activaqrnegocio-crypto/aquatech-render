@@ -137,6 +137,25 @@ export default function Sidebar() {
     'Proyecto Actual': true,
   })
   const [offlineUser, setOfflineUser] = useState<any>(null)
+  const [notifications, setNotifications] = useState<any>({ totalUnread: 0, byProject: {} })
+
+  // --- NOTIFICATION POLLING ---
+  useEffect(() => {
+    const fetchNotifications = async () => {
+      if (document.visibilityState !== 'visible') return
+      try {
+        const resp = await fetch('/api/notifications/summary')
+        if (resp.ok) {
+          const data = await resp.json()
+          setNotifications(data)
+        }
+      } catch (e) { console.warn('Notification fetch failed', e) }
+    }
+
+    fetchNotifications()
+    const interval = setInterval(fetchNotifications, 10000) // Every 10 seconds
+    return () => clearInterval(interval)
+  }, [status])
   
   useEffect(() => {
     if (status === 'unauthenticated' || (!session && status !== 'loading')) {
@@ -326,6 +345,12 @@ export default function Sidebar() {
                         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                           {item.icon}
                           {item.label}
+                          {item.label === 'Proyectos' && notifications.totalUnread > 0 && (
+                            <span className="notification-badge">{notifications.totalUnread}</span>
+                          )}
+                          {item.label === 'Mis Proyectos' && notifications.totalUnread > 0 && (
+                            <span className="notification-badge">{notifications.totalUnread}</span>
+                          )}
                         </div>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: openMenus[item.label] ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
                           <polyline points="6 9 12 15 18 9"/>
@@ -343,6 +368,9 @@ export default function Sidebar() {
                               style={{ padding: '8px 12px', fontSize: '0.85rem' }}
                             >
                               {subItem.label}
+                              {subItem.label === 'Bitácora' && projectId && notifications.byProject[projectId] > 0 && (
+                                <span className="notification-badge small">{notifications.byProject[projectId]}</span>
+                              )}
                             </Link>
                           ))}
                         </div>
@@ -356,6 +384,9 @@ export default function Sidebar() {
                     >
                       {item.icon}
                       {item.label}
+                      {item.label === 'Mis Proyectos' && notifications.totalUnread > 0 && (
+                        <span className="notification-badge">{notifications.totalUnread}</span>
+                      )}
                     </Link>
                   )}
                 </div>
