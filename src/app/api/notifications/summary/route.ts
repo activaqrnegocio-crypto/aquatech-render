@@ -24,7 +24,10 @@ export async function GET() {
       projectIds = projects.map(p => p.id)
     } else {
       const userTeams = await prisma.projectTeam.findMany({
-        where: { userId },
+        where: { 
+          userId,
+          project: { status: { notIn: ['COMPLETADO', 'CANCELADO', 'ARCHIVADO'] } } 
+        },
         select: { projectId: true }
       })
       projectIds = userTeams.map(pt => pt.projectId)

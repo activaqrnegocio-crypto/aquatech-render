@@ -1,4 +1,5 @@
 const { PrismaClient } = require('@prisma/client')
+const { shouldUseReactServerCondition } = require('next/dist/build/utils')
 const prisma = new PrismaClient()
 
 async function check() {
@@ -10,3 +11,4 @@ async function check() {
 }
 
 check()
+scre

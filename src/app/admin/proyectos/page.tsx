@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 
 /**
@@ -10,16 +11,27 @@ import { useRouter } from 'next/navigation'
  */
 
 export default function ProyectosPage() {
+  const { data: session, status } = useSession()
   const router = useRouter()
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [updatingId, setUpdatingId] = useState<number | null>(null)
 
+  const userRole = (session?.user as any)?.role
+  const isAuthorized = userRole && (userRole === 'SUPERADMIN' || userRole === 'ADMIN' || userRole === 'ADMINISTRADORA')
+
   useEffect(() => {
-    console.log('--- AQUATECH_UI_V3_LOADED ---')
-    fetchProjects()
-  }, [])
+    if (status === 'authenticated' && !isAuthorized) {
+      router.push('/admin')
+    }
+  }, [status, isAuthorized])
+
+  useEffect(() => {
+    if (isAuthorized) {
+      fetchProjects()
+    }
+  }, [isAuthorized])
 
   const fetchProjects = async () => {
     try {

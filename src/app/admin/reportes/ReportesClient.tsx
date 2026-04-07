@@ -19,6 +19,7 @@ export default function ReportesClient({ initialProjects }: { initialProjects: a
   }, [])
 
   const fetchReports = async () => {
+    if (!selectedDate) return
     setLoading(true)
     try {
       let start = new Date(selectedDate)
@@ -53,7 +54,10 @@ export default function ReportesClient({ initialProjects }: { initialProjects: a
   }, [timeframe, selectedDate, projectId])
 
   const getDateDisplay = () => {
+    if (!selectedDate) return ''
     const d = new Date(selectedDate)
+    if (isNaN(d.getTime())) return ''
+
     if (timeframe === 'diario') {
       return formatToEcuador(d, { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
     } else if (timeframe === 'semanal') {

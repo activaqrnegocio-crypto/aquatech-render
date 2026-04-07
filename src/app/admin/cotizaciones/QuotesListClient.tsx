@@ -25,15 +25,18 @@ export default function QuotesListClient({ initialQuotes }: any) {
     }
   }
 
-  const filtered = filter === 'ALL' ? quotes : quotes.filter((q: any) => q.status === filter)
+  const filtered = filter === 'ALL' 
+    ? quotes 
+    : filter === 'PROJECT' 
+      ? quotes.filter((q: any) => q.projectId !== null)
+      : quotes.filter((q: any) => q.projectId === null)
 
   return (
     <>
       <div className="tabs" style={{ marginBottom: '20px' }}>
         <button onClick={() => setFilter('ALL')} className={`tab ${filter === 'ALL' ? 'active' : ''}`}>Todas</button>
-        <button onClick={() => setFilter('BORRADOR')} className={`tab ${filter === 'BORRADOR' ? 'active' : ''}`}>Borradores</button>
-        <button onClick={() => setFilter('ENVIADA')} className={`tab ${filter === 'ENVIADA' ? 'active' : ''}`}>Enviadas</button>
-        <button onClick={() => setFilter('ACEPTADA')} className={`tab ${filter === 'ACEPTADA' ? 'active' : ''}`}>Aceptadas</button>
+        <button onClick={() => setFilter('PROJECT')} className={`tab ${filter === 'PROJECT' ? 'active' : ''}`}>Vinculadas a Proyectos</button>
+        <button onClick={() => setFilter('NO_PROJECT')} className={`tab ${filter === 'NO_PROJECT' ? 'active' : ''}`}>Cotizaciones Individuales (Sin Proyecto)</button>
       </div>
 
       <div className="card" style={{ padding: 0, overflowX: 'auto' }}>
@@ -55,9 +58,11 @@ export default function QuotesListClient({ initialQuotes }: any) {
                 <td style={{ padding: '15px', color: 'var(--text-muted)' }}>{quote.project?.title || 'Sin proyecto'}</td>
                 <td style={{ padding: '15px' }} suppressHydrationWarning>{formatDateEcuador(quote.createdAt)}</td>
                 <td style={{ padding: '15px' }}>
-                  <span className={`status-badge status-${quote.status.toLowerCase()}`}>
-                    {quote.status}
-                  </span>
+                  {quote.project ? (
+                    <span className={`badge ${quote.project.status === 'ACTIVO' ? 'badge-info' : 'badge-neutral'}`} style={{ fontSize: '0.7rem' }}>
+                      {quote.project.status}
+                    </span>
+                  ) : ''}
                 </td>
                 <td style={{ padding: '15px', textAlign: 'right', fontWeight: 'bold', color: 'var(--primary)' }}>
                   $ {new Intl.NumberFormat('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(quote.totalAmount)}

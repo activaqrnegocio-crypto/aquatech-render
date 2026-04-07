@@ -1,10 +1,10 @@
 'use client'
 
-import { useState, useTransition, useEffect, useRef, useCallback } from 'react'
+import { useState, useTransition, useEffect, useRef, useCallback, useMemo } from 'react'
 import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import ProjectUploader, { ProjectFile } from '@/components/ProjectUploader'
 import { formatToEcuador, ECUADOR_TIMEZONE, getLocalNow, formatDateEcuador, formatTimeEcuador } from '@/lib/date-utils'
 import MediaCapture from '@/components/MediaCapture'
@@ -14,7 +14,28 @@ import { PROJECT_TYPES, translateType, PROJECT_CATEGORIES, translateCategory } f
 export default function ProjectDetailClient({ project, availableOperators = [] }: any) {
   const router = useRouter()
   const { data: session } = useSession()
-  const [activeTab, setActiveTab] = useState<'BITACORA' | 'GALLERY' | 'EXPENSES'>('BITACORA')
+  const searchParams = useSearchParams()
+  const pathname = usePathname()
+  const [activeTab, setActiveTab] = useState<'BITACORA' | 'GALLERY' | 'EXPENSES'>(() => {
+    const view = searchParams.get('view')
+    if (view === 'BITACORA' || view === 'GALLERY' || view === 'EXPENSES') return view
+    return 'BITACORA'
+  })
+
+  // Sync tab with URL
+  const setActiveTabWithUrl = (tab: 'BITACORA' | 'GALLERY' | 'EXPENSES') => {
+    setActiveTab(tab)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('view', tab)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
+
+  useEffect(() => {
+    const view = searchParams.get('view')
+    if (view === 'BITACORA' || view === 'GALLERY' || view === 'EXPENSES') {
+      setActiveTab(view)
+    }
+  }, [searchParams])
   
   // --- BITÁCORA STATE ---
   const [chatMessages, setChatMessages] = useState(project.chatMessages || [])
@@ -111,6 +132,37 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const chatMessagesRef = useRef(chatMessages)
   chatMessagesRef.current = chatMessages
 
+  const filteredChat = useMemo(() => {
+    return chatMessages.filter((m: any) => activePhase === null ? true : m.phaseId === activePhase)
+  }, [chatMessages, activePhase])
+
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+  const [hasNewMessages, setHasNewMessages] = useState(false)
+
+  useEffect(() => {
+    if (activeTab === 'BITACORA' && filteredChat.length > 0) {
+      const container = chatContainerRef.current
+      if (!container) return
+      
+      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100
+      
+      if (!isAtBottom) {
+        setHasNewMessages(true)
+      } else {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+        setHasNewMessages(false)
+        
+        // --- SYNC NOTIFICATIONS ---
+        // If we are at the bottom and see new messages, tell the server immediately
+        fetch('/api/notifications/summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: project.id })
+        }).catch(() => {})
+      }
+    }
+  }, [filteredChat.length, activeTab, project.id])
+
   useEffect(() => {
     const markAsSeen = async () => {
       try {
@@ -134,7 +186,13 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           const newMsgs = await resp.json()
           if (newMsgs?.length > 0) {
             const existingIds = new Set(msgs.map((m: any) => m.id))
-            const uniqueNew = newMsgs.filter((m: any) => !existingIds.has(m.id))
+            const currentUserId = Number(session?.user?.id)
+            const uniqueNew = (newMsgs as any[]).filter((m: any) => !existingIds.has(m.id)).map((m: any) => ({
+              ...m,
+              isMe: m.userId === currentUserId,
+              userName: m.user?.name || 'Administrador'
+            }))
+            
             if (uniqueNew.length > 0) {
               setChatMessages((prev: any) => [...prev, ...uniqueNew])
               markAsSeen()
@@ -1412,45 +1470,50 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           scrollbarWidth: 'none'
         }}>
           {[
-            { id: 'BITACORA', label: 'Bitácora', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>, activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.1)' },
-            { id: 'GALLERY', label: 'Galería', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.1)' },
-            { id: 'EXPENSES', label: 'Gastos', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>, activeColor: 'var(--success)', bgColor: 'rgba(34, 197, 94, 0.1)' }
+            { id: 'BITACORA', label: 'Bitácora', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>, activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.1)', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)' },
+            { id: 'GALLERY', label: 'Galería', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.1)', gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
+            { id: 'EXPENSES', label: 'Finanzas', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>, activeColor: 'var(--success)', bgColor: 'rgba(34, 197, 94, 0.1)', gradient: 'linear-gradient(135deg, #10b981, #34d399)' }
           ].map(tab => (
             <button
               key={tab.id}
-              onClick={() => setActiveTab(tab.id as any)}
+              onClick={() => setActiveTabWithUrl(tab.id as any)}
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '8px',
+                gap: '10px',
                 padding: '12px 24px',
-                borderRadius: '14px',
-                backgroundColor: activeTab === tab.id ? tab.activeColor : 'rgba(255,255,255,0.03)',
-                color: activeTab === tab.id ? 'var(--bg-deep)' : tab.activeColor,
-                border: `1px solid ${activeTab === tab.id ? tab.activeColor : 'rgba(255,255,255,0.1)'}`,
+                borderRadius: '16px',
+                background: activeTab === tab.id ? tab.gradient : 'rgba(255,255,255,0.05)',
+                color: activeTab === tab.id ? '#fff' : tab.activeColor,
+                border: `1px solid ${activeTab === tab.id ? 'transparent' : 'rgba(255,255,255,0.1)'}`,
                 cursor: 'pointer',
                 fontWeight: '800',
                 fontSize: '0.95rem',
                 textTransform: 'uppercase',
-                letterSpacing: '0.5px',
-                transition: 'all 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-                boxShadow: activeTab === tab.id ? `0 4px 15px ${tab.bgColor}` : 'none',
-                whiteSpace: 'nowrap'
+                letterSpacing: '1px',
+                transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+                boxShadow: activeTab === tab.id ? `0 8px 25px ${tab.bgColor}` : 'none',
+                transform: activeTab === tab.id ? 'scale(1.05)' : 'scale(1)',
+                whiteSpace: 'nowrap',
+                position: 'relative',
+                overflow: 'hidden'
               }}
             >
+              {activeTab === tab.id && (
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(rgba(255,255,255,0.2), transparent)', pointerEvents: 'none' }} />
+              )}
               {tab.icon}
               {tab.label}
             </button>
           ))}
         </div>
 
-        {/* Tab Content */}
-        <div className="card" style={{ padding: '25px', minHeight: '400px' }}>
+        {/* Tab Content - Optimized with visibility display to avoid slow mounting */}
+        <div className="card" style={{ padding: '25px', minHeight: '400px', display: 'flex', flexDirection: 'column' }}>
           
           {/* 1. BITÁCORA INTERACTIVA */}
-          {activeTab === 'BITACORA' && (
-            <div style={{ display: 'flex', flexDirection: 'column', height: '600px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
+          <div style={{ display: activeTab === 'BITACORA' ? 'flex' : 'none', flexDirection: 'column', height: '600px', minHeight: 0, overflow: 'hidden' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
                 <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text)' }}>Línea de Tiempo del Proyecto</h3>
                 <div style={{ display: 'flex', gap: '10px', overflowX: 'auto', padding: '5px' }}>
                   <button 
@@ -1471,10 +1534,17 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 </div>
               </div>
 
-              <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '15px', paddingRight: '10px', marginBottom: '20px' }}>
-                {chatMessages
-                  .filter((m: any) => activePhase === null ? true : m.phaseId === activePhase)
-                  .map((msg: any) => {
+              <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+                <div 
+                  ref={chatContainerRef}
+                  onScroll={(e) => {
+                    const target = e.currentTarget;
+                    const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
+                    if (isAtBottom) setHasNewMessages(false);
+                  }}
+                  style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '15px', paddingRight: '10px', marginBottom: '20px', minHeight: 0 }}
+                >
+                  {filteredChat.map((msg: any) => {
                     const isMe = msg.userId === Number(session?.user?.id)
                     const isAdminMsg = true // In this view, we style it corporately
                     
@@ -1535,10 +1605,44 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                   <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted)' }}>
                     <p>No hay registros en esta sección.</p>
                   </div>
+                  )}
+                </div>
+
+                {/* Floating New Messages Indicator */}
+                {hasNewMessages && (
+                  <button
+                    onClick={() => {
+                      chatContainerRef.current?.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' })
+                      setHasNewMessages(false)
+                    }}
+                    style={{
+                      position: 'absolute',
+                      bottom: '25px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      backgroundColor: 'var(--primary)',
+                      color: '#fff',
+                      border: 'none',
+                      borderRadius: '20px',
+                      padding: '8px 16px',
+                      fontSize: '0.8rem',
+                      fontWeight: 'bold',
+                      boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                      cursor: 'pointer',
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '6px',
+                      zIndex: 50,
+                      animation: 'bounce 2s infinite'
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                    Nuevos Mensajes (Desliza)
+                  </button>
                 )}
               </div>
 
-              {/* Input Area */}
+              {/* Input de Chat */}
               <div style={{ padding: '20px', backgroundColor: 'var(--bg-deep)', borderRadius: '15px' }}>
                 {showMediaCapture ? (
                   <div style={{ marginBottom: '15px' }}>
@@ -1572,10 +1676,9 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 )}
               </div>
             </div>
-          )}
-
+          
           {/* 2. GALERÍA UNIFICADA */}
-          {activeTab === 'GALLERY' && (
+          <div style={{ display: activeTab === 'GALLERY' ? 'block' : 'none' }}>
             <div>
               <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '20px', marginBottom: '25px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
@@ -1623,10 +1726,10 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 </button>
               )}
             </div>
-          )}
-
+          </div>
+          
           {/* 3. GESTIÓN DE GASTOS */}
-          {activeTab === 'EXPENSES' && (
+          <div style={{ display: activeTab === 'EXPENSES' ? 'block' : 'none' }}>
             <div>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
                 <div>
@@ -1710,7 +1813,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 </table>
               </div>
             </div>
-          )}
+          </div>
         </div>
       </div>
 

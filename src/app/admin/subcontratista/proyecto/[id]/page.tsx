@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import Link from 'next/link'
 import ProjectExecutionClient from '@/components/ProjectExecutionClient'
+import { deepSerialize } from '@/lib/serializable'
 
 export const dynamic = 'force-dynamic'
 
@@ -58,7 +59,16 @@ export default async function SubcontratistaProjectDetail({ params }: { params: 
     orderBy: { createdAt: 'desc' }
   })
 
-  // Serialize safe objects
+  // Combine direct gallery uploads and chat media into a unified gallery
+  const unifiedGallery = [
+    ...(project.gallery || []),
+    ...(chatMessages.flatMap((m: any) => m.media || []).map((m: any) => ({
+      ...m,
+      isFromChat: true
+    })))
+  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+
+  // Manually build safe objects
   const safeProject = {
     id: project.id,
     title: project.title,
@@ -75,11 +85,12 @@ export default async function SubcontratistaProjectDetail({ params }: { params: 
       name: t.user.name,
       role: t.user.role
     })),
-    gallery: project.gallery.map(g => ({ 
-      id: g.id, 
+    gallery: unifiedGallery.map(g => ({ 
+      id: (g as any).isFromChat ? `chat-${g.id}` : `gal-${g.id}`, 
       url: g.url, 
       filename: g.filename, 
-      mimeType: g.mimeType 
+      mimeType: g.mimeType,
+      isFromChat: (g as any).isFromChat
     }))
   }
 
@@ -94,45 +105,31 @@ export default async function SubcontratistaProjectDetail({ params }: { params: 
     media: msg.media
   }))
 
-  // Combine direct gallery uploads and chat media into a unified gallery
-  const unifiedGallery = [
-    ...(project.gallery || []),
-    ...(chatMessages.flatMap((m: any) => m.media || []).map((m: any) => ({
-      ...m,
-      isFromChat: true
-    })))
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
-
   const safeRecord = activeDayRecord ? { id: activeDayRecord.id, startTime: activeDayRecord.startTime.toISOString() } : null
+
+  const safeExpenses = myExpenses.map(e => ({ 
+    id: e.id, 
+    description: e.description, 
+    amount: Number(e.amount), 
+    date: e.date.toISOString(),
+    isNote: e.isNote,
+    userName: (e as any).user?.name || 'Subcontratista'
+  }))
 
   return (
     <div className="p-0 sm:p-6 pb-24">
       <ProjectExecutionClient 
-        project={{
-          ...safeProject,
-          gallery: unifiedGallery.map(g => ({ 
-            id: g.id, 
-            url: g.url, 
-            filename: g.filename, 
-            mimeType: g.mimeType,
-            isFromChat: (g as any).isFromChat
-          }))
-        }} 
-        initialChat={safeChat} 
-        activeRecord={safeRecord}
-        expenses={myExpenses.map(e => ({ 
-          id: e.id, 
-          description: e.description, 
-          amount: Number(e.amount), 
-          date: e.date.toISOString(),
-          isNote: e.isNote,
-          userName: (e as any).user?.name || 'Subcontratista'
-        }))}
-        userId={userId}
-        clientName={project.client?.name || 'Cliente sin nombre'}
-        projectAddress={project.address || project.client?.address || ''}
-        projectCity={project.client?.city || ''}
-        panelBase="/admin/subcontratista"
+        {...deepSerialize({
+          project: safeProject,
+          initialChat: safeChat, 
+          activeRecord: safeRecord,
+          expenses: safeExpenses,
+          userId: userId,
+          clientName: project.client?.name || 'Cliente sin nombre',
+          projectAddress: project.address || project.client?.address || '',
+          projectCity: project.client?.city || '',
+          panelBase: "/admin/subcontratista"
+        })}
       />
     </div>
   )

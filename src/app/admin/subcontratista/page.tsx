@@ -3,6 +3,7 @@ import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import SubcontratistaDashboardClient from './SubcontratistaDashboardClient'
+import { deepSerialize } from '@/lib/serializable'
 
 export const dynamic = 'force-dynamic'
 
@@ -59,9 +60,9 @@ export default async function SubcontratistaDashboard() {
   return (
     <SubcontratistaDashboardClient 
       user={session.user}
-      activeProjects={activeProjects}
-      activeDayRecord={activeDayRecord}
-      appointments={appointments}
+      activeProjects={deepSerialize(activeProjects)}
+      activeDayRecord={deepSerialize(activeDayRecord)}
+      appointments={deepSerialize(appointments)}
     />
   )
 }

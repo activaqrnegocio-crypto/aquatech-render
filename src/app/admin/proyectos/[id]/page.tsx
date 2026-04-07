@@ -1,12 +1,19 @@
+import { authOptions } from '@/lib/auth'
+import { getServerSession } from 'next-auth'
+import { redirect } from 'next/navigation'
+import { isAdmin, canAccessProject } from '@/lib/rbac'
 import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
-import Link from 'next/link'
 import ProjectDetailClient from './ProjectDetailClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ProyectoDetallePage({ params }: { params: Promise<{ id: string }> }) {
+  const session = await getServerSession(authOptions)
+  if (!session) redirect('/admin/login')
+
   const { id } = await params
+  const projectId = Number(id)
   
   const project = await prisma.project.findUnique({
     where: { id: Number(id) },
@@ -40,6 +47,11 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
   })
 
   if (!project) notFound()
+
+  // Guard: Admin or Team Member
+  if (!canAccessProject(session.user as any, project.team)) {
+    redirect('/admin')
+  }
 
   const availableOperators = await prisma.user.findMany({
     where: { role: { in: ['OPERATOR', 'SUBCONTRATISTA'] }, isActive: true },

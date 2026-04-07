@@ -55,7 +55,7 @@ export default function CalendarView({
   const weekDays = useMemo(() => {
     const startOfWeek = new Date(currentDate)
     const day = startOfWeek.getDay()
-    const diff = startOfWeek.getDate() - day + (day === 0 ? -6 : 1)
+    const diff = startOfWeek.getDate() - day // Start on Sunday
     startOfWeek.setDate(diff)
     
     const days = []

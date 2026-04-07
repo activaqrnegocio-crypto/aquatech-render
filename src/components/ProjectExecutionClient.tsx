@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useTransition, useMemo, useRef } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import ProjectUploader, { ProjectFile } from '@/components/ProjectUploader'
 import { db } from '@/lib/db'
 import { useLiveQuery } from 'dexie-react-hooks'
@@ -36,12 +36,15 @@ export default function ProjectExecutionClient({
   
   const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
-  const view = searchParams.get('view') || 'records'
-  const [activeTab, setActiveTab] = useLocalStorage<'records' | 'chat'>(`project_${project.id}_active_tab`, view as 'records' | 'chat')
+  const [activeTab, setActiveTab] = useState<'records' | 'chat'>(() => {
+    const v = searchParams.get('view')
+    if (v === 'records' || v === 'chat') return v
+    return 'records'
+  })
+  const pathname = usePathname()
   const [handleDownloadLoading, setHandleDownloadLoading] = useState<string | null>(null)
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<any>(null)
   const [liveChat, setLiveChat] = useState(initialChat || [])
-
   // --- REAL-TIME POLLING (Optimized: ref avoids dependency loop) ---
   const liveChatRef = useRef(liveChat)
   liveChatRef.current = liveChat
@@ -122,8 +125,18 @@ export default function ProjectExecutionClient({
   }
 
 
+  const setActiveTabWithUrl = (tab: 'records' | 'chat') => {
+    setActiveTab(tab)
+    const params = new URLSearchParams(searchParams.toString())
+    params.set('view', tab)
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+  }
+
   useEffect(() => {
-    setActiveTab((searchParams.get('view') || 'records') as 'records' | 'chat')
+    const view = searchParams.get('view')
+    if (view === 'records' || view === 'chat') {
+      setActiveTab(view)
+    }
   }, [searchParams])
 
   const pendingItems = useLiveQuery(() => db.outbox.where('projectId').equals(project.id).toArray(), [project.id]) || []
@@ -185,15 +198,49 @@ export default function ProjectExecutionClient({
     window.addEventListener('online', handleStatusChange)
     window.addEventListener('offline', handleStatusChange)
     
-    // Auto-sync interval
+    // Auto-sync outbox interval
     const interval = setInterval(() => {
         if (navigator.onLine) syncOutbox()
     }, 15000)
+
+    // REAL-TIME POLLING for new messages (5s interval like Admin)
+    const pollInterval = setInterval(async () => {
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return
+      try {
+        const msgs = liveChatRef.current
+        const lastMsg = msgs[msgs.length - 1]
+        const since = lastMsg ? lastMsg.createdAt : project.createdAt
+        const resp = await fetch(`/api/projects/${project.id}/messages?since=${encodeURIComponent(new Date(since).toISOString())}`)
+        if (resp.ok) {
+          const newMsgs = await resp.json()
+          if (newMsgs?.length > 0) {
+            const existingIds = new Set(msgs.map((m: any) => m.id))
+            const uniqueNew = (newMsgs as any[]).filter((m: any) => !existingIds.has(m.id)).map((m: any) => ({
+              ...m,
+              isMe: m.userId === Number(session?.user?.id),
+              userName: m.user?.name || 'Usuario'
+            }))
+            
+            if (uniqueNew.length > 0) {
+              setLiveChat((prev: any) => [...prev, ...uniqueNew])
+              
+              // Also sync notification summary to mark as seen if at bottom
+              fetch('/api/notifications/summary', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ projectId: project.id })
+              }).catch(() => {})
+            }
+          }
+        }
+      } catch (err) { /* silent */ }
+    }, 5000)
 
     return () => {
       window.removeEventListener('online', handleStatusChange)
       window.removeEventListener('offline', handleStatusChange)
       clearInterval(interval)
+      clearInterval(pollInterval)
     }
   }, [project.id])
 
@@ -746,6 +793,33 @@ export default function ProjectExecutionClient({
     return true
   })
 
+  // Chat scroll state
+  const chatContainerRef = useRef<HTMLDivElement>(null)
+  const [hasNewMessages, setHasNewMessages] = useState(false)
+
+  useEffect(() => {
+    if (activeTab === 'chat' && filteredChat.length > 0) {
+      const container = chatContainerRef.current
+      if (!container) return
+      const isAtBottom = container.scrollHeight - container.scrollTop <= container.clientHeight + 100
+      
+      if (!isAtBottom) {
+        setHasNewMessages(true)
+      } else {
+        container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
+        setHasNewMessages(false)
+
+        // --- SYNC NOTIFICATIONS ---
+        // If we are at the bottom and see new messages, tell the server immediately
+        fetch('/api/notifications/summary', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ projectId: project.id })
+        }).catch(() => {})
+      }
+    }
+  }, [filteredChat.length, activeTab, project.id])
+
   const pendingExpenses = pendingItems
     .filter((item: any) => item.type === 'EXPENSE')
     .map((item: any) => ({
@@ -1026,14 +1100,57 @@ export default function ProjectExecutionClient({
         </div>
       </div>
 
-      <div style={{ display: 'flex', gap: '10px', marginBottom: '15px', padding: isSmallScreen ? '0 10px' : '0' }}>
-        <button className={`btn btn-sm ${activeTab === 'records' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab('records')}>Registros</button>
-        <button className={`btn btn-sm ${activeTab === 'chat' ? 'btn-primary' : 'btn-ghost'}`} onClick={() => setActiveTab('chat')}>Bitácora</button>
+      <div style={{ 
+          display: 'flex', 
+          gap: '10px', 
+          marginBottom: '15px', 
+          padding: isSmallScreen ? '0 10px' : '0',
+          borderBottom: '1px solid var(--border-color)',
+          overflowX: 'auto',
+          scrollbarWidth: 'none',
+          paddingBottom: '10px'
+      }}>
+        {[
+          { id: 'records', label: 'Registros', activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.2)', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>, gradient: 'linear-gradient(135deg, #0070c0, #38bdf8)' },
+          { id: 'chat', label: 'Bitácora', activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.2)', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>, gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' }
+        ].map(tab => (
+          <button
+            key={tab.id}
+            onClick={() => setActiveTabWithUrl(tab.id as any)}
+            style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              padding: '14px 28px',
+              borderRadius: '16px',
+              background: activeTab === tab.id ? tab.gradient : 'rgba(255,255,255,0.05)',
+              color: activeTab === tab.id ? '#000' : tab.activeColor,
+              border: `1px solid ${activeTab === tab.id ? 'transparent' : 'rgba(255,255,255,0.1)'}`,
+              cursor: 'pointer',
+              fontWeight: '900',
+              fontSize: '1.1rem',
+              textTransform: 'uppercase',
+              letterSpacing: '1px',
+              transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
+              boxShadow: activeTab === tab.id ? `0 8px 25px ${tab.bgColor}` : 'none',
+              transform: activeTab === tab.id ? 'scale(1.05)' : 'scale(1)',
+              whiteSpace: 'nowrap',
+              position: 'relative',
+              overflow: 'hidden'
+            }}
+          >
+            {activeTab === tab.id && (
+              <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, background: 'linear-gradient(rgba(255,255,255,0.2), transparent)', pointerEvents: 'none' }} />
+            )}
+            {tab.icon}
+            {tab.label}
+          </button>
+        ))}
       </div>
 
-      <div className="tab-content" style={{ flex: isSmallScreen ? 1 : 'none', display: isSmallScreen ? 'flex' : 'block', flexDirection: 'column', overflow: isSmallScreen ? 'hidden' : 'visible' }}>
-        {activeTab === 'records' && (
-          <div style={{ display: 'grid', gap: '20px' }}>
+      <div className="tab-content" style={{ flex: isSmallScreen ? 1 : 'none', display: 'flex', flexDirection: 'column', overflow: isSmallScreen ? 'hidden' : 'visible' }}>
+        {/* 1. REGISTROS */}
+        <div style={{ display: activeTab === 'records' ? 'grid' : 'none', gap: '20px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 300px), 1fr))', gap: '20px' }}>
               <div className="card" style={{ minWidth: 0 }}>
                 <h3 style={{ fontSize: '1.2rem', marginBottom: '15px' }}>Registro de Jornada</h3>
@@ -1439,9 +1556,10 @@ export default function ProjectExecutionClient({
               />
             </div>
           </div>
-        )}
+        </div>
 
-        {activeTab === 'chat' && (
+        {/* 2. BITÁCORA / CHAT */}
+        <div style={{ display: activeTab === 'chat' ? 'flex' : 'none', flexDirection: 'column', flex: 1 }}>
           <div className="chat-container" style={{ 
             display: 'flex', 
             flexDirection: 'column', 
@@ -1559,8 +1677,17 @@ export default function ProjectExecutionClient({
               )}
             </div>
 
-            <div style={{ flex: 1, overflowY: 'auto', padding: isSmallScreen ? '12px 12px 80px 12px' : '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              {filteredChat.length === 0 ? (
+            <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
+              <div 
+                ref={chatContainerRef}
+                onScroll={(e) => {
+                  const target = e.currentTarget;
+                  const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
+                  if (isAtBottom) setHasNewMessages(false);
+                }}
+                style={{ flex: 1, overflowY: 'auto', padding: isSmallScreen ? '12px 12px 80px 12px' : '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}
+              >
+                {filteredChat.length === 0 ? (
                 <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted)' }}>
                   <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5, marginBottom: '10px' }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
                   <p>No hay mensajes en esta fase.<br/>Envía el primer mensaje o evidencia.</p>
@@ -1635,6 +1762,40 @@ export default function ProjectExecutionClient({
                   </div>
                 ))
               )}
+              </div>
+              
+              {/* Floating New Messages Indicator */}
+              {hasNewMessages && (
+                <button
+                  onClick={() => {
+                    chatContainerRef.current?.scrollTo({ top: chatContainerRef.current.scrollHeight, behavior: 'smooth' })
+                    setHasNewMessages(false)
+                  }}
+                  style={{
+                    position: 'absolute',
+                    bottom: '15px',
+                    left: '50%',
+                    transform: 'translateX(-50%)',
+                    backgroundColor: 'var(--primary)',
+                    color: '#fff',
+                    border: 'none',
+                    borderRadius: '20px',
+                    padding: '8px 16px',
+                    fontSize: '0.8rem',
+                    fontWeight: 'bold',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '6px',
+                    zIndex: 50,
+                    animation: 'bounce 2s infinite'
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="12" y1="5" x2="12" y2="19"/><polyline points="19 12 12 19 5 12"/></svg>
+                  Nuevos Mensajes (Desliza)
+                </button>
+              )}
             </div>
 
             {/* Message Input */}
@@ -1705,9 +1866,8 @@ export default function ProjectExecutionClient({
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
                 </button>
               </form>
-            </div>
           </div>
-        )}
+        </div>
       </div>
 
       {/* WhatsApp Forward Modal */}

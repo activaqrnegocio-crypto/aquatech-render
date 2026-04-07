@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import { prisma } from '@/lib/prisma'
 import OperatorDashboardClient from './OperatorDashboardClient'
 import OfflinePrefetcher from '@/components/OfflinePrefetcher'
+import { deepSerialize } from '@/lib/serializable'
 
 export const dynamic = 'force-dynamic'
 
@@ -94,9 +95,9 @@ export default async function OperatorDashboard() {
       <OfflinePrefetcher urls={prefetchUrls} />
       <OperatorDashboardClient 
         user={session.user}
-        activeProjects={projectsWithUnread}
-        activeDayRecord={activeDayRecord}
-        appointments={appointments}
+        activeProjects={deepSerialize(projectsWithUnread)}
+        activeDayRecord={deepSerialize(activeDayRecord)}
+        appointments={deepSerialize(appointments)}
       />
     </>
   )

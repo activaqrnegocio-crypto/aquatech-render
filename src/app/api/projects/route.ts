@@ -181,14 +181,6 @@ export async function POST(request: Request) {
               sizeBytes: file.sizeBytes || null
             }))
           }
-        },
-        include: {
-          client: true,
-          phases: true,
-          team: {
-            include: { user: true }
-          },
-          budgetItems: true
         }
       })
 
@@ -203,10 +195,10 @@ export async function POST(request: Request) {
             status: 'BORRADOR',
             
             // Snapshot client data
-            clientName: newProject.client?.name,
-            clientRuc: newProject.client?.ruc,
-            clientAddress: newProject.client?.address,
-            clientPhone: newProject.client?.phone,
+            clientName: client?.name || '',
+            clientRuc: client?.ruc || '',
+            clientAddress: client?.address || '',
+            clientPhone: client?.phone || '',
 
             // Financial summary - Calculate with actual item data
             subtotal: (budgetItems || []).reduce((acc: number, item: any) => acc + ((item.quantity === 'GLOBAL' ? 1 : Number(item.quantity || 0)) * Number(item.estimatedCost || 0)), 0),

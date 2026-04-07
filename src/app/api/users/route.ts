@@ -5,12 +5,13 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import bcrypt from 'bcryptjs'
 import { sendWelcomeEmail } from '@/lib/mail'
+import { isAdmin } from '@/lib/rbac'
 
 export async function GET(request: Request) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session || !session.user) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+    if (!session || !isAdmin((session.user as any).role)) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 403 })
     }
 
     const { searchParams } = new URL(request.url)

@@ -5,14 +5,16 @@ import Link from 'next/link'
 import { signOut, useSession } from 'next-auth/react'
 
 export default function TeamPage() {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const [users, setUsers] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [showModal, setShowModal] = useState(false)
+  const [activeTab, setActiveTab] = useState<'ALL' | 'MANAGEMENT' | 'OPERATORS' | 'SUBCONTRACTORS'>('ALL')
   const [error, setError] = useState('')
   
   const currentUserRole = (session?.user as any)?.role
   const isSuperAdmin = currentUserRole === 'SUPERADMIN'
+  const isAuthorized = currentUserRole && (isSuperAdmin || currentUserRole === 'ADMIN' || currentUserRole === 'ADMINISTRADORA')
 
   // Form state
   const [formData, setFormData] = useState({
@@ -26,8 +28,16 @@ export default function TeamPage() {
   })
 
   useEffect(() => {
-    fetchUsers()
-  }, [])
+    if (status === 'authenticated' && !isAuthorized) {
+      window.location.href = '/admin'
+    }
+  }, [status, isAuthorized])
+
+  useEffect(() => {
+    if (isAuthorized) {
+      fetchUsers()
+    }
+  }, [isAuthorized])
 
   const fetchUsers = async () => {
     try {
@@ -137,10 +147,37 @@ export default function TeamPage() {
           Añadir Miembro
         </button>
       </div>
+      
+      <div className="tabs" style={{ marginBottom: '30px' }}>
+        <button 
+          className={`tab ${activeTab === 'ALL' ? 'active' : ''}`}
+          onClick={() => setActiveTab('ALL')}
+        >
+          Todos
+        </button>
+        <button 
+          className={`tab ${activeTab === 'MANAGEMENT' ? 'active' : ''}`}
+          onClick={() => setActiveTab('MANAGEMENT')}
+        >
+          Administración
+        </button>
+        <button 
+          className={`tab ${activeTab === 'OPERATORS' ? 'active' : ''}`}
+          onClick={() => setActiveTab('OPERATORS')}
+        >
+          Operadores
+        </button>
+        <button 
+          className={`tab ${activeTab === 'SUBCONTRACTORS' ? 'active' : ''}`}
+          onClick={() => setActiveTab('SUBCONTRACTORS')}
+        >
+          Subcontratistas
+        </button>
+      </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '40px' }}>
         {/* Management (Admins & Superadmin) */}
-        {management.length > 0 && (
+        {(activeTab === 'ALL' || activeTab === 'MANAGEMENT') && management.length > 0 && (
           <div>
             <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text)', fontWeight: '700', opacity: 0.9 }}>
               <span style={{ width: '4px', height: '16px', backgroundColor: 'var(--success)', borderRadius: '2px' }} />
@@ -155,40 +192,44 @@ export default function TeamPage() {
         )}
 
         {/* Operators */}
-        <div>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text)', fontWeight: '700' }}>
-            <span style={{ width: '4px', height: '16px', backgroundColor: 'var(--primary)', borderRadius: '2px' }} />
-            Operadores de Campo
-          </h3>
-          <div className="grid-responsive">
-            {operators.map(u => (
-              <UserCard key={u.id} user={u} onDelete={handleDelete} formatDate={formatDate} currentUserRole={currentUserRole} />
-            ))}
-            {operators.length === 0 && (
-              <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', color: 'var(--text-muted)', backgroundColor: 'var(--bg-deep)', borderRadius: '24px', border: '2px dashed var(--border-color)' }}>
-                No hay operadore registrados actualmente.
-              </div>
-            )}
+        {(activeTab === 'ALL' || activeTab === 'OPERATORS') && (
+          <div>
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text)', fontWeight: '700' }}>
+              <span style={{ width: '4px', height: '16px', backgroundColor: 'var(--primary)', borderRadius: '2px' }} />
+              Operadores de Campo
+            </h3>
+            <div className="grid-responsive">
+              {operators.map(u => (
+                <UserCard key={u.id} user={u} onDelete={handleDelete} formatDate={formatDate} currentUserRole={currentUserRole} />
+              ))}
+              {operators.length === 0 && (
+                <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', color: 'var(--text-muted)', backgroundColor: 'var(--bg-deep)', borderRadius: '24px', border: '2px dashed var(--border-color)' }}>
+                  No hay operadores registrados actualmente.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
 
         {/* Subcontratistas */}
-        <div>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text)', fontWeight: '700' }}>
-            <span style={{ width: '4px', height: '16px', backgroundColor: 'var(--warning)', borderRadius: '2px' }} />
-            Subcontratistas
-          </h3>
-          <div className="grid-responsive">
-            {subcontratistas.map(u => (
-              <UserCard key={u.id} user={u} onDelete={handleDelete} formatDate={formatDate} currentUserRole={currentUserRole} />
-            ))}
-            {subcontratistas.length === 0 && (
-              <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', color: 'var(--text-muted)', backgroundColor: 'var(--bg-deep)', borderRadius: '24px', border: '2px dashed var(--border-color)' }}>
-                No hay subcontratistas registrados actualmente.
-              </div>
-            )}
+        {(activeTab === 'ALL' || activeTab === 'SUBCONTRACTORS') && (
+          <div>
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '20px', display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--text)', fontWeight: '700' }}>
+              <span style={{ width: '4px', height: '16px', backgroundColor: 'var(--warning)', borderRadius: '2px' }} />
+              Subcontratistas
+            </h3>
+            <div className="grid-responsive">
+              {subcontratistas.map(u => (
+                <UserCard key={u.id} user={u} onDelete={handleDelete} formatDate={formatDate} currentUserRole={currentUserRole} />
+              ))}
+              {subcontratistas.length === 0 && (
+                <div style={{ gridColumn: '1 / -1', padding: '40px', textAlign: 'center', color: 'var(--text-muted)', backgroundColor: 'var(--bg-deep)', borderRadius: '24px', border: '2px dashed var(--border-color)' }}>
+                  No hay subcontratistas registrados actualmente.
+                </div>
+              )}
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       {/* Helper for Image Upload */}

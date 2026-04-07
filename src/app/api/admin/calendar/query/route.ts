@@ -45,7 +45,8 @@ export async function POST(req: Request) {
     const appointments = await prisma.appointment.findMany({
       where: {
         startTime: { gte: startDate, lte: endDate },
-        status: { not: 'CANCELADO' }
+        status: { not: 'CANCELADO' },
+        user: { role: 'OPERATOR' }
       },
       include: {
         user: { select: { name: true, id: true } }
