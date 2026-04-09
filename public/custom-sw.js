@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v19';
+const CACHE_VERSION = 'v20';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -12,12 +12,15 @@ const RSC_CACHE    = `aquatech-rsc-${CACHE_VERSION}`;
 const PRE_CACHE = [
   '/offline.html',
   '/logo.jpg',
+  '/cotizacion.jpg',
   '/manifest.json',
+  '/admin/operador',
+  '/admin/cotizaciones/offline',
 ];
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  console.log('[SW v17] Installing...');
+  console.log(`[SW ${CACHE_VERSION}] Installing...`);
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(cache => cache.addAll(PRE_CACHE))
@@ -27,7 +30,7 @@ self.addEventListener('install', (event) => {
 
 // ─── ACTIVATE ───────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  console.log('[SW v17] Activating...');
+  console.log(`[SW ${CACHE_VERSION}] Activating...`);
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
@@ -378,7 +381,7 @@ self.addEventListener('sync', (event) => {
 function openAquatechDB() {
   return new Promise((resolve, reject) => {
     // Corrected DB name to match Dexie instance 'AquatechOfflineDB'
-    const request = indexedDB.open('AquatechOfflineDB', 3);
+    const request = indexedDB.open('AquatechOfflineDB', 4);
     
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
@@ -407,8 +410,7 @@ async function processOutboxSync() {
     getAllRequest.onsuccess = async () => {
       const items = getAllRequest.result || [];
       const pendingItems = items.filter(i => 
-        (i.status === 'pending' || i.status === 'failed') && 
-        (i.type === 'QUOTE' || i.type === 'MATERIAL')
+        (i.status === 'pending' || i.status === 'failed')
       );
 
       if (pendingItems.length === 0) {
@@ -430,16 +432,37 @@ async function processOutboxSync() {
             req.onerror = rej;
           });
 
-          // 2. Fetch API
+          // 2. Fetch API specialized by type
           let endpoint = '';
+          let method = 'POST';
+          
           if (item.type === 'QUOTE') endpoint = '/api/quotes';
           else if (item.type === 'MATERIAL') endpoint = '/api/materials';
+          else if (item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD') {
+            endpoint = `/api/projects/${item.projectId}/messages`;
+          } else if (item.type === 'EXPENSE') {
+            endpoint = `/api/projects/${item.projectId}/expenses`;
+          } else if (item.type === 'DAY_START') {
+            endpoint = '/api/day-records';
+          } else if (item.type === 'DAY_END') {
+            endpoint = '/api/day-records';
+            method = 'PUT';
+          } else if (item.type === 'PHASE_COMPLETE') {
+            endpoint = `/api/projects/${item.projectId}/phases/${item.payload.phaseId}`;
+            method = 'PATCH';
+          }
 
           if (endpoint) {
             const res = await fetch(endpoint, {
-              method: 'POST',
+              method,
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(item.payload)
+              body: JSON.stringify({ 
+                ...item.payload, 
+                lat: item.lat, 
+                lng: item.lng, 
+                createdAt: new Date(item.timestamp).toISOString(),
+                isOfflineSync: true 
+              })
             });
 
             if (res.ok) {

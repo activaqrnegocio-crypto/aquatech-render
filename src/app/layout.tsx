@@ -12,6 +12,10 @@ export const metadata: Metadata = {
   title: "Aquatech CRM — Innovación Hidráulica",
   description: "Sistema de gestión y seguimiento de proyectos en campo para Aquatech Loja",
   manifest: "/manifest.json",
+  icons: {
+    icon: "/favicon.png",
+    apple: "/icon-512.png",
+  },
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",

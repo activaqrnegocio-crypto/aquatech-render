@@ -10,7 +10,7 @@ const AQUATECH_LOGO_B64 = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD/2w
 export function addAquatechHeader(doc: jsPDF, title: string, subtitle: string) {
   // 1. Logo
   try {
-    doc.addImage('/cotizacion.jpg', 'JPEG', 15, 19, 80, 18); // Center logo vertically
+    doc.addImage(AQUATECH_LOGO_B64, 'JPEG', 15, 19, 80, 18);
   } catch (e) {
     doc.setTextColor(AQUATECH_BLUE[0], AQUATECH_BLUE[1], AQUATECH_BLUE[2]);
     doc.setFont('helvetica', 'bold');

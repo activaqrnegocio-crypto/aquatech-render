@@ -86,7 +86,7 @@ export default function ProjectExecutionClient({
           }
         }
       } catch (err) { /* silent */ }
-    }, 5000)
+    }, 10000) // Poll every 10s (saver)
 
     return () => clearInterval(pollInterval)
   }, [project.id, session?.user?.id]) // Stable dependencies
@@ -319,7 +319,7 @@ export default function ProjectExecutionClient({
             navigator.geolocation.getCurrentPosition(
               pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
               err => reject(err),
-              { timeout: 10000, enableHighAccuracy: true }
+              { timeout: 25000, enableHighAccuracy: true }
             )
           }).catch(() => null)
         } catch(e) {}
@@ -423,7 +423,7 @@ export default function ProjectExecutionClient({
           navigator.geolocation.getCurrentPosition(
             pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
             () => resolve(null),
-            { timeout: 8000, enableHighAccuracy: true }
+            { timeout: 25000, enableHighAccuracy: true }
           )
         })
       }
@@ -552,7 +552,7 @@ export default function ProjectExecutionClient({
           navigator.geolocation.getCurrentPosition(
             pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
             () => resolve(null),
-            { enableHighAccuracy: true, timeout: 5000 }
+            { enableHighAccuracy: true, timeout: 25000 }
           )
         })
       }
@@ -665,7 +665,7 @@ export default function ProjectExecutionClient({
           navigator.geolocation.getCurrentPosition(
             pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
             () => resolve(null),
-            { timeout: 8000 }
+            { timeout: 25000 }
           )
         })
       }
@@ -1014,6 +1014,11 @@ export default function ProjectExecutionClient({
                {mounted ? (
                  <>
                    {isOnline ? 'EN LÍNEA' : 'MODO OFFLINE'}
+                   {pendingItems.length > 0 && (
+                      <span style={{ marginLeft: '8px', backgroundColor: 'var(--primary)', color: 'white', padding: '1px 6px', borderRadius: '10px', fontSize: '0.65rem', fontWeight: 'bold' }}>
+                        {pendingItems.length} pendientes
+                      </span>
+                   )}
                  </>
                ) : 'COMPROBANDO...'}
             </div>
