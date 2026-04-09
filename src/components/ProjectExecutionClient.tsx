@@ -62,7 +62,7 @@ export default function ProjectExecutionClient({
     markAsSeen()
 
     const pollInterval = setInterval(async () => {
-      if (document.visibilityState !== 'visible') return
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return
       try {
         const msgs = liveChatRef.current
         const lastMsg = msgs[msgs.length - 1]
@@ -72,7 +72,13 @@ export default function ProjectExecutionClient({
           const newMsgs = await resp.json()
           if (newMsgs?.length > 0) {
             const existingIds = new Set(msgs.map((m: any) => m.id))
-            const uniqueNew = newMsgs.filter((m: any) => !existingIds.has(m.id))
+            const uniqueNew = (newMsgs as any[]).filter((m: any) => !existingIds.has(m.id)).map((m: any) => ({
+              ...m,
+              isMe: String(m.userId) === String(session?.user?.id), // Robust comparison
+              userName: m.user?.name || 'Usuario',
+              userBranch: m.user?.branch || null
+            }))
+            
             if (uniqueNew.length > 0) {
               setLiveChat((prev: any) => [...prev, ...uniqueNew])
               markAsSeen()
@@ -83,7 +89,21 @@ export default function ProjectExecutionClient({
     }, 5000)
 
     return () => clearInterval(pollInterval)
-  }, [project.id]) // Stable dependency
+  }, [project.id, session?.user?.id]) // Stable dependencies
+
+  // Sync initialChat when props update (RSC refresh)
+  useEffect(() => {
+    if (initialChat) {
+      setLiveChat((prev: any[]) => {
+        const existingIds = new Set(prev.map((m: any) => m.id))
+        const uniqueFromProps = initialChat.filter((m: any) => !existingIds.has(m.id))
+        if (uniqueFromProps.length === 0) return prev
+        return [...prev, ...uniqueFromProps].sort((a: any, b: any) => 
+          new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+        )
+      })
+    }
+  }, [initialChat])
 
   // Calculate my total real expenses (not notes)
   const myTotalSpent = useMemo(() => {
@@ -203,45 +223,10 @@ export default function ProjectExecutionClient({
         if (navigator.onLine) syncOutbox()
     }, 15000)
 
-    // REAL-TIME POLLING for new messages (5s interval like Admin)
-    const pollInterval = setInterval(async () => {
-      if (document.visibilityState !== 'visible' || !navigator.onLine) return
-      try {
-        const msgs = liveChatRef.current
-        const lastMsg = msgs[msgs.length - 1]
-        const since = lastMsg ? lastMsg.createdAt : project.createdAt
-        const resp = await fetch(`/api/projects/${project.id}/messages?since=${encodeURIComponent(new Date(since).toISOString())}`)
-        if (resp.ok) {
-          const newMsgs = await resp.json()
-          if (newMsgs?.length > 0) {
-            const existingIds = new Set(msgs.map((m: any) => m.id))
-            const uniqueNew = (newMsgs as any[]).filter((m: any) => !existingIds.has(m.id)).map((m: any) => ({
-              ...m,
-              isMe: m.userId === Number(session?.user?.id),
-              userName: m.user?.name || 'Usuario',
-              userBranch: m.user?.branch || null
-            }))
-            
-            if (uniqueNew.length > 0) {
-              setLiveChat((prev: any) => [...prev, ...uniqueNew])
-              
-              // Also sync notification summary to mark as seen if at bottom
-              fetch('/api/notifications/summary', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ projectId: project.id })
-              }).catch(() => {})
-            }
-          }
-        }
-      } catch (err) { /* silent */ }
-    }, 5000)
-
     return () => {
       window.removeEventListener('online', handleStatusChange)
       window.removeEventListener('offline', handleStatusChange)
       clearInterval(interval)
-      clearInterval(pollInterval)
     }
   }, [project.id])
 
@@ -634,6 +619,20 @@ export default function ProjectExecutionClient({
         })
         if (!res.ok && res.status !== 401) throw new Error('Network error')
         
+        if (res.ok) {
+          const createdMsg = await res.json()
+          setLiveChat((prev: any[]) => {
+            const exists = prev.some((m: any) => m.id === createdMsg.id)
+            if (exists) return prev
+            return [...prev, {
+              ...createdMsg,
+              isMe: true,
+              userName: session?.user?.name || 'Yo',
+              userBranch: (session?.user as any)?.branch || null
+            }].sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+          })
+        }
+
         if (!customMsg) removeMessageDraft()
         else removeNoteDraft()
         router.refresh()
@@ -777,9 +776,10 @@ export default function ProjectExecutionClient({
         createdAt: new Date(item.timestamp).toISOString(),
         isMe: true,
         isPending: true,
-        status: item.status, // Add status
+        status: item.status,
         lat: item.lat,
         lng: item.lng,
+        phaseId: item.payload.phaseId, // FIX: crucial for filtering by phase
         media: item.payload.media ? [{ url: item.payload.media.url || item.payload.media.base64, filename: item.payload.media.filename, mimeType: item.payload.media.mimeType }] : []
       }))
   ].sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
