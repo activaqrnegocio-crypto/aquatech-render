@@ -45,11 +45,38 @@ export default function ProjectExecutionClient({
   const pathname = usePathname()
   const [handleDownloadLoading, setHandleDownloadLoading] = useState<string | null>(null)
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<any>(null)
-  const [liveChat, setLiveChat] = useState(initialChat || [])
-  // --- REAL-TIME POLLING (Optimized: ref avoids dependency loop) ---
-  const liveChatRef = useRef(liveChat)
-  liveChatRef.current = liveChat
+  const [liveChat, setLiveChat] = useState<any[]>(initialChat || [])
+  const liveChatInitialized = useRef(false)
+  const [mounted, setMounted] = useState(false)
+  
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+  // --- FULL-SYNC FETCH: always gets ALL messages from server ---
+  const fetchAllMessages = async (): Promise<any[]> => {
+    try {
+      const resp = await fetch(`/api/projects/${project.id}/messages?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
+      if (!resp.ok) {
+        console.error('[CHAT SYNC] API error:', resp.status, resp.statusText)
+        return []
+      }
+      const allMsgs = await resp.json()
+      return (allMsgs || []).map((m: any) => ({
+        ...m,
+        isMe: Number(m.userId) === Number(userId),
+        userName: m.user?.name || 'Usuario',
+        userBranch: m.user?.branch || null
+      }))
+    } catch (err) {
+      console.error('[CHAT SYNC] Network error:', err)
+      return []
+    }
+  }
 
+  // --- REAL-TIME POLLING: Full sync every 5s ---
   useEffect(() => {
     const markAsSeen = async () => {
       try {
@@ -62,44 +89,48 @@ export default function ProjectExecutionClient({
     }
     markAsSeen()
 
-    const pollInterval = setInterval(async () => {
-      if (document.visibilityState !== 'visible' || !navigator.onLine) return
-      try {
-        const msgs = liveChatRef.current
-        const lastMsg = msgs[msgs.length - 1]
-        const since = lastMsg ? lastMsg.createdAt : project.createdAt
-        const resp = await fetch(`/api/projects/${project.id}/messages?since=${encodeURIComponent(new Date(since).toISOString())}`)
-        if (resp.ok) {
-          const newMsgs = await resp.json()
-          if (newMsgs?.length > 0) {
-            const existingIds = new Set(msgs.map((m: any) => m.id))
-            const uniqueNew = (newMsgs as any[]).filter((m: any) => !existingIds.has(m.id)).map((m: any) => ({
-              ...m,
-              isMe: Number(m.userId) === Number(userId), // Robust comparison using prop
-              userName: m.user?.name || 'Usuario',
-              userBranch: m.user?.branch || null
-            }))
-            
-            if (uniqueNew.length > 0) {
-              setLiveChat((prev: any) => [...prev, ...uniqueNew])
-              markAsSeen()
-            }
-          }
+    // On first mount, do an immediate full fetch to ensure freshness
+    if (!liveChatInitialized.current) {
+      liveChatInitialized.current = true
+      fetchAllMessages().then(msgs => {
+        if (msgs.length > 0) {
+          setLiveChat(msgs)
+          markAsSeen()
         }
-      } catch (err) { /* silent */ }
-    }, 10000) // Poll every 10s (saver)
+      })
+    }
+
+    const pollInterval = setInterval(async () => {
+      if (!navigator.onLine) return
+      const freshMsgs = await fetchAllMessages()
+      if (freshMsgs.length > 0) {
+        setLiveChat(prev => {
+          // Only update if there's actually a difference
+          if (prev.length !== freshMsgs.length || 
+              (prev.length > 0 && freshMsgs.length > 0 && prev[prev.length - 1]?.id !== freshMsgs[freshMsgs.length - 1]?.id)) {
+            return freshMsgs
+          }
+          return prev
+        })
+      }
+    }, 5000)
 
     return () => clearInterval(pollInterval)
-  }, [project.id, session?.user?.id]) // Stable dependencies
+  }, [project.id])
 
-  // Sync initialChat when props update (RSC refresh)
+  // Sync initialChat when server props update (RSC refresh)
   useEffect(() => {
-    if (initialChat) {
-      setLiveChat((prev: any[]) => {
-        const existingIds = new Set(prev.map((m: any) => m.id))
-        const uniqueFromProps = initialChat.filter((m: any) => !existingIds.has(m.id))
-        if (uniqueFromProps.length === 0) return prev
-        return [...prev, ...uniqueFromProps].sort((a: any, b: any) => 
+    if (initialChat && initialChat.length > 0) {
+      setLiveChat(prev => {
+        // If server has MORE messages than local, use the server data
+        if (initialChat.length > prev.length) {
+          return initialChat
+        }
+        // Otherwise merge in case local has optimistic adds
+        const serverIds = new Set(initialChat.map((m: any) => m.id))
+        const localOnly = prev.filter((m: any) => typeof m.id === 'string' || !serverIds.has(m.id))
+        if (localOnly.length === 0) return initialChat
+        return [...initialChat, ...localOnly].sort((a: any, b: any) => 
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         )
       })
@@ -237,7 +268,6 @@ export default function ProjectExecutionClient({
   const [description, setDescription] = useState('')
   const [isNote, setIsNote] = useState(false)
   const [expensePhoto, setExpensePhoto] = useState<string | null>(null)
-  const [mounted, setMounted] = useState(false)
   const [isSmallScreen, setIsSmallScreen] = useState(false)
   const [chatFilter, setChatFilter] = useState<'all' | 'media' | 'notes' | 'text'>('all')
   const [waForwardMsg, setWaForwardMsg] = useState<any>(null)
@@ -506,6 +536,25 @@ export default function ProjectExecutionClient({
     }
   }
 
+  // --- MANUAL REFRESH: Full reset from server ---
+  const [isSyncing, setIsSyncing] = useState(false)
+  const handleManualSync = async () => {
+    setIsSyncing(true)
+    try {
+      // 1. Full fetch of ALL messages — no incremental, no since
+      const freshMsgs = await fetchAllMessages()
+      if (freshMsgs.length > 0) {
+        setLiveChat(freshMsgs) // Complete replacement
+      }
+      // 2. Also refresh server component props
+      router.refresh()
+    } catch (e) {
+      console.error('[MANUAL SYNC] Error:', e)
+    } finally {
+      setTimeout(() => setIsSyncing(false), 800)
+    }
+  }
+
   const handleSendMessage = async (e: React.FormEvent, customMsg?: string, customPhase?: number, mediaFile?: File) => {
     if (e) e.preventDefault()
     const msgToSend = customMsg || message
@@ -753,9 +802,9 @@ export default function ProjectExecutionClient({
   ].sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
 
   const filteredChat = combinedChat.filter((msg: any) => {
-    // If message is for a specific phase, only show if we are on that phase.
-    // If message phaseId is null, only show if we are on General.
-    if (msg.phaseId !== activePhase) return false
+    // ALIGNED WITH ADMIN: If on General (activePhase === null), show ALL messages. 
+    // Otherwise filter by specific phase.
+    if (activePhase !== null && msg.phaseId !== activePhase) return false
     if (chatFilter === 'media') return msg.media && msg.media.length > 0
     if (chatFilter === 'notes') return msg.type === 'NOTE'
     if (chatFilter === 'text') return msg.type === 'TEXT' && (!msg.media || msg.media.length === 0)
@@ -1078,11 +1127,13 @@ export default function ProjectExecutionClient({
           display: 'flex', 
           gap: '10px', 
           marginBottom: '15px', 
-          padding: isSmallScreen ? '0 10px' : '0',
+          paddingTop: '0',
+          paddingBottom: '10px',
+          paddingLeft: isSmallScreen ? '10px' : '0',
+          paddingRight: isSmallScreen ? '10px' : '0',
           borderBottom: '1px solid var(--border-color)',
           overflowX: 'auto',
-          scrollbarWidth: 'none',
-          paddingBottom: '10px'
+          scrollbarWidth: 'none'
       }}>
         {[
           { id: 'records', label: 'Registros', activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.2)', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>, gradient: 'linear-gradient(135deg, #0070c0, #38bdf8)' },
@@ -1538,7 +1589,8 @@ export default function ProjectExecutionClient({
           <div className="chat-container" style={{ 
             display: 'flex', 
             flexDirection: 'column', 
-            height: isSmallScreen ? 'calc(100svh - 220px)' : '65vh', 
+            height: isSmallScreen ? 'calc(100svh - 220px)' : 'calc(100vh - 280px)', 
+            minHeight: '400px',
             backgroundColor: 'var(--bg-card)', 
             borderRadius: isSmallScreen ? '0' : '12px', 
             overflow: 'hidden', 
@@ -1640,6 +1692,32 @@ export default function ProjectExecutionClient({
                   </button>
                 ))}
               </div>
+
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <button 
+                  onClick={handleManualSync}
+                  className={`btn btn-sm ${isSyncing ? 'btn-disabled' : 'btn-ghost'}`}
+                  disabled={isSyncing}
+                  style={{ 
+                    fontSize: isSmallScreen ? '0.65rem' : '0.7rem', 
+                    padding: '4px 8px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '4px',
+                    color: 'var(--primary)',
+                    opacity: isSyncing ? 0.5 : 1
+                  }}
+                >
+                  <svg 
+                    width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                    style={{ animation: isSyncing ? 'spin 1s linear infinite' : 'none' }}
+                  >
+                    <path d="M23 4v6h-6"/><path d="M1 20v-6h6"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+                  </svg>
+                  {isSyncing ? 'Sincronizando...' : 'Actualizar'}
+                </button>
+              </div>
+
               {activePhase !== null && (
                 project.phases.find((p: any) => p.id === activePhase)?.status === 'COMPLETADA' ? (
                     <span style={{ color: 'var(--success)', fontSize: '0.8rem', display: 'flex', alignItems: 'center', gap: '5px' }}>
@@ -1652,7 +1730,7 @@ export default function ProjectExecutionClient({
               )}
             </div>
 
-            <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column' }}>
+            <div style={{ position: 'relative', flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0, overflow: 'hidden' }}>
               <div 
                 ref={chatContainerRef}
                 onScroll={(e) => {
@@ -1660,7 +1738,7 @@ export default function ProjectExecutionClient({
                   const isAtBottom = target.scrollHeight - target.scrollTop <= target.clientHeight + 50;
                   if (isAtBottom) setHasNewMessages(false);
                 }}
-                style={{ flex: 1, overflowY: 'auto', padding: isSmallScreen ? '12px 12px 80px 12px' : '20px', display: 'flex', flexDirection: 'column', gap: '15px' }}
+                style={{ flex: 1, overflowY: 'auto', minHeight: 0, paddingTop: '12px', paddingLeft: '12px', paddingRight: '12px', paddingBottom: isSmallScreen ? '80px' : '20px', display: 'flex', flexDirection: 'column', gap: '4px' }}
               >
                 {filteredChat.length === 0 ? (
                 <div style={{ margin: 'auto', textAlign: 'center', color: 'var(--text-muted)' }}>
@@ -1669,8 +1747,8 @@ export default function ProjectExecutionClient({
                 </div>
               ) : (
                 filteredChat.map((msg: any) => (
-                  <div key={msg.id} className="chat-message" style={{ alignSelf: msg.isMe ? 'flex-end' : 'flex-start', maxWidth: isSmallScreen ? '92%' : '80%', display: 'flex', flexDirection: 'column' }}>
-                    <span style={{ fontSize: '0.75rem', color: msg.isMe ? 'var(--text-muted)' : 'var(--primary)', fontWeight: 'bold', marginBottom: '4px', marginLeft: msg.isMe ? '0' : '12px', marginRight: msg.isMe ? '12px' : '0', alignSelf: msg.isMe ? 'flex-end' : 'flex-start' }}>
+                  <div key={msg.id} className="chat-message" style={{ alignSelf: msg.isMe ? 'flex-end' : 'flex-start', maxWidth: isSmallScreen ? '85%' : '70%', display: 'flex', flexDirection: 'column', marginTop: '8px' }}>
+                    <span style={{ fontSize: '0.7rem', color: msg.isMe ? 'var(--text-muted)' : 'var(--primary)', fontWeight: 'bold', marginBottom: '2px', marginLeft: msg.isMe ? '0' : '8px', marginRight: msg.isMe ? '8px' : '0', alignSelf: msg.isMe ? 'flex-end' : 'flex-start' }}>
                       {msg.isMe ? 'Yo' : msg.userName}
                       {!msg.isMe && msg.userBranch && <span style={{ fontWeight: '500', color: 'var(--info)', marginLeft: '6px', fontSize: '0.65rem' }}>📍{msg.userBranch}</span>}
                     </span>
@@ -1686,7 +1764,7 @@ export default function ProjectExecutionClient({
                           <svg width={isSmallScreen ? "12" : "14"} height={isSmallScreen ? "12" : "14"} viewBox="0 0 24 24" fill="white"><path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413z"/></svg>
                         </button>
                       )}
-                      <div style={{ backgroundColor: msg.type === 'NOTE' ? 'var(--bg-deep)' : (msg.isMe ? 'var(--primary)' : 'var(--bg-surface)'), color: msg.isMe && msg.type !== 'NOTE' ? 'var(--bg-deep)' : 'var(--text)', padding: isSmallScreen ? '8px 12px' : '10px 15px', borderRadius: '16px', fontSize: isSmallScreen ? '0.8rem' : '0.875rem', border: msg.type === 'NOTE' ? '1px solid var(--warning)' : 'none', borderBottomRightRadius: msg.isMe ? '4px' : '12px', borderBottomLeftRadius: msg.isMe ? '12px' : '4px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)' }}>
+                      <div style={{ backgroundColor: msg.type === 'NOTE' ? 'var(--bg-deep)' : (msg.isMe ? 'var(--primary)' : 'var(--bg-surface)'), color: msg.isMe && msg.type !== 'NOTE' ? 'var(--bg-deep)' : 'var(--text)', padding: isSmallScreen ? '8px 12px' : '10px 15px', borderRadius: '16px', fontSize: isSmallScreen ? '0.8rem' : '0.875rem', border: msg.type === 'NOTE' ? '1px solid var(--warning)' : 'none', borderBottomRightRadius: msg.isMe ? '4px' : '12px', borderBottomLeftRadius: msg.isMe ? '12px' : '4px', boxShadow: '0 1px 2px rgba(0,0,0,0.1)', wordBreak: 'break-word', overflowWrap: 'break-word', maxWidth: '100%' }}>
                         {msg.type === 'NOTE' && <div style={{ fontSize: '0.7rem', color: 'var(--warning)', fontWeight: 'bold', marginBottom: '4px', textTransform: 'uppercase' }}>Nota de Avance</div>}
                         {msg.media && msg.media.length > 0 && (
                             <div style={{ marginBottom: '8px', borderRadius: '12px', overflow: 'hidden', position: 'relative', border: '1px solid rgba(255,255,255,0.1)' }}>
@@ -1699,6 +1777,14 @@ export default function ProjectExecutionClient({
                                     >
                                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
                                     </button>
+                                  </div>
+                                ) : msg.media[0].mimeType.startsWith('audio') ? (
+                                  <div style={{ padding: '15px', backgroundColor: 'var(--bg-deep)' }}>
+                                    <audio src={msg.media[0].url} controls style={{ width: '100%', height: '40px' }} />
+                                    <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '8px', display: 'flex', justifyContent: 'space-between' }}>
+                                      <span>Audio compartido</span>
+                                      <button onClick={() => handleDownload(msg.media[0].url, msg.media[0].filename)} style={{ background: 'none', border: 'none', color: 'var(--primary)', cursor: 'pointer', fontSize: '0.65rem' }}>Descargar</button>
+                                    </div>
                                   </div>
                                 ) : msg.media[0].mimeType.startsWith('video') ? (
                                   <video src={msg.media[0].url} controls style={{ width: '100%', maxHeight: isSmallScreen ? '200px' : '400px' }} />
@@ -1777,7 +1863,10 @@ export default function ProjectExecutionClient({
             </div>
 
             <div style={isSmallScreen ? {
-              padding: '12px 10px', 
+              paddingTop: '12px', 
+              paddingLeft: '10px', 
+              paddingRight: '10px', 
+              paddingBottom: 'env(safe-area-inset-bottom, 12px)',
               backgroundColor: 'var(--bg-deep)', 
               borderTop: '1px solid var(--border-color)', 
               display: 'flex', 
@@ -1788,8 +1877,7 @@ export default function ProjectExecutionClient({
               left: 0,
               right: 0,
               zIndex: 100,
-              boxShadow: '0 -2px 15px rgba(0,0,0,0.4)',
-              paddingBottom: 'env(safe-area-inset-bottom, 12px)'
+              boxShadow: '0 -2px 15px rgba(0,0,0,0.4)'
             } : { 
               padding: '15px', 
               backgroundColor: 'var(--bg-deep)', 

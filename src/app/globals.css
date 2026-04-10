@@ -1096,3 +1096,38 @@ img, video { max-width: 100%; height: auto; }
   );
   animation: shimmer 2s infinite;
 }
+/* ──────────────────────────────────────
+   FIX: HEADER VISIBILITY
+   ────────────────────────────────────── */
+#header-desktop { 
+  display: flex !important; 
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+#header-mobile { display: none !important; }
+
+/* Adaptive Scaling for Small Laptops & Tablets (1024px to 1440px) */
+@media (max-width: 1440px) and (min-width: 1201px) {
+  #header-desktop a { padding-left: 10px !important; padding-right: 10px !important; font-size: 13.5px !important; }
+  #header-desktop .shrink-0 { margin-right: 16px !important; }
+}
+
+@media (max-width: 1200px) and (min-width: 1024px) {
+  #header-desktop a { padding-left: 6px !important; padding-right: 6px !important; font-size: 12.5px !important; }
+  #header-desktop .shrink-0 { margin-right: 12px !important; }
+}
+
+@media (max-width: 1023px) {
+  #header-desktop { display: none !important; }
+  #header-mobile { display: flex !important; }
+  
+  /* Kill Cyan Links & Button Boxes in Mobile Menu */
+  #header-mobile a, 
+  #header-mobile button {
+    color: #1d1d1f !important;
+    outline: none !important;
+    box-shadow: none !important;
+    text-decoration: none !important;
+    -webkit-tap-highlight-color: transparent;
+  }
+}

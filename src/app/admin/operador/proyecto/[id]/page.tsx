@@ -7,6 +7,7 @@ import ProjectExecutionClient from '@/components/ProjectExecutionClient'
 import { deepSerialize } from '@/lib/serializable'
 
 export const dynamic = 'force-dynamic'
+export const revalidate = 0
 
 export default async function OperatorProjectDetail({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
@@ -133,7 +134,7 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
   }))
 
   return (
-    <div className="p-0 sm:p-6 pb-24">
+    <div className="pt-0 pl-0 pr-0 sm:pt-6 sm:pl-6 sm:pr-6 pb-24">
       <ProjectExecutionClient 
         {...deepSerialize({
           project: safeProject,

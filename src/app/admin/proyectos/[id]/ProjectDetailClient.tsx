@@ -128,9 +128,29 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const [editClientCity, setEditClientCity] = useState(project.client?.city || '')
   const [editClientAddress, setEditClientAddress] = useState(project.client?.address || '')
 
-  // --- REAL-TIME POLLING & SEEN STATUS (Optimized with ref to avoid re-render loops) ---
-  const chatMessagesRef = useRef(chatMessages)
-  chatMessagesRef.current = chatMessages
+  // --- FULL-SYNC FETCH: always gets ALL messages from server ---
+  const fetchAllMessages = async (): Promise<any[]> => {
+    try {
+      const resp = await fetch(`/api/projects/${project.id}/messages?_t=${Date.now()}`, {
+        cache: 'no-store',
+        headers: { 'Cache-Control': 'no-cache' }
+      })
+      if (!resp.ok) {
+        console.error('[ADMIN CHAT SYNC] API error:', resp.status)
+        return []
+      }
+      const allMsgs = await resp.json()
+      const currentUserId = Number(session?.user?.id)
+      return (allMsgs || []).map((m: any) => ({
+        ...m,
+        isMe: m.userId === currentUserId,
+        userName: m.user?.name || 'Administrador'
+      }))
+    } catch (err) {
+      console.error('[ADMIN CHAT SYNC] Network error:', err)
+      return []
+    }
+  }
 
   const filteredChat = useMemo(() => {
     return chatMessages.filter((m: any) => activePhase === null ? true : m.phaseId === activePhase)
@@ -152,8 +172,6 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
         setHasNewMessages(false)
         
-        // --- SYNC NOTIFICATIONS ---
-        // If we are at the bottom and see new messages, tell the server immediately
         fetch('/api/notifications/summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -163,6 +181,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     }
   }, [filteredChat.length, activeTab, project.id])
 
+  // --- REAL-TIME POLLING: Full sync every 5s ---
   useEffect(() => {
     const markAsSeen = async () => {
       try {
@@ -175,35 +194,30 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     }
     markAsSeen()
 
+    // Immediate full fetch on mount
+    fetchAllMessages().then(msgs => {
+      if (msgs.length > 0) {
+        setChatMessages(msgs)
+        markAsSeen()
+      }
+    })
+
     const pollInterval = setInterval(async () => {
-      if (document.visibilityState !== 'visible') return
-      try {
-        const msgs = chatMessagesRef.current
-        const lastMsg = msgs[msgs.length - 1]
-        const since = lastMsg ? lastMsg.createdAt : project.createdAt
-        const resp = await fetch(`/api/projects/${project.id}/messages?since=${encodeURIComponent(new Date(since).toISOString())}`)
-        if (resp.ok) {
-          const newMsgs = await resp.json()
-          if (newMsgs?.length > 0) {
-            const existingIds = new Set(msgs.map((m: any) => m.id))
-            const currentUserId = Number(session?.user?.id)
-            const uniqueNew = (newMsgs as any[]).filter((m: any) => !existingIds.has(m.id)).map((m: any) => ({
-              ...m,
-              isMe: m.userId === currentUserId,
-              userName: m.user?.name || 'Administrador'
-            }))
-            
-            if (uniqueNew.length > 0) {
-              setChatMessages((prev: any) => [...prev, ...uniqueNew])
-              markAsSeen()
-            }
+      if (!navigator.onLine) return
+      const freshMsgs = await fetchAllMessages()
+      if (freshMsgs.length > 0) {
+        setChatMessages((prev: any[]) => {
+          if (prev.length !== freshMsgs.length || 
+              (prev.length > 0 && freshMsgs.length > 0 && prev[prev.length - 1]?.id !== freshMsgs[freshMsgs.length - 1]?.id)) {
+            return freshMsgs
           }
-        }
-      } catch (err) { /* silent */ }
-    }, 5000) // 5s is more than enough, reduces server load by 40%
+          return prev
+        })
+      }
+    }, 5000)
 
     return () => clearInterval(pollInterval)
-  }, [project.id]) // Stable dependency — never re-creates the interval
+  }, [project.id])
 
   const CATEGORIES = [
     { id: 'PISCINA', label: 'Piscina' },
@@ -614,7 +628,15 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
 
       if (res.ok) {
         const newMessage = await res.json()
-        setChatMessages((prev: any) => [...prev, newMessage])
+        setChatMessages((prev: any) => {
+          const exists = prev.some((m: any) => m.id === newMessage.id)
+          if (exists) return prev
+          return [...prev, {
+            ...newMessage,
+            isMe: true,
+            userName: session?.user?.name || 'Administrador'
+          }]
+        })
         setMessage('')
         setShowMediaCapture(null)
         router.refresh()
