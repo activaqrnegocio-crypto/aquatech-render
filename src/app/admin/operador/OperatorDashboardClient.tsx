@@ -38,25 +38,33 @@ export default function OperatorDashboardClient({
 
   // Polling for live project updates
   useEffect(() => {
-    const fetchProjects = async () => {
-      // Solo hacer el request si la pestaña está activa para no saturar la base de datos MySQL
+    const fetchAllData = async () => {
+      // Solo hacer el request si la pestaña está activa para no saturar la base de datos
       if (document.visibilityState !== 'visible') return;
       
       try {
-        const res = await fetch('/api/operator/projects')
-        if (res.ok) {
-          const freshProjects = await res.json()
+        const [projRes, appRes] = await Promise.all([
+          fetch('/api/operator/projects'),
+          fetch(`/api/appointments?userId=${user.id}`)
+        ])
+
+        if (projRes.ok) {
+          const freshProjects = await projRes.json()
           setProjects(freshProjects)
         }
+        if (appRes.ok) {
+          const freshApps = await appRes.json()
+          setAppointments(freshApps)
+        }
       } catch (err) {
-        console.error('Error polling operator projects:', err)
+        console.error('Error polling operator data:', err)
       }
     }
     
-    // Polling cada 15 segundos en lugar de 5 para ahorrar conexiones a la BD
-    const interval = setInterval(fetchProjects, 15000)
+    // Polling cada 15 segundos para mantener la agenda y proyectos actualizados
+    const interval = setInterval(fetchAllData, 15000)
     return () => clearInterval(interval)
-  }, [])
+  }, [user.id])
 
   // Offline Project Sync
   useEffect(() => {

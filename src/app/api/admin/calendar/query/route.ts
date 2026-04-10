@@ -24,13 +24,13 @@ export async function POST(req: Request) {
       referenceDate = getLocalNow()
     }
 
-    // Fetch active operators 
+    // Fetch active operators and subcontractors
     const operators = await prisma.user.findMany({
       where: { 
-        role: 'OPERATOR', 
+        role: { in: ['OPERATOR', 'SUBCONTRATISTA'] }, 
         isActive: true 
       },
-      select: { id: true, name: true }
+      select: { id: true, name: true, role: true }
     })
 
     // Fetch appointments for a generous window around referenceDate (+/- 30 days is safe for context)
@@ -46,7 +46,7 @@ export async function POST(req: Request) {
       where: {
         startTime: { gte: startDate, lte: endDate },
         status: { not: 'CANCELADO' },
-        user: { role: 'OPERATOR' }
+        user: { role: { in: ['OPERATOR', 'SUBCONTRATISTA'] } }
       },
       include: {
         user: { select: { name: true, id: true } }
@@ -57,7 +57,7 @@ export async function POST(req: Request) {
     // Prepare context for Groq
     const context = {
       currentDate: formatToEcuador(referenceDate),
-      operators: operators.map(o => o.name),
+      operators: operators.map(o => `${o.name} (${o.role})`),
       appointments: appointments.map(a => ({
         operator: a.user.name,
         title: a.title,
@@ -75,19 +75,25 @@ export async function POST(req: Request) {
     }
 
     const systemPrompt = `Eres el "Asistente Ejecutivo" de Aquatech. 
-Tu única función es decir quién está libre y quién está ocupado.
+Tu única función es reportar la disponibilidad exacta del equipo.
 
 FECHA ACTUAL: ${context.currentDate}
-DATOS DE AGENDA: ${JSON.stringify(context.appointments)}
+
+EQUIPO REGISTRADO (TOTAL):
+${context.operators.join('\n- ')}
+
+AGENDA DE EVENTOS:
+${JSON.stringify(context.appointments)}
 
 REGLAS DE ORO:
-1. NO SALUDES. NO DES EXPLICACIONES.
-2. Formato de respuesta: 
-   - LIBRES: **Nombre de Operador**
-   - OCUPADOS: **Nombre de Operador** (Tarea: Título)
-3. Si alguien no tiene tareas a la hora consultada, está LIBRE.
-4. Si alguien tiene una tarea a esa hora, está OCUPADO.
-5. Sé extremadamente breve. Máximo 2 líneas de texto.`
+1. Para CADA persona del "EQUIPO REGISTRADO":
+   - Si tiene una tarea a la hora consultada en la "AGENDA DE EVENTOS", está OCUPADO.
+   - Si NO tiene ninguna tarea a esa hora (o ni siquiera aparece en la agenda), está LIBRE.
+2. IMPORTANTE: Si solo ves a una persona ocupada en la agenda, significa que TODOS LOS DEMÁS de la lista "EQUIPO REGISTRADO" están LIBRES. No digas que no hay más registrados.
+3. Formato obligatorio: 
+   - LIBRES: **Nombres separados por coma** (o "Todo el equipo" si aplica)
+   - OCUPADOS: **Nombre** (Tarea: Título)
+4. NO SALUDES ni des introducciones. Sé extremadamente breve.`
 
     const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',
@@ -101,7 +107,7 @@ REGLAS DE ORO:
           { role: 'system', content: systemPrompt },
           { role: 'user', content: query }
         ],
-        temperature: 0.5,
+        temperature: 0.1,
         max_tokens: 1000
       })
     })
