@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useMemo, useEffect } from 'react'
 import { getLocalNow, formatToEcuador } from '@/lib/date-utils'
 import Link from 'next/link'
 import CalendarView from '@/components/Calendar/CalendarView'
@@ -28,16 +28,75 @@ interface OperatorDashboardClientProps {
 
 export default function OperatorDashboardClient({
   user,
-  activeProjects,
+  activeProjects: initialProjects,
   activeDayRecord,
   appointments: initialAppointments
 }: OperatorDashboardClientProps) {
   const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS' | 'CALENDARIO'>('TAREAS')
   const [appointments, setAppointments] = useState(initialAppointments)
+  const [projects, setProjects] = useState(initialProjects)
+
+  // Polling for live project updates
+  useEffect(() => {
+    const fetchProjects = async () => {
+      // Solo hacer el request si la pestaña está activa para no saturar la base de datos MySQL
+      if (document.visibilityState !== 'visible') return;
+      
+      try {
+        const res = await fetch('/api/operator/projects')
+        if (res.ok) {
+          const freshProjects = await res.json()
+          setProjects(freshProjects)
+        }
+      } catch (err) {
+        console.error('Error polling operator projects:', err)
+      }
+    }
+    
+    // Polling cada 15 segundos en lugar de 5 para ahorrar conexiones a la BD
+    const interval = setInterval(fetchProjects, 15000)
+    return () => clearInterval(interval)
+  }, [])
+
+  // Offline Project Sync
+  useEffect(() => {
+    const syncOfflineProjects = async () => {
+      if (!navigator.onLine) return
+
+      const offlineQueue = JSON.parse(localStorage.getItem('offlineProjects') || '[]')
+      if (offlineQueue.length === 0) return
+
+      for (const item of offlineQueue) {
+        try {
+          const resp = await fetch('/api/projects', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(item.payload)
+          })
+          
+          if (resp.ok) {
+             // remove from queue successfully synced
+             const currentQueue = JSON.parse(localStorage.getItem('offlineProjects') || '[]')
+             const newQueue = currentQueue.filter((p: any) => p.id !== item.id)
+             localStorage.setItem('offlineProjects', JSON.stringify(newQueue))
+          }
+        } catch (err) {
+          console.error('Failed to sync offline project:', err)
+        }
+      }
+    }
+
+    // Try to sync on mount
+    syncOfflineProjects()
+
+    // And listen to online events
+    window.addEventListener('online', syncOfflineProjects)
+    return () => window.removeEventListener('online', syncOfflineProjects)
+  }, [])
 
   const totalUnread = useMemo(() => {
-    return activeProjects.reduce((acc, p) => acc + (p.unreadCount || 0), 0)
-  }, [activeProjects])
+    return projects.reduce((acc, p) => acc + (p.unreadCount || 0), 0)
+  }, [projects])
 
   const todayTasks = useMemo(() => {
     const today = getLocalNow()
@@ -93,7 +152,7 @@ export default function OperatorDashboardClient({
            <ListTodo size={16} style={{marginRight: '8px'}}/> Tareas de Hoy ({todayTasks.length})
         </button>
         <button className={`tab ${activeTab === 'PROYECTOS' ? 'active' : ''}`} onClick={() => setActiveTab('PROYECTOS')}>
-           <Briefcase size={16} style={{marginRight: '8px'}}/> Mis Proyectos ({activeProjects.length})
+           <Briefcase size={16} style={{marginRight: '8px'}}/> Mis Proyectos ({projects.length})
            {totalUnread > 0 && <span className="tab-badge">{totalUnread}</span>}
         </button>
         <button className={`tab ${activeTab === 'CALENDARIO' ? 'active' : ''}`} onClick={() => setActiveTab('CALENDARIO')}>
@@ -141,7 +200,7 @@ export default function OperatorDashboardClient({
 
         {activeTab === 'PROYECTOS' && (
           <div className="grid-responsive">
-            {activeProjects.map(project => {
+            {projects.map(project => {
               const completedPhases = project.phases.filter((p: any) => p.status === 'COMPLETADA').length
               const totalPhases = project.phases.length
               const progress = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0

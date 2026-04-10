@@ -1,5 +1,4 @@
 import type { Metadata } from 'next'
-import Navbar from '@/components/marketing/Navbar'
 import Hero from '@/components/marketing/Hero'
 import { FeaturedProduct } from '@/components/marketing/FeaturedProduct'
 import CategoryGrid from '@/components/marketing/CategoryGrid'
@@ -22,9 +21,6 @@ export const metadata: Metadata = {
 export default function Home() {
   return (
     <main className="min-h-screen bg-white selection:bg-[#0070C0] selection:text-white">
-      {/* Header Premium Fijo */}
-      <Navbar />
-
       {/* Hero Section: Banner Principal (Estilo Apple) */}
       <Hero />
 

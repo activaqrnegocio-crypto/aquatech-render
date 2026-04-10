@@ -1,12 +1,14 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 import NavbarDesktop from './NavbarDesktop'
 import NavbarMobile from './NavbarMobile'
 
 export default function Navbar() {
   const [scrolled, setScrolled] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const pathname = usePathname()
 
   useEffect(() => {
     setMounted(true)
@@ -16,6 +18,11 @@ export default function Navbar() {
     window.addEventListener('scroll', handleScroll, { passive: true })
     return () => window.removeEventListener('scroll', handleScroll)
   }, [])
+
+  // Do not render marketing navbar on admin/CRM pages
+  if (pathname?.startsWith('/admin')) {
+    return null
+  }
 
   return (
     <nav 

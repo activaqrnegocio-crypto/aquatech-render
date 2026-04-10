@@ -263,8 +263,15 @@ export async function POST(request: Request) {
   } catch (error: any) {
     console.error('Error creating project:', error)
     if (error.code === 'P2002') {
-      return NextResponse.json({ error: 'Error: Entrada duplicada detectada.' }, { status: 400 })
+      return NextResponse.json({ error: 'Error: Entrada duplicada (nombre de cliente ya existe, intente usar el buscador).' }, { status: 400 })
     }
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    if (error.code === 'P2024' || error.message?.includes('timed out') || error.message?.includes('connection')) {
+      return NextResponse.json({ error: 'La base de datos MySQL tardó demasiado en responder o está saturada. Por favor, reintente en unos momentos.' }, { status: 503 })
+    }
+    
+    return NextResponse.json({ 
+      error: 'Error de Servidor BD: ' + (error?.message || 'Contacte al desarrollador'), 
+      details: error 
+    }, { status: 500 })
   }
 }

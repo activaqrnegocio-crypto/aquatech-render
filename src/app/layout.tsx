@@ -27,6 +27,8 @@ export const metadata: Metadata = {
 };
 
 
+import Navbar from "@/components/marketing/Navbar";
+
 export default function RootLayout({
   children,
 }: Readonly<{
@@ -37,6 +39,7 @@ export default function RootLayout({
       <head />
       <body>
         <SessionWrapper>
+          <Navbar />
           {children}
         </SessionWrapper>
       </body>

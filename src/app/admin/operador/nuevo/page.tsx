@@ -196,26 +196,37 @@ export default function NuevoProyectoPage() {
     setLoading(true)
     setError('')
 
+    const payload = {
+      ...projectData,
+      subtype: projectData.type === 'OTHER' ? projectData.subtype : '',
+      client: clientData,
+      phases: phases,
+      team: selectedTeam,
+      budgetItems: budgetItems,
+      categoryList: projectData.categoryList.map(c => c === 'OTRO' ? (projectData.otherCategory || 'OTRO') : c),
+      contractTypeList: projectData.contractTypeList.map(c => c === 'OTHER' ? (projectData.otherContractType || 'OTHER') : c),
+      technicalSpecs: projectData.technicalSpecs,
+      specsAudioUrl: projectData.specsAudioUrl,
+      specsTranscription: projectData.technicalSpecs.description,
+      status: projectData.status,
+      clientId: clientData.id,
+      files: uploadedFiles
+    }
+
+    if (!navigator.onLine) {
+      const offlineQueue = JSON.parse(localStorage.getItem('offlineProjects') || '[]')
+      offlineQueue.push({ id: Date.now().toString(), payload })
+      localStorage.setItem('offlineProjects', JSON.stringify(offlineQueue))
+      alert('Estás sin conexión. El proyecto se ha guardado localmente y se subirá cuando recuperes la conexión.')
+      router.push(`/admin/operador`)
+      return
+    }
+
     try {
       const resp = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          ...projectData,
-          subtype: projectData.type === 'OTHER' ? projectData.subtype : '',
-          client: clientData,
-          phases: phases,
-          team: selectedTeam,
-          budgetItems: budgetItems,
-          categoryList: projectData.categoryList.map(c => c === 'OTRO' ? (projectData.otherCategory || 'OTRO') : c),
-          contractTypeList: projectData.contractTypeList.map(c => c === 'OTHER' ? (projectData.otherContractType || 'OTHER') : c),
-          technicalSpecs: projectData.technicalSpecs,
-          specsAudioUrl: projectData.specsAudioUrl,
-          specsTranscription: projectData.technicalSpecs.description,
-          status: projectData.status,
-          clientId: clientData.id,
-          files: uploadedFiles
-        })
+        body: JSON.stringify(payload)
       })
 
       if (!resp.ok) {
@@ -225,8 +236,16 @@ export default function NuevoProyectoPage() {
 
       router.push(`/admin/operador`)
     } catch (err: any) {
-      setError(err.message)
-      setLoading(false)
+      if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        const offlineQueue = JSON.parse(localStorage.getItem('offlineProjects') || '[]')
+        offlineQueue.push({ id: Date.now().toString(), payload })
+        localStorage.setItem('offlineProjects', JSON.stringify(offlineQueue))
+        alert('Problema de red detectado. El proyecto se ha guardado localmente y se subirá automáticamente luego.')
+        router.push(`/admin/operador`)
+      } else {
+        setError(err.message)
+        setLoading(false)
+      }
     }
   }
 
