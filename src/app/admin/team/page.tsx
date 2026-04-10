@@ -79,6 +79,19 @@ export default function TeamPage() {
     setFormData({ ...formData, password: pass })
   }
 
+  const generateUsername = () => {
+    if (!formData.name) return
+    const cleanName = formData.name
+      .toLowerCase()
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "") // Remove accents
+      .replace(/[^a-z0-9 ]/g, "") // Remove symbols
+      .trim()
+      .replace(/\s+/g, "_") // Spaces to underscores
+    
+    setFormData({ ...formData, username: cleanName })
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError('')
@@ -376,7 +389,12 @@ export default function TeamPage() {
                   
                   <div className="form-group">
                     <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Usuario @ *</label>
-                    <input type="text" className="form-input" style={{ padding: '14px 18px', borderRadius: '14px' }} required value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} placeholder="abel_aq" />
+                    <div style={{ display: 'flex', gap: '8px' }}>
+                      <input type="text" className="form-input" style={{ padding: '14px 18px', borderRadius: '14px', flex: 1 }} required value={formData.username} onChange={e => setFormData({...formData, username: e.target.value})} placeholder="abel_aq" />
+                      <button type="button" onClick={generateUsername} className="btn btn-secondary" style={{ padding: '0 12px', borderRadius: '14px' }} title="Generar sugerencia">
+                        ✨
+                      </button>
+                    </div>
                   </div>
                   
                   <div className="form-group">
@@ -419,12 +437,16 @@ export default function TeamPage() {
                 </div>
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '24px', marginBottom: '40px' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr 1.5fr', gap: '24px', marginBottom: '40px' }}>
+                <div className="form-group">
+                  <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Correo Electrónico *</label>
+                  <input type="email" className="form-input" style={{ padding: '14px 18px', borderRadius: '14px' }} required value={formData.email} onChange={e => setFormData({...formData, email: e.target.value})} placeholder="ejemplo@aquatech.com" />
+                </div>
                 <div className="form-group">
                   <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Teléfono</label>
                   <input type="text" className="form-input" style={{ padding: '14px 18px', borderRadius: '14px' }} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+593..." />
                 </div>
-                <div className="form-group" style={{ gridColumn: 'span 2' }}>
+                <div className="form-group">
                   <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contraseña de Seguridad *</label>
                   <div style={{ display: 'flex', gap: '10px' }}>
                     <input type="text" className="form-input" style={{ padding: '14px 18px', borderRadius: '14px', letterSpacing: '2px', flex: 1 }} required value={formData.password} onChange={e => setFormData({...formData, password: e.target.value})} placeholder="Ingresa o genera..." />
