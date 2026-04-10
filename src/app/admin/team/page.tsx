@@ -477,7 +477,7 @@ export default function TeamPage() {
                 </div>
                 <div className="form-group">
                   <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Teléfono</label>
-                  <input type="text" className="form-input" style={{ padding: '14px 18px', borderRadius: '14px' }} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value})} placeholder="+593..." />
+                  <input type="text" className="form-input" style={{ padding: '14px 18px', borderRadius: '14px' }} value={formData.phone} onChange={e => setFormData({...formData, phone: e.target.value.replace(/\D/g, '')})} placeholder="593..." />
                 </div>
                 <div className="form-group">
                   <label style={{ display: 'block', marginBottom: '10px', fontSize: '0.85rem', fontWeight: '700', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Contraseña de Seguridad *</label>
