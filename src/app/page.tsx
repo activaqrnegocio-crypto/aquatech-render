@@ -1,12 +1,13 @@
 import type { Metadata } from 'next'
-import Hero from '@/components/marketing/Hero'
-import FeaturedProduct from '@/components/marketing/FeaturedProduct'
-import CategoryGrid from '@/components/marketing/CategoryGrid'
-import Footer from '@/components/marketing/Footer'
-import ScrollArrowDivider from '@/components/marketing/ScrollArrowDivider'
-import WhatsAppButton from '@/components/marketing/WhatsAppButton'
-import ScrollToTop from '@/components/marketing/ScrollToTop'
-import AboutUs from '@/components/marketing/AboutUs'
+import Hero from '../components/marketing/Hero'
+import FeaturedProduct from '../components/marketing/FeaturedProduct'
+import CategoryGrid from '../components/marketing/CategoryGrid'
+import Footer from '../components/marketing/Footer'
+import { ScrollArrowDivider } from '../components/marketing/ScrollArrowDivider'
+import WhatsAppButton from '../components/marketing/WhatsAppButton'
+import ScrollToTop from '../components/marketing/ScrollToTop'
+import AboutUs from '../components/marketing/AboutUs'
+import Testimonials from '../components/marketing/Testimonials'
 
 // metadataBase is required in Next.js 14+ to resolve relative URLs for social sharing
 export const metadata: Metadata = {
@@ -38,7 +39,8 @@ export default function Home() {
       <CategoryGrid />
 
       {/* Quienes Somos (Historia y Filosofía) */}
-      <AboutUs />
+      {/* <AboutUs /> */}
+      {/* <Testimonials /> */}
 
       {/* Footer */}
       <Footer />

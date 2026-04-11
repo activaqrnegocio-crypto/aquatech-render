@@ -56,7 +56,7 @@ export default function AboutUs() {
             Líderes en el ciclo <br />
             <span style={{ color: '#004A87' }}>integral del agua.</span>
           </h2>
-          <p style={{ fontSize: '21px', color: '#666666', lineHeight: '1.7', maxWidth: '960px', margin: '0 auto' }}>
+          <p style={{ fontSize: '21px', color: '#666666', lineHeight: '1.7', maxWidth: '960px', margin: '40px auto 0' }}>
             Aquatech consolida una década de trayectoria en ingeniería hidráulica, transformando hogares con soluciones de alta gama respaldadas por soporte técnico certificado.
           </p>
         </div>

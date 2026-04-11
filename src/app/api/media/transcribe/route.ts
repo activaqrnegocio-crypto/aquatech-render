@@ -35,58 +35,115 @@ export async function POST(req: Request) {
       buffer = Buffer.from(audio, 'base64')
     }
 
-    if (buffer.byteLength < 100) { // Menos de 100 bytes is invalid
-      console.warn(`Buffer too short: ${buffer.byteLength} bytes`);
-      return NextResponse.json({ error: 'Audio demasiado corto o vacío (servidor)' }, { status: 400 })
+    if (buffer.byteLength < 100) {
+      return NextResponse.json({ error: 'Audio demasiado corto o vacío' }, { status: 400 })
     }
 
-    console.log(`Transcribe request: Buffer size=${buffer.byteLength}, ext=${ext}`);
-
-    const groqApiKey = process.env.GROQ_API_KEY
-    if (!groqApiKey) {
-      return NextResponse.json({ error: 'Configuración de IA faltante' }, { status: 500 })
-    }
+    console.log(`Transcribe: ${buffer.byteLength} bytes, ext=${ext}`)
 
     const mimeMap: Record<string, string> = {
-      'webm': 'audio/webm',
-      'm4a': 'audio/mp4',
-      'mp4': 'audio/mp4',
-      'wav': 'audio/wav',
-      'ogg': 'audio/ogg',
-      'aac': 'audio/aac'
+      'webm': 'audio/webm', 'm4a': 'audio/mp4', 'mp4': 'audio/mp4',
+      'wav': 'audio/wav', 'ogg': 'audio/ogg', 'aac': 'audio/aac'
     }
     const contentType = mimeMap[ext] || 'audio/webm'
-
-    const groqFormData = new FormData()
-    // Explicitly use Uint8Array to ensure standard Blob handling in Node.js
-    const audioBlob = new Blob([new Uint8Array(buffer)], { type: contentType })
-    
-    // Always provide a filename that Whisper expects
     const safeExt = ext && mimeMap[ext] ? ext : 'm4a'
-    groqFormData.append('file', audioBlob, `audio.${safeExt}`)
-    groqFormData.append('model', 'whisper-large-v3')
-    groqFormData.append('language', 'es')
-    groqFormData.append('prompt', 'Este es un audio sobre gestión de CRM en Aquatech, Loja, Ecuador. Palabras comunes: Mantenimiento, Operador, Agenda, Piscina, Valentín, Cita, Instalación.')
+    const audioBlob = new Blob([new Uint8Array(buffer)], { type: contentType })
 
-    const response = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${groqApiKey}`
-      },
-      body: groqFormData
-    })
+    const groqKey = process.env.GROQ_API_KEY
+    const openRouterKey = process.env.OPENROUTER_API_KEY
+    const geminiKey = process.env.GEMINI_API_KEY
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({ error: 'Error desconocido' }))
-      console.error('Groq API Error Detail:', errorData)
-      return NextResponse.json({ 
-        error: 'Groq rechazó el archivo analizado', 
-        details: errorData.error?.message || 'Error en Groq'
-      }, { status: response.status })
+    let transcribedText: string | null = null
+
+    // ========== 1. GROQ WHISPER (Principal) ==========
+    if (groqKey && !transcribedText) {
+      try {
+        console.log('Transcription: Trying Groq Whisper...')
+        const fd = new FormData()
+        fd.append('file', audioBlob, `audio.${safeExt}`)
+        fd.append('model', 'whisper-large-v3')
+        fd.append('language', 'es')
+        fd.append('prompt', 'Audio de gestión CRM Aquatech, Loja, Ecuador. Mantenimiento, Operador, Agenda, Piscina, Valentín, Instalación.')
+
+        const res = await fetch('https://api.groq.com/openai/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${groqKey}` },
+          body: fd
+        })
+        if (res.ok) {
+          const data = await res.json()
+          transcribedText = data.text
+          console.log('Transcription: Groq OK')
+        } else {
+          console.warn('Transcription: Groq failed, status:', res.status)
+        }
+      } catch (e) {
+        console.warn('Transcription: Groq error, trying fallback...')
+      }
     }
 
-    const result = await response.json()
-    return NextResponse.json({ text: result.text })
+    // ========== 2. OPENROUTER WHISPER (Fallback 1) ==========
+    if (openRouterKey && !transcribedText) {
+      try {
+        console.log('Transcription: Trying OpenRouter Whisper...')
+        const fd = new FormData()
+        fd.append('file', audioBlob, `audio.${safeExt}`)
+        fd.append('model', 'openai/whisper-1')
+        fd.append('language', 'es')
+
+        const res = await fetch('https://openrouter.ai/api/v1/audio/transcriptions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${openRouterKey}` },
+          body: fd
+        })
+        if (res.ok) {
+          const data = await res.json()
+          transcribedText = data.text
+          console.log('Transcription: OpenRouter OK')
+        } else {
+          console.warn('Transcription: OpenRouter failed, status:', res.status)
+        }
+      } catch (e) {
+        console.warn('Transcription: OpenRouter error, trying Gemini...')
+      }
+    }
+
+    // ========== 3. GEMINI AUDIO (Fallback 2) ==========
+    if (geminiKey && !transcribedText) {
+      try {
+        console.log('Transcription: Trying Gemini Audio...')
+        const base64Audio = buffer.toString('base64')
+
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            contents: [{
+              parts: [
+                { inlineData: { mimeType: contentType, data: base64Audio } },
+                { text: 'Transcribe este audio al español exactamente como se dice. Solo devuelve el texto transcrito, nada más.' }
+              ]
+            }]
+          })
+        })
+        if (res.ok) {
+          const data = await res.json()
+          transcribedText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || null
+          if (transcribedText) console.log('Transcription: Gemini OK')
+        } else {
+          console.warn('Transcription: Gemini failed, status:', res.status)
+        }
+      } catch (e) {
+        console.warn('Transcription: Gemini error')
+      }
+    }
+
+    // ========== RESULTADO ==========
+    if (!transcribedText) {
+      return NextResponse.json({ error: 'Todos los servicios de transcripción fallaron. Intenta de nuevo.' }, { status: 503 })
+    }
+
+    return NextResponse.json({ text: transcribedText })
 
   } catch (error: any) {
     console.error('Transcription Route Error:', error)

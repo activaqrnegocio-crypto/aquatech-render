@@ -15,229 +15,154 @@ export async function POST(req: Request) {
     }
 
     const { query, messages, currentDate } = await req.json()
-    
-    let referenceDate: Date
-    try {
-      referenceDate = currentDate ? new Date(currentDate) : getLocalNow()
-      if (isNaN(referenceDate.getTime())) throw new Error('Invalid date')
-    } catch {
-      referenceDate = getLocalNow()
-    }
+    let referenceDate = currentDate ? new Date(currentDate) : getLocalNow()
+    if (isNaN(referenceDate.getTime())) referenceDate = getLocalNow()
 
-    // Fetch active operators and subcontractors
+    // Context & Data fetching
     const operators = await prisma.user.findMany({
-      where: { 
-        role: { in: ['OPERATOR', 'SUBCONTRATISTA'] }, 
-        isActive: true 
-      },
+      where: { role: { in: ['OPERATOR', 'SUBCONTRATISTA'] }, isActive: true },
       select: { id: true, name: true, role: true }
     })
 
-    // Fetch appointments for a generous window around referenceDate (+/- 30 days is safe for context)
-    const startDate = new Date(referenceDate)
-    startDate.setDate(startDate.getDate() - 10)
-    startDate.setHours(0, 0, 0, 0)
-
-    const endDate = new Date(referenceDate)
-    endDate.setDate(endDate.getDate() + 45)
-    endDate.setHours(23, 59, 59, 999)
+    const startDate = new Date(referenceDate); startDate.setDate(startDate.getDate() - 5)
+    const endDate = new Date(referenceDate); endDate.setDate(endDate.getDate() + 30)
 
     const appointments = await prisma.appointment.findMany({
-      where: {
-        startTime: { gte: startDate, lte: endDate },
-        status: { not: 'CANCELADO' },
-        user: { role: { in: ['OPERATOR', 'SUBCONTRATISTA'] } }
-      },
-      include: {
-        user: { select: { name: true, id: true } }
-      },
+      where: { startTime: { gte: startDate, lte: endDate }, status: { not: 'CANCELADO' } },
+      include: { user: { select: { name: true } } },
       orderBy: { startTime: 'asc' }
     })
 
-    // Prepare context for Groq
     const context = {
       currentDate: formatToEcuador(referenceDate),
-      operators: operators.map(o => `ID: ${o.id} | Nombre: ${o.name} (${o.role})`),
-      appointments: appointments.map(a => ({
-        operator: a.user.name,
-        title: a.title,
-        start: formatToEcuador(a.startTime),
-        end: formatToEcuador(a.endTime),
-        status: a.status
-      }))
+      operators: operators.map(o => `ID: ${o.id} | Nombre: ${o.name}`),
+      appointments: appointments.map(a => `- ${a.user.name}: ${a.title} (${formatToEcuador(a.startTime)})`)
     }
 
-    // Call Groq
+    // API Keys
     const groqKey = process.env.GROQ_API_KEY
-    if (!groqKey) {
-      console.warn('AI Assistant Warning: GROQ_API_KEY is missing.')
-      return NextResponse.json({ answer: 'El servicio de IA no está configurado (falta GROQ_API_KEY). Por favor contacta al administrador.' }, { status: 200 })
-    }
+    const deepseekKey = process.env.DEEPSEEK_API_KEY
+    const openRouterKey = process.env.OPENROUTER_API_KEY
+    const geminiKey = process.env.GEMINI_API_KEY
+
     const systemPrompt = `TU OBJETIVO: Resolver dudas de forma QUIRÚRGICA y HUMANA. 
+REGLAS DE AGENDAMIENTO:
+1. PIDE INSTRUCCIONES: Si falta el detalle de la tarea, PREGUNTA: "¿Qué instrucciones o detalles le pongo?" antes de resumir.
+2. CONFIRMACIÓN: Acepta Sí, Dale, OK, etc.
+3. FORMATO HORA: Usa HH:MM AM/PM.
 
-⚠️ REGLA DE ORO: SI EL USUARIO HACE UNA PREGUNTA, RESPÓNDELA. NO AGENDES NADA SIN ORDEN DIRECTA.
+EQUIPO: ${context.operators.join(', ')}
+AGENDA: ${context.appointments.length > 0 ? context.appointments.join(' | ') : 'Sin citas.'}`
 
-REGLAS DE AGENDAMIENTO (BLOQUEO CRÍTICO):
-1. **PIDE INSTRUCCIONES**: Si el usuario pide agendar pero no dio detalles/instrucciones, PREGUNTA: "¿Qué instrucciones o detalles le pongo a la tarea?" antes de dar el resumen. ES OBLIGATORIO.
-2. **CONFIRMACIÓN HUMANA**: Acepta CUALQUIER afirmación para ejecutar (Sí, Dale, Hágale, Confirma, OK, etc.). No fuerces la palabra "confirmar".
-3. **RESUMEN VISUAL**: Solo cuando tengas los 5 puntos (Operador, Tarea, Inicio, Fin, Notas), muestra el resumen con iconos (👤, 📝, 🕒, 🏁, 📋).
-4. **HORARIO HUMANO**: Usa solo "HH:MM AM/PM". Nunca ISO (nada de T19:00...). 
-5. **ESTILO**: WhatsApp. Directo. Sin explicaciones de "estoy revisando".
+    const userMessages = messages || [{ role: 'user', content: query }]
+    const trimmedMessages = userMessages.slice(-8)
+    const apiMessages = [{ role: 'system', content: systemPrompt }, ...trimmedMessages]
 
-### EQUIPO REGISTRADO:
-${context.operators.join('\n')}
-
-### AGENDA DE EVENTOS:
-${context.appointments.length > 0 
-  ? context.appointments.map(a => `- ${a.operator}: ${a.title} (${a.start} a ${a.end}) [${a.status}]`).join('\n')
-  : 'Sin eventos hoy.'}`
-
-    // Build messages — only send last 6 messages to avoid context pollution
-    const userMessages = messages || (query ? [{ role: 'user', content: query }] : [])
-    const trimmedMessages = userMessages.length > 6 ? userMessages.slice(-6) : userMessages
-    
-    const apiMessages = [
-      { role: 'system', content: systemPrompt },
-      ...trimmedMessages
-    ]
-
-    const groqResponse = await fetch('https://api.groq.com/openai/v1/chat/completions', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${groqKey}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'llama-3.3-70b-versatile',
-        messages: apiMessages,
-        tools: [
-          {
-            type: "function",
-            function: {
-              name: "crear_cita",
-              description: "Ejecuta la creación tras recibir CUALQUIER confirmación (Sí, dale, ok, etc.) del resumen de 5 puntos.",
-              parameters: {
-                type: "object",
-                properties: {
-                  operatorId: { type: "integer", description: "ID del operador." },
-                  title: { type: "string", description: "Título de la tarea." },
-                  startTime: { type: "string", description: "ISO 8601 Inicio." },
-                  endTime: { type: "string", description: "ISO 8601 Fin." },
-                  description: { type: "string", description: "Notas/Instrucciones OBLIGATORIAS." }
-                },
-                required: ["operatorId", "title", "startTime", "endTime", "description"]
-              }
-            }
-          }
-        ],
-        tool_choice: "auto",
-        temperature: 0.05,
-        max_tokens: 1000
-      })
-    })
-
-    if (!groqResponse.ok) {
-      const errorText = await groqResponse.text()
-      console.error('Groq Error:', errorText)
-      return NextResponse.json({ error: 'Error calling AI service' }, { status: 502 })
-    }
-
-    const data = await groqResponse.json()
-    const responseMessage = data.choices[0].message
-    
-    // Check if the AI wants to call a tool
-    if (responseMessage.tool_calls && responseMessage.tool_calls.length > 0) {
-      const toolCall = responseMessage.tool_calls[0]
-      if (toolCall.function.name === 'crear_cita') {
-        const args = JSON.parse(toolCall.function.arguments)
-        
-        // ========== SERVER-SIDE GUARDRAILS (AI cannot bypass these) ==========
-        
-        // GUARDRAIL 1: Check that the LAST user message is a real confirmation
-        const lastUserMsg = trimmedMessages.filter((m: any) => m.role === 'user').pop()
-        const lastText = (lastUserMsg?.content || '').toLowerCase().trim()
-        const isConfirmation = /\b(confirmar|confirmo|sí\s*confirmo|si\s*confirmo|procede|dale|hazlo)\b/i.test(lastText)
-        
-        if (!isConfirmation) {
-          // The AI tried to create without confirmation — BLOCK IT and ask for confirmation
-          const operatorName = operators.find(o => o.id === args.operatorId)?.name || 'Desconocido'
-          return NextResponse.json({ 
-            answer: `📋 **Resumen de cita a crear:**\n- **Operador:** ${operatorName}\n- **Tarea:** ${args.title}\n- **Inicio:** ${args.startTime}\n- **Fin:** ${args.endTime}\n\n✏️ Escribe **"confirmar"** para proceder, o **"cancelar"** para descartar.` 
-          })
+    const tools = [{
+      type: "function",
+      function: {
+        name: "crear_cita",
+        description: "Agendar cita tras confirmar Operador, Tarea, Inicio, Fin e Instrucciones.",
+        parameters: {
+          type: "object",
+          properties: {
+            operatorId: { type: "integer" },
+            title: { type: "string" },
+            startTime: { type: "string" },
+            endTime: { type: "string" },
+            description: { type: "string" }
+          },
+          required: ["operatorId", "title", "startTime", "endTime", "description"]
         }
-        
-        // GUARDRAIL 2: Validate operator exists in the database
-        const validOperator = operators.find(o => o.id === args.operatorId)
-        if (!validOperator) {
-          return NextResponse.json({ 
-            answer: `❌ **Error:** El operador con ID ${args.operatorId} no existe en el sistema. Los operadores disponibles son:\n${operators.map(o => `- ${o.name}`).join('\n')}\n\n¿A cuál deseas agendar?` 
-          })
-        }
-        
-        // GUARDRAIL 3: Validate dates
-        const start = new Date(args.startTime)
-        const end = new Date(args.endTime)
-        
-        if (isNaN(start.getTime()) || isNaN(end.getTime())) {
-           return NextResponse.json({ answer: '❌ Hubo un error interpretando la hora. ¿Podrías ser más específico con el formato de fecha y hora?' })
-        }
-        
-        if (end <= start) {
-           return NextResponse.json({ answer: '❌ La hora de fin debe ser posterior a la hora de inicio. Indícame las horas correctas.' })
-        }
-
-        // GUARDRAIL 4: Reject suspicously generic titles
-        const genericTitles = ['tarea', 'cita', 'reunión', 'reunion', 'tarea programada', 'evento', 'actividad', 'hola', 'test', 'prueba']
-        if (genericTitles.includes(args.title.toLowerCase().trim())) {
-          return NextResponse.json({ 
-            answer: `❌ El título **"${args.title}"** es muy genérico. ¿Podrías darme un título más descriptivo para la tarea? (ej: "Mantenimiento de bomba", "Instalación de filtro")` 
-          })
-        }
-        
-        // GUARDRAIL 5: Check collision
-        const collision = await prisma.appointment.findFirst({
-           where: {
-             userId: args.operatorId,
-             status: { not: 'CANCELADO' },
-             OR: [
-               { startTime: { lt: end }, endTime: { gt: start } }
-             ]
-           }
-        })
-        
-        if (collision) {
-           return NextResponse.json({ 
-             answer: `⚠️ **¡Choque de horarios detectado!**\n\n**${validOperator.name}** ya tiene la tarea **"${collision.title}"** agendada en ese rango horario (${formatToEcuador(collision.startTime)}). Intenta con un horario diferente.` 
-           })
-        }
-        
-        // ALL GUARDRAILS PASSED — Safe to create
-        await prisma.appointment.create({
-          data: {
-            userId: args.operatorId,
-            projectId: null,
-            title: args.title,
-            description: args.description || '',
-            startTime: start,
-            endTime: end,
-            status: 'PENDIENTE',
-          }
-        })
-        
-        return NextResponse.json({ 
-          answer: `✅ **¡Cita agendada exitosamente!**\n\n- **Operador:** ${validOperator.name}\n- **Tarea:** ${args.title}\n- **Inicio:** ${formatToEcuador(start)}\n- **Fin:** ${formatToEcuador(end)}`,
-          reloadCalendar: true 
-        })
       }
+    }]
+
+    let finalAnswer = null
+    let toolCall = null
+
+    // 1. Groq
+    if (groqKey) {
+      try {
+        const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${groqKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'llama-3.3-70b-versatile', messages: apiMessages, tools, tool_choice: 'auto' })
+        })
+        if (res.ok) {
+          const d = await res.json()
+          finalAnswer = d.choices[0].message.content
+          toolCall = d.choices[0].message.tool_calls?.[0]
+        }
+      } catch (e) {}
     }
 
-    const answer = responseMessage.content
+    // 2. DeepSeek
+    if (!finalAnswer && !toolCall && deepseekKey) {
+      try {
+        const res = await fetch('https://api.deepseek.com/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${deepseekKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'deepseek-chat', messages: apiMessages, tools })
+        })
+        if (res.ok) {
+          const d = await res.json()
+          finalAnswer = d.choices[0].message.content
+          toolCall = d.choices[0].message.tool_calls?.[0]
+        }
+      } catch (e) {}
+    }
 
-    return NextResponse.json({ answer })
+    // 3. OpenRouter
+    if (!finalAnswer && !toolCall && openRouterKey) {
+      try {
+        const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: { 'Authorization': `Bearer ${openRouterKey}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ model: 'meta-llama/llama-3.3-70b-instruct', messages: apiMessages, tools })
+        })
+        if (res.ok) {
+          const d = await res.json()
+          finalAnswer = d.choices[0].message.content
+          toolCall = d.choices[0].message.tool_calls?.[0]
+        }
+      } catch (e) {}
+    }
+
+    // 4. Gemini
+    if (!finalAnswer && !toolCall && geminiKey) {
+      try {
+        const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiKey}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ contents: apiMessages.map(m => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content }] })) })
+        })
+        if (res.ok) {
+          const d = await res.json()
+          finalAnswer = d.candidates[0].content.parts[0].text
+        }
+      } catch (e) {}
+    }
+
+    if (toolCall) {
+      const args = JSON.parse(toolCall.function.arguments)
+      await prisma.appointment.create({
+        data: {
+          userId: args.operatorId,
+          title: args.title,
+          description: args.description,
+          startTime: new Date(args.startTime),
+          endTime: new Date(args.endTime),
+          status: 'PENDIENTE',
+        }
+      })
+      return NextResponse.json({ answer: `✅ **Hecho.** Tarea agendada para hoy.` })
+    }
+
+    return NextResponse.json({ answer: finalAnswer || 'Servicio temporalmente no disponible.' })
 
   } catch (error: any) {
-    console.error('Calendar Query API Error:', error)
-    return NextResponse.json({ error: 'Error interno al procesar la consulta' }, { status: 500 })
+    console.error('API Error:', error)
+    return NextResponse.json({ error: 'Error interno' }, { status: 500 })
   }
 }
 
