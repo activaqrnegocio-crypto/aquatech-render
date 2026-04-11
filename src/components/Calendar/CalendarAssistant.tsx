@@ -107,8 +107,8 @@ export default function CalendarAssistant() {
         stream.getTracks().forEach(track => track.stop())
       }
 
-      // Start recording with a 500ms timeslice to gently flush chunks and write container headers properly
-      recorder.start(500)
+      // Start without timeslice so iOS/Safari can finalize the MP4 'moov' atom correctly upon stop().
+      recorder.start()
       mediaRecorderRef.current = recorder
       setIsRecording(true)
     } catch (err) {
@@ -119,7 +119,7 @@ export default function CalendarAssistant() {
 
   const stopRecording = () => {
     if (mediaRecorderRef.current && isRecording) {
-      mediaRecorderRef.current.requestData() // Request any lingering bits before stopping
+      // Do not call requestData() here, as it forces premature chunks that corrupt MP4 encoders on Safari.
       mediaRecorderRef.current.stop()
       setIsRecording(false)
     }
