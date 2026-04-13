@@ -203,5 +203,169 @@ export const catalogData: Product[] = [
     price: 45.00,
     img: "https://cesarweb.b-cdn.net/home/hero-slider-2.webp",
     tags: ['ACCESORIO']
+  },
+  // PILETAS Y PISCINAS
+  {
+    id: 23,
+    name: "BOMBA DE CALOR INVERTER IXR26",
+    code: "AQ-PIL-IXR26",
+    category: 'Piletas',
+    price: 3800.00,
+    promoPrice: 3500.00,
+    img: "https://cesarweb.b-cdn.net/home/hero-slider-3.webp",
+    tags: ['BEST SELLER', 'EMAUX']
+  },
+  {
+    id: 24,
+    name: "KIT NADO CONTRACORRIENTE A0509",
+    code: "AQ-PIL-NAD",
+    category: 'Piletas',
+    price: 1950.00,
+    img: "https://cesarweb.b-cdn.net/home/detalle_ingenieria.webp",
+    tags: ['ENTRENAMIENTO']
+  },
+  {
+    id: 25,
+    name: "BOMBA EMAUX SPH075 (3/4 HP)",
+    code: "AQ-PIL-SPH",
+    category: 'Piletas',
+    price: 320.00,
+    img: "https://cesarweb.b-cdn.net/home/equipo_trabajo.webp"
+  },
+  {
+    id: 26,
+    name: "KIT DE FILTRACIÓN A0154",
+    code: "AQ-PIL-FIL",
+    category: 'Piletas',
+    price: 450.00,
+    img: "https://cesarweb.b-cdn.net/home/matriz_frente.webp"
+  },
+  {
+    id: 27,
+    name: "BOMBA MONOFÁSICA A0165",
+    code: "AQ-PIL-A0165",
+    category: 'Piletas',
+    price: 280.00,
+    img: "https://cesarweb.b-cdn.net/home/showroom_interior.webp"
+  },
+  {
+    id: 28,
+    name: "FARO LED SUBACUÁTICO CP-100",
+    code: "AQ-PIL-LED",
+    category: 'Piletas',
+    price: 145.00,
+    img: "https://cesarweb.b-cdn.net/home/locales-lifestyle.webp",
+    tags: ['ILUMINACIÓN RGB']
+  },
+  // TUBERÍAS Y CONDUCCIÓN (PRODUCTOS Y SERVICIOS)
+  {
+    id: 29,
+    name: "TUBO RIV PVC SCH40 1-1/2\"",
+    code: "AQ-TUB-SCH40",
+    category: 'Tuberías',
+    price: 45.00,
+    img: "https://cesarweb.b-cdn.net/home/detalle_ingenieria.webp",
+    tags: ['ALTA PRESIÓN 330 PSI']
+  },
+  {
+    id: 30,
+    name: "TUBO RIV PRESIÓN E/C 90MM",
+    code: "AQ-TUB-PEAD",
+    category: 'Tuberías',
+    price: 85.00,
+    img: "https://cesarweb.b-cdn.net/home/equipo_trabajo.webp",
+    tags: ['PEAD (0.80 MPA)']
+  },
+  {
+    id: 31,
+    name: "VÁLVULA REGULADORA SENNINGER",
+    code: "AQ-TUB-SEN01",
+    category: 'Tuberías',
+    price: 120.00,
+    img: "https://cesarweb.b-cdn.net/home/matriz_frente.webp",
+    tags: ['RIEGO PROFESIONAL']
+  },
+  {
+    id: 32,
+    name: "CODO PEGABLE 63MM X 90°",
+    code: "AQ-TUB-COD63",
+    category: 'Tuberías',
+    price: 4.50,
+    img: "https://cesarweb.b-cdn.net/home/showroom_interior.webp",
+    tags: ['MARCA ERA/GOLD']
+  },
+  {
+    id: 33,
+    name: "CONTROLADOR HUNTER X-CORE",
+    code: "AQ-TUB-HUN",
+    category: 'Tuberías',
+    price: 350.00,
+    img: "https://cesarweb.b-cdn.net/home/locales-lifestyle.webp",
+    tags: ['AUTOMATIZACIÓN']
+  },
+  {
+    id: 34,
+    name: "TANQUE HIDRONEUMÁTICO",
+    code: "AQ-TUB-HIDRO",
+    category: 'Tuberías',
+    price: 890.00,
+    img: "https://cesarweb.b-cdn.net/home/hero-slider-3.webp",
+    tags: ['PRESIÓN CONSTANTE']
+  },
+  // AGUA POTABLE Y PURIFICACIÓN
+  {
+    id: 35,
+    name: "PURIFICADOR ÓSMOSIS INVERSA EVANS",
+    code: "AQ-AGU-RO",
+    category: 'Agua Potable',
+    price: 680.00,
+    promoPrice: 590.00,
+    img: "https://cesarweb.b-cdn.net/home/hero-slider-3.webp",
+    tags: ['PURIFICACIÓN 99%', 'CON BOMBA']
+  },
+  {
+    id: 36,
+    name: "SISTEMA DUAL ANTISARRO",
+    code: "AQ-AGU-DUAL",
+    category: 'Agua Potable',
+    price: 85.00,
+    img: "https://cesarweb.b-cdn.net/home/showroom_interior.webp",
+    tags: ['TINACOS/CISTERNAS']
+  },
+  {
+    id: 37,
+    name: "GENERADOR DE OZONO AQUATECH",
+    code: "AQ-AGU-OZO",
+    category: 'Agua Potable',
+    price: 320.00,
+    img: "https://cesarweb.b-cdn.net/home/detalle_ingenieria.webp",
+    tags: ['OXIDANTE POTENTE']
+  },
+  {
+    id: 38,
+    name: "LÁMPARA ULTRAVIOLETA (UV) EVANS",
+    code: "AQ-AGU-UV",
+    category: 'Agua Potable',
+    price: 245.00,
+    img: "https://cesarweb.b-cdn.net/home/equipo_trabajo.webp",
+    tags: ['DESINFECCIÓN ADN']
+  },
+  {
+    id: 39,
+    name: "FILTRO EVANS ZEOLITA 0948",
+    code: "AQ-AGU-ZEO",
+    category: 'Agua Potable',
+    price: 490.00,
+    img: "https://cesarweb.b-cdn.net/home/matriz_frente.webp",
+    tags: ['SEDIMENTOS']
+  },
+  {
+    id: 40,
+    name: "CARTUCHO PP SERIE PP-10",
+    code: "AQ-AGU-PP10",
+    category: 'Agua Potable',
+    price: 18.00,
+    img: "https://cesarweb.b-cdn.net/home/locales-lifestyle.webp",
+    tags: ['REPUESTO']
   }
 ];

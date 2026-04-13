@@ -538,12 +538,7 @@ export default function ProjectChatUnified({
                 input.click();
               }} 
             />
-            <AttachmentItem 
-              icon={<Mic size={24} />} 
-              label="Audio" 
-              color="#e77e3c" 
-              onClick={() => setShowMediaCapture('audio')} 
-            />
+
             <AttachmentItem 
               icon={<span style={{ fontSize: '1.5rem' }}>💰</span>} 
               label="Gastos" 
@@ -678,9 +673,12 @@ export default function ProjectChatUnified({
               >✕</button>
               <MediaCapture 
                 mode={showMediaCapture}
+                skipTranscription={true}
                 onCapture={(blob, type, transcription) => {
-                  console.log('Captured:', type, transcription);
-                  alert(`Capturado ${type}: ${transcription}`);
+                  const fileStr = type === 'audio' ? 'AUDIO' : 'VIDEO';
+                  const ext = type === 'audio' ? 'webm' : 'webm';
+                  const mediaFile = new File([blob], `capture_${Date.now()}.${ext}`, { type: blob.type });
+                  onSendMessage(transcription, fileStr, { file: mediaFile });
                   setShowMediaCapture(null);
                 }}
               />
@@ -847,7 +845,10 @@ export default function ProjectChatUnified({
               </div>
               
               <button 
-                onClick={submitExpenseForm}
+                onClick={(e) => {
+                  e.currentTarget.disabled = true;
+                  submitExpenseForm();
+                }}
                 disabled={!expenseForm.amount || !expenseForm.description}
                 style={{
                   background: expenseModal.isNote ? '#3b82f6' : '#10b981',

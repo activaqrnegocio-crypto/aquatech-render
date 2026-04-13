@@ -23,6 +23,9 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     return 'BITACORA'
   })
 
+  // Renamed label for UI consistency
+  const GALLERY_LABEL = 'Planos y Referencias'
+
   // Sync tab with URL
   const setActiveTabWithUrl = (tab: 'BITACORA' | 'GALLERY' | 'EXPENSES') => {
     setActiveTab(tab)
@@ -51,14 +54,10 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const [isEditingTeam, setIsEditingTeam] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<number[]>(project.team.map((t: any) => t.user.id))
   const [isSavingTeam, setIsSavingTeam] = useState(false)
-  // Combine direct gallery uploads and chat media into a unified gallery
-  const initialGallery = [
-    ...(project.gallery || []),
-    ...(project.chatMessages?.flatMap((m: any) => m.media || []).map((m: any) => ({
-      ...m,
-      isFromChat: true
-    })) || [])
-  ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+  // ONLY official project gallery uploads (no chat media mixed here anymore)
+  const initialGallery = (project.gallery || []).sort((a: any, b: any) => 
+    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+  )
 
   const [gallery, setGallery] = useState<any[]>(initialGallery)
   const [isUploading, setIsUploading] = useState(false)
@@ -1618,7 +1617,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         }}>
           {[
             { id: 'BITACORA', label: 'Chat', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>, activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.1)', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)' },
-            { id: 'GALLERY', label: 'Galería', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.1)', gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
+            { id: 'GALLERY', label: GALLERY_LABEL, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.1)', gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
             { id: 'EXPENSES', label: 'Finanzas', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>, activeColor: 'var(--success)', bgColor: 'rgba(34, 197, 94, 0.1)', gradient: 'linear-gradient(135deg, #10b981, #34d399)' }
           ].map(tab => (
             <button
@@ -1700,9 +1699,9 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
                   <h3 style={{ margin: 0, fontSize: '1.4rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '10px' }}>
                     <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                    Archivos del Proyecto
+                    {GALLERY_LABEL}
                   </h3>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Gestiona planos, fotos y documentos técnicos.</p>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Documentos maestros, planos y especificaciones técnicas oficiales.</p>
                 </div>
                 
                 <ProjectUploader 

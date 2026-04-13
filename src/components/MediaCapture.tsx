@@ -20,6 +20,7 @@ interface MediaCaptureProps {
   mode?: 'audio' | 'video'
   placeholder?: string
   transcriptionOnly?: boolean
+  skipTranscription?: boolean
 }
 
 export default function MediaCapture({ 
@@ -27,6 +28,7 @@ export default function MediaCapture({
   mode = 'audio', 
   placeholder = "Grabando...",
   transcriptionOnly = false,
+  skipTranscription = false,
   compact = false
 }: MediaCaptureProps & { compact?: boolean }) {
   const [isRecording, setIsRecording] = useState(false)
@@ -124,17 +126,22 @@ export default function MediaCapture({
         setPreviewUrl(URL.createObjectURL(videoBlob))
         setRecordedDuration(timer)
 
-        // For transcription: use audio-only blob if available, otherwise fall back to full blob
-        let transcriptionBlob: Blob
-        if (mode === 'video' && audioChunksRef.current.length > 0) {
-          const audioMime = audioRecorderRef.current?.mimeType || 'audio/webm'
-          transcriptionBlob = new Blob(audioChunksRef.current, { type: audioMime })
+        if (skipTranscription) {
+          // Immediately send to parent without transcribing
+          onCapture(videoBlob, mode, '')
         } else {
-          transcriptionBlob = videoBlob
-        }
+          // For transcription: use audio-only blob if available, otherwise fall back to full blob
+          let transcriptionBlob: Blob
+          if (mode === 'video' && audioChunksRef.current.length > 0) {
+            const audioMime = audioRecorderRef.current?.mimeType || 'audio/webm'
+            transcriptionBlob = new Blob(audioChunksRef.current, { type: audioMime })
+          } else {
+            transcriptionBlob = videoBlob
+          }
 
-        // Transcribe the AUDIO blob, but pass the VIDEO blob to onCapture for gallery
-        await handleTranscription(transcriptionBlob, videoBlob)
+          // Transcribe the AUDIO blob, but pass the VIDEO blob to onCapture for gallery
+          await handleTranscription(transcriptionBlob, videoBlob)
+        }
         
         // Clean up stream
         newStream.getTracks().forEach(track => track.stop())

@@ -45,7 +45,11 @@ export async function sendPushToUser(userId: number, payload: PushPayload) {
             endpoint: sub.endpoint,
             keys: { p256dh: sub.p256dh, auth: sub.auth }
           },
-          pushPayload
+          pushPayload,
+          {
+            TTL: 60,
+            urgency: 'high'
+          }
         ).catch(async (err: any) => {
           // If the endpoint expired (410 Gone or 404), delete the subscription
           if (err.statusCode === 410 || err.statusCode === 404) {

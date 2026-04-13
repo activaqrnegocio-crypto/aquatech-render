@@ -236,6 +236,20 @@ export default function ProjectExecutionClient({
     date: new Date().toISOString().split('T')[0]
   })
   const [isSavingExpense, setIsSavingExpense] = useState(false)
+  const [galleryFilter, setGalleryFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
+
+  const filteredGallery = useMemo(() => {
+    if (!project.gallery) return []
+    if (galleryFilter === 'ALL') return project.gallery
+    return project.gallery.filter((item: any) => {
+      const mime = (item.mimeType || '').toLowerCase()
+      if (galleryFilter === 'IMAGES') return mime.startsWith('image/')
+      if (galleryFilter === 'VIDEOS') return mime.startsWith('video/')
+      if (galleryFilter === 'AUDIOS') return mime.startsWith('audio/')
+      if (galleryFilter === 'DOCS') return !mime.startsWith('image/') && !mime.startsWith('video/') && !mime.startsWith('audio/')
+      return true
+    })
+  }, [project.gallery, galleryFilter])
 
   const handleDownload = async (url: string, filename: string) => {
     setHandleDownloadLoading(url)
@@ -666,6 +680,7 @@ export default function ProjectExecutionClient({
 
   const handleSendMessage = async (e: React.FormEvent, customMsg?: string, customPhase?: number, mediaFile?: File, extraData?: any, forcedType?: string) => {
     if (e) e.preventDefault()
+    if (loading) return // Guard against double execution
     const msgToSend = customMsg || message
     const phaseIdToSend = customPhase !== undefined ? customPhase : activePhase
     
@@ -1289,12 +1304,39 @@ export default function ProjectExecutionClient({
                       <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{project.gallery.length} Archivos</span>
                     </div>
                     
+                     <div style={{ paddingBottom: '15px', display: 'flex', gap: '8px', overflowX: 'auto' }} className="hide-scrollbar">
+                        {[
+                          { id: 'ALL', label: 'Todo' },
+                          { id: 'IMAGES', label: 'Fotos' },
+                          { id: 'VIDEOS', label: 'Videos' },
+                          { id: 'AUDIOS', label: 'Audio' },
+                          { id: 'DOCS', label: 'Docs' }
+                        ].map(f => (
+                          <button
+                            key={f.id}
+                            onClick={() => setGalleryFilter(f.id as any)}
+                            style={{ 
+                              padding: '4px 12px', 
+                              borderRadius: '20px', 
+                              border: 'none', 
+                              background: galleryFilter === f.id ? 'var(--primary)' : 'rgba(255,255,255,0.08)',
+                              color: 'white',
+                              fontSize: '0.75rem',
+                              cursor: 'pointer',
+                              whiteSpace: 'nowrap'
+                            }}
+                          >
+                            {f.label}
+                          </button>
+                        ))}
+                     </div>
+
                     <div style={{ 
                       display: 'grid', 
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', 
                       gap: '12px'
                     }}>
-                      {project.gallery.map((item: any) => (
+                      {filteredGallery.map((item: any) => (
                         <div 
                           key={item.id} 
                           className="group"
@@ -1316,21 +1358,22 @@ export default function ProjectExecutionClient({
                                 style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }} 
                                 className="group-hover:scale-110"
                               />
-                              {(item.filename.toLowerCase().includes('plano') || item.filename.toLowerCase().includes('diseño')) && (
-                                <div style={{ position: 'absolute', top: '8px', left: '8px', backgroundColor: 'var(--primary)', color: 'white', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', zIndex: 11 }}>
-                                  PLANO
-                                </div>
-                              )}
+                               <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(0,0,0,0.5)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem', color: 'white' }}>
+                                 {item.filename}
+                               </div>
+                            </div>
+                          ) : item.mimeType.startsWith('video/') ? (
+                            <div style={{ width: '100%', height: '100%', backgroundColor: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                               <svg width="32" height="32" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
                             </div>
                           ) : (
                             <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-deep)', padding: '10px', position: 'relative' }}>
-                              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" style={{ opacity: 0.7 }}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                              <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.filename}</span>
-                              {(item.filename.toLowerCase().includes('plano') || item.filename.toLowerCase().includes('diseño')) && (
-                                <div style={{ position: 'absolute', top: '8px', left: '8px', backgroundColor: 'var(--primary)', color: 'white', fontSize: '0.65rem', padding: '2px 6px', borderRadius: '4px', fontWeight: 'bold', textTransform: 'uppercase', boxShadow: '0 2px 4px rgba(0,0,0,0.2)', zIndex: 11 }}>
-                                  PLANO
-                                </div>
+                              {item.mimeType.startsWith('audio/') ? (
+                                <span style={{ fontSize: '2rem' }}>🎵</span>
+                              ) : (
+                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" style={{ opacity: 0.7 }}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                               )}
+                              <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.filename}</span>
                             </div>
                           )}
 
@@ -1343,49 +1386,20 @@ export default function ProjectExecutionClient({
                             flexDirection: 'column',
                             alignItems: 'center', 
                             justifyContent: 'center', 
-                            gap: '12px',
+                            gap: '8px',
                             opacity: 0,
+                            padding: '10px',
                             transition: 'opacity 0.2s',
                             zIndex: 10
                           }} className="group-hover:opacity-100">
-                            <button 
+                             <button 
                               onClick={() => setSelectedPreviewImage(item)}
-                              style={{ 
-                                padding: '8px 16px', 
-                                backgroundColor: 'var(--primary)', 
-                                color: 'white', 
-                                borderRadius: '20px', 
-                                fontSize: '0.75rem', 
-                                fontWeight: 'bold',
-                                border: 'none',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px'
-                              }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                              Visualizar
-                            </button>
+                              style={{ width: '100%', padding: '6px', backgroundColor: 'var(--primary)', color: 'white', borderRadius: '8px', fontSize: '0.7rem', border: 'none', cursor: 'pointer' }}
+                            > Ver </button>
                             <button 
                               onClick={() => handleDownload(item.url, item.filename)}
-                              style={{ 
-                                padding: '8px 16px', 
-                                backgroundColor: 'white', 
-                                color: 'var(--primary)', 
-                                borderRadius: '20px', 
-                                fontSize: '0.75rem', 
-                                fontWeight: 'bold',
-                                border: 'none',
-                                cursor: 'pointer',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '6px'
-                              }}
-                            >
-                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                              Descargar
-                            </button>
+                              style={{ width: '100%', padding: '6px', backgroundColor: 'white', color: 'black', borderRadius: '8px', fontSize: '0.7rem', border: 'none', cursor: 'pointer' }}
+                            > Bajar </button>
                           </div>
                         </div>
                       ))}
@@ -1664,8 +1678,8 @@ export default function ProjectExecutionClient({
 
                   if (type === 'EXPENSE_LOG') {
                      handleSendMessage(null as any, content, activePhase || undefined, extraData?.file, extraData, 'EXPENSE_LOG');
-                  } else if (type === 'FILE' || type === 'IMAGE') {
-                     handleSendMessage(null as any, '', activePhase || undefined, extraData.file, null, type === 'FILE' ? undefined : type);
+                  } else if (type === 'FILE' || type === 'IMAGE' || type === 'VIDEO' || type === 'AUDIO') {
+                     handleSendMessage(null as any, content || '', activePhase || undefined, extraData?.file, null, type);
                   } else {
                      handleSendMessage(null as any, content, activePhase || undefined, undefined, undefined, type);
                   }
