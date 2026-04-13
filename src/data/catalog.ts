@@ -422,5 +422,189 @@ export const catalogData: Product[] = [
     price: 155.00,
     img: "https://cesarweb.b-cdn.net/home/locales-lifestyle.webp",
     tags: ['ZONA RURAL (BAT)']
+  },
+  // ACCESORIOS GENERALES
+  {
+    id: 47,
+    name: "VÁLVULA REDUCTORA PRESIÓN 3/4\"",
+    code: "AQ-ACC-VAL",
+    category: 'Accesorios',
+    price: 45.00,
+    img: "https://cesarweb.b-cdn.net/home/hero-slider-3.webp",
+    tags: ['GENERAL', 'GENEBRE']
+  },
+  {
+    id: 48,
+    name: "MANÓMETRO GLICERINA D63",
+    code: "AQ-ACC-MAN",
+    category: 'Accesorios',
+    price: 35.00,
+    img: "https://cesarweb.b-cdn.net/home/showroom_interior.webp",
+    tags: ['GENERAL', 'GENEBRE']
+  },
+  {
+    id: 49,
+    name: "UNIÓN COMPRESIÓN 32MM",
+    code: "AQ-ACC-UNI",
+    category: 'Accesorios',
+    price: 12.00,
+    img: "https://cesarweb.b-cdn.net/home/detalle_ingenieria.webp",
+    tags: ['GENERAL', 'ERA']
+  },
+  {
+    id: 50,
+    name: "TANQUE BOTELLA 600 LTS",
+    code: "AQ-ACC-TAN",
+    category: 'Accesorios',
+    price: 180.00,
+    img: "https://cesarweb.b-cdn.net/home/equipo_trabajo.webp",
+    tags: ['GENERAL', 'ROTOPLAS']
+  },
+  {
+    id: 51,
+    name: "CINTA TEFLÓN AZUL 50M",
+    code: "AQ-ACC-TEF",
+    category: 'Accesorios',
+    price: 5.50,
+    img: "https://cesarweb.b-cdn.net/home/matriz_frente.webp",
+    tags: ['GENERAL', 'GENEBRE']
+  },
+  // ACCESORIOS PISCINAS
+  {
+    id: 52,
+    name: "SKIMMER MEDIANO HAYWARD",
+    code: "AQ-ACC-SKI",
+    category: 'Accesorios',
+    price: 125.00,
+    img: "https://cesarweb.b-cdn.net/home/locales-lifestyle.webp",
+    tags: ['PISCINA', 'HAYWARD']
+  },
+  {
+    id: 53,
+    name: "ESCALERA 3 PELDAÑOS NSL315-S",
+    code: "AQ-ACC-ESC",
+    category: 'Accesorios',
+    price: 340.00,
+    img: "https://cesarweb.b-cdn.net/home/hero-slider-3.webp",
+    tags: ['PISCINA', 'EMAUX']
+  },
+  {
+    id: 54,
+    name: "CLORINADOR LINEAL 2KG",
+    code: "AQ-ACC-CLO",
+    category: 'Accesorios',
+    price: 95.00,
+    img: "https://cesarweb.b-cdn.net/home/showroom_interior.webp",
+    tags: ['PISCINA', 'EMAUX']
+  },
+  {
+    id: 55,
+    name: "ASPIRADORA FONDO 12 RUEDAS",
+    code: "AQ-ACC-ASP",
+    category: 'Accesorios',
+    price: 85.00,
+    img: "https://cesarweb.b-cdn.net/home/detalle_ingenieria.webp",
+    tags: ['PISCINA', 'EMAUX']
+  },
+  {
+    id: 56,
+    name: "CERNIDERA HOJAS ALUMINIO",
+    code: "AQ-ACC-CER",
+    category: 'Accesorios',
+    price: 25.00,
+    img: "https://cesarweb.b-cdn.net/home/equipo_trabajo.webp",
+    tags: ['PISCINA', 'ACUACORAL']
+  },
+  // ACCESORIOS TURCOS
+  {
+    id: 57,
+    name: "KIT SAUNA 9KW EMAUX + CNTRL",
+    code: "AQ-ACC-KST",
+    category: 'Accesorios',
+    price: 1150.00,
+    img: "https://cesarweb.b-cdn.net/home/matriz_frente.webp",
+    tags: ['TURCO', 'EMAUX']
+  },
+  {
+    id: 58,
+    name: "TERMOSTATO PTC PERILLA",
+    code: "AQ-ACC-TER",
+    category: 'Accesorios',
+    price: 65.00,
+    img: "https://cesarweb.b-cdn.net/home/locales-lifestyle.webp",
+    tags: ['TURCO']
+  },
+  {
+    id: 59,
+    name: "FARO LED ANILLO 12W RGB",
+    code: "AQ-ACC-FAR",
+    category: 'Accesorios',
+    price: 110.00,
+    img: "https://cesarweb.b-cdn.net/home/hero-slider-3.webp",
+    tags: ['TURCO']
+  },
+  {
+    id: 60,
+    name: "CAJA CONEXIÓN HIDROTERMAL",
+    code: "AQ-ACC-CAJ",
+    category: 'Accesorios',
+    price: 45.00,
+    img: "https://cesarweb.b-cdn.net/home/showroom_interior.webp",
+    tags: ['TURCO']
+  },
+  {
+    id: 61,
+    name: "GENERADOR GAS 20M3 PRO",
+    code: "AQ-ACC-GEN",
+    category: 'Accesorios',
+    price: 1850.00,
+    img: "https://cesarweb.b-cdn.net/home/detalle_ingenieria.webp",
+    tags: ['TURCO']
+  },
+  // ACCESORIOS HIDROMASAJES
+  {
+    id: 62,
+    name: "BOTÓN PULSADOR BALBOA #4",
+    code: "AQ-ACC-BOT",
+    category: 'Accesorios',
+    price: 48.00,
+    img: "https://cesarweb.b-cdn.net/home/equipo_trabajo.webp",
+    tags: ['HIDROMASAJE', 'BALBOA']
+  },
+  {
+    id: 63,
+    name: "SWITCH AS1 3 POSICIONES",
+    code: "AQ-ACC-SWI",
+    category: 'Accesorios',
+    price: 22.00,
+    img: "https://cesarweb.b-cdn.net/home/matriz_frente.webp",
+    tags: ['HIDROMASAJE']
+  },
+  {
+    id: 64,
+    name: "HIDROJET 1-1/2\" COMPLETO",
+    code: "AQ-ACC-JET",
+    category: 'Accesorios',
+    price: 35.00,
+    img: "https://cesarweb.b-cdn.net/home/locales-lifestyle.webp",
+    tags: ['HIDROMASAJE', 'HAYWARD']
+  },
+  {
+    id: 65,
+    name: "BOQUILLA PISO BLOWER 1-1/2\"",
+    code: "AQ-ACC-BLO",
+    category: 'Accesorios',
+    price: 28.00,
+    img: "https://cesarweb.b-cdn.net/home/hero-slider-3.webp",
+    tags: ['HIDROMASAJE', 'PENTAIR']
+  },
+  {
+    id: 66,
+    name: "ABSORBENTE AIRE 1/2\"",
+    code: "AQ-ACC-ABS",
+    category: 'Accesorios',
+    price: 15.00,
+    img: "https://cesarweb.b-cdn.net/home/showroom_interior.webp",
+    tags: ['HIDROMASAJE']
   }
 ];

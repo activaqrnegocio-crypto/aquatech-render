@@ -12,9 +12,17 @@ const categories = [
   'Tuberías', 'Agua Potable', 'Riego', 'Accesorios'
 ]
 
+const accessoriesSubFilters = [
+  { label: 'TODOS', tag: null },
+  { label: 'ACCESORIOS DE PISCINAS', tag: 'PISCINA' },
+  { label: 'ACCESORIOS DE TURCOS', tag: 'TURCO' },
+  { label: 'ACCESORIOS DE HIDROMASAJES', tag: 'HIDROMASAJE' },
+]
+
 export default function UniversalCatalog({ defaultCategory = 'Hidromasajes' }: { defaultCategory?: string }) {
   const router = useRouter()
   const [activeCategory, setActiveCategory] = useState(defaultCategory)
+  const [activeSubTag, setActiveSubTag] = useState<string | null>(null)
   const [searchQuery, setSearchQuery] = useState('')
   const [maxPrice, setMaxPrice] = useState(15000)
   const [selectedImg, setSelectedImg] = useState<string | null>(null)
@@ -28,11 +36,12 @@ export default function UniversalCatalog({ defaultCategory = 'Hidromasajes' }: {
   const filteredProducts = useMemo(() => {
     return catalogData.filter(prod => 
       prod.category === activeCategory &&
+      (!activeSubTag || prod.tags?.includes(activeSubTag)) &&
       prod.price <= maxPrice &&
       (prod.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
        prod.code.toLowerCase().includes(searchQuery.toLowerCase()))
     )
-  }, [activeCategory, searchQuery, maxPrice])
+  }, [activeCategory, activeSubTag, searchQuery, maxPrice])
 
   return (
     <div className="w-full bg-white section-gap pb-32">
@@ -111,34 +120,63 @@ export default function UniversalCatalog({ defaultCategory = 'Hidromasajes' }: {
               <h3 className="text-[11px] font-black uppercase tracking-[0.3em] text-black border-l-4 border-aquatech-blue pl-4">Categorías</h3>
               <div className="flex flex-col border border-gray-100">
                 {categories.map((cat) => (
-                  <button
-                    key={cat}
-                    onClick={() => {
-                      setActiveCategory(cat as any)
-                      const routeMap: Record<string, string> = {
-                        'Hidromasajes': 'hidromasajes',
-                        'Turcos': 'turcos',
-                        'Saunas': 'saunas',
-                        'Piletas': 'piletas',
-                        'Tuberías': 'tuberias',
-                        'Agua Potable': 'agua-potable',
-                        'Riego': 'riego',
-                        'Accesorios': 'accesorios'
-                      }
-                      const route = routeMap[cat]
-                      if (route) {
-                        router.push(`/${route}#catalogo`, { scroll: false })
-                      }
-                    }}
-                    className={`text-left px-5 py-4 text-[11px] font-bold uppercase tracking-widest transition-all border-b border-gray-100 flex justify-between items-center ${
-                      activeCategory === cat 
-                      ? 'text-white bg-[#004A87]' 
-                      : 'text-gray-700 hover:text-black hover:bg-gray-50'
-                    }`}
-                  >
-                    {cat}
-                    {activeCategory === cat ? <X size={14} /> : <ChevronRight size={14} className="opacity-30" />}
-                  </button>
+                  <div key={cat} className="flex flex-col">
+                    <button
+                      onClick={() => {
+                        setActiveCategory(cat as any)
+                        setActiveSubTag(null) // Reset sub-filter when changing main category
+                        const routeMap: Record<string, string> = {
+                          'Hidromasajes': 'hidromasajes',
+                          'Turcos': 'turcos',
+                          'Saunas': 'saunas',
+                          'Piletas': 'piletas',
+                          'Tuberías': 'tuberias',
+                          'Agua Potable': 'agua-potable',
+                          'Riego': 'riego',
+                          'Accesorios': 'accesorios'
+                        }
+                        const route = routeMap[cat]
+                        if (route) {
+                          router.push(`/${route}#catalogo`, { scroll: false })
+                        }
+                      }}
+                      className={`text-left px-5 py-4 text-[11px] font-bold uppercase tracking-widest transition-all border-b border-gray-100 flex justify-between items-center ${
+                        activeCategory === cat 
+                        ? 'text-white bg-[#004A87]' 
+                        : 'text-gray-700 hover:text-black hover:bg-gray-50'
+                      }`}
+                    >
+                      {cat}
+                      {activeCategory === cat ? <X size={14} /> : <ChevronRight size={14} className="opacity-30" />}
+                    </button>
+
+                    {/* Sub-Categorías para Accesorios */}
+                    <AnimatePresence>
+                      {cat === 'Accesorios' && activeCategory === 'Accesorios' && (
+                        <motion.div
+                          initial={{ height: 0, opacity: 0 }}
+                          animate={{ height: 'auto', opacity: 1 }}
+                          exit={{ height: 0, opacity: 0 }}
+                          className="overflow-hidden bg-gray-50 border-b border-gray-100"
+                        >
+                          {accessoriesSubFilters.map((sub) => (
+                            <button
+                              key={sub.label}
+                              onClick={() => setActiveSubTag(sub.tag)}
+                              className={`w-full text-left px-8 py-3 text-[9px] font-black uppercase tracking-widest transition-all flex items-center gap-3 ${
+                                activeSubTag === sub.tag 
+                                ? 'text-[#004A87]' 
+                                : 'text-gray-400 hover:text-black'
+                              }`}
+                            >
+                              <div className={`w-1.5 h-1.5 rounded-full ${activeSubTag === sub.tag ? 'bg-[#004A87]' : 'bg-gray-200'}`} />
+                              {sub.label}
+                            </button>
+                          ))}
+                        </motion.div>
+                      )}
+                    </AnimatePresence>
+                  </div>
                 ))}
               </div>
             </div>

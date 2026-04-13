@@ -218,6 +218,7 @@ export default function ProjectChatUnified({
       return;
     }
     setExpenseModal({ isOpen: false, isNote: false });
+
     handleSendWithPhase(expenseForm.description, 'EXPENSE_LOG', { 
       amount: Number(expenseForm.amount), 
       isNote: expenseModal.isNote,
@@ -374,7 +375,17 @@ export default function ProjectChatUnified({
 
           return (
             <div key={msg.id || idx} className={`message-row ${isMe ? 'me' : 'them'}`}>
-               {!isMe && showPointer && <div className="user-name" style={{ color: getSenderColor(msg.userName) }}>{msg.userName}</div>}
+               {!isMe && showPointer && (
+                 <div className="user-name" style={{ 
+                   color: getSenderColor(msg.userName || 'Usuario'),
+                   fontWeight: '700',
+                   fontSize: '0.75rem',
+                   marginBottom: '2px',
+                   paddingLeft: '2px'
+                 }}>
+                   {msg.userName || 'Usuario'}
+                 </div>
+               )}
                <div className={`message-bubble ${showPointer ? 'has-pointer' : ''}`}>
                  {msg.phaseId && selectedPhaseId === null && (
                    <div style={{ fontSize: '0.6rem', color: 'var(--primary)', marginBottom: '4px', fontWeight: 'bold' }}>

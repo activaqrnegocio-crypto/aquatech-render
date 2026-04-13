@@ -240,8 +240,12 @@ export default function ProjectExecutionClient({
 
   const filteredGallery = useMemo(() => {
     if (!project.gallery) return []
-    if (galleryFilter === 'ALL') return project.gallery
-    return project.gallery.filter((item: any) => {
+    // 1. First only official files (Master Plans) go here
+    const officialOnly = project.gallery.filter((item: any) => item.isOfficial === true)
+    
+    // 2. Then apply the mime filter
+    if (galleryFilter === 'ALL') return officialOnly
+    return officialOnly.filter((item: any) => {
       const mime = (item.mimeType || '').toLowerCase()
       if (galleryFilter === 'IMAGES') return mime.startsWith('image/')
       if (galleryFilter === 'VIDEOS') return mime.startsWith('video/')
@@ -1293,15 +1297,15 @@ export default function ProjectExecutionClient({
                 )}
               </div>
 
-               {/* Galería Principal (Planos/Fotos Admin) */}
-               {project.gallery && project.gallery.length > 0 && (
-                 <div className="card" style={{ minWidth: 0, marginBottom: '20px' }}>
+                {/* Galería Principal (Planos/Fotos Admin) */}
+                {project.gallery && project.gallery.length > 0 && (
+                  <div className="card" style={{ minWidth: 0, marginBottom: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                       <h3 style={{ fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                         Planos y Referencias
                       </h3>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{project.gallery.length} Archivos</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{filteredGallery.length} Archivos Oficiales</span>
                     </div>
                     
                      <div style={{ paddingBottom: '15px', display: 'flex', gap: '8px', overflowX: 'auto' }} className="hide-scrollbar">
@@ -1618,13 +1622,15 @@ export default function ProjectExecutionClient({
             {/* Legacy Phase Advances Removed - Now handled in Chat */}
 
 
-            <div className="card" style={{ minWidth: 0 }}>
-              <ProjectUploader 
-                files={projectMediaFiles}
-                onAddFile={handleUploadMedia}
-                title="Registros Multimedia"
-              />
-            </div>
+            {!isFieldStaff && (
+              <div className="card" style={{ minWidth: 0 }}>
+                <ProjectUploader 
+                  files={projectMediaFiles}
+                  onAddFile={handleUploadMedia}
+                  title="Registros Multimedia"
+                />
+              </div>
+            )}
           </div>
         {/* End of REGISTROS */}
         {/* 2. BITÁCORA / CHAT UNIFICADO - MODAL APPROACH */}

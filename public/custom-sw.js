@@ -522,8 +522,9 @@ self.addEventListener('push', (event) => {
     vibrate: [200, 100, 200, 100, 200],
     tag: data.tag || 'general',
     renotify: true,
-    requireInteraction: false,
-    silent: false, // Ensure sound is not suppressed
+    requireInteraction: true, // Persist until user clicks or dismisses
+    silent: false,           // Ensure sound is not suppressed
+    priority: 'high',        // Signal high priority to OS
     data: {
       url: data.url || '/admin/operador',
       timestamp: Date.now()
