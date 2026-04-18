@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { getLocalNow, formatForDateTimeInput, forceEcuadorTZ } from '@/lib/date-utils'
 
@@ -128,6 +128,22 @@ export default function AppointmentModal({
   }, [selectedOperatorIds, isAdminView, isOpen])
 
   const [isRecording, setIsRecording] = useState(false)
+  const recognitionRef = useRef<any>(null)
+
+  // Cleanup recognition on unmount or modal close
+  useEffect(() => {
+    if (!isOpen && recognitionRef.current) {
+      recognitionRef.current.abort()
+      recognitionRef.current = null
+      setIsRecording(false)
+    }
+    return () => {
+      if (recognitionRef.current) {
+        recognitionRef.current.abort()
+        recognitionRef.current = null
+      }
+    }
+  }, [isOpen])
 
   if (!isOpen || !mounted) return null
 
@@ -145,7 +161,15 @@ export default function AppointmentModal({
     }
   }
 
-  const startSpeechToText = () => {
+  const toggleSpeechToText = () => {
+    // If already recording, stop
+    if (isRecording && recognitionRef.current) {
+      recognitionRef.current.stop()
+      recognitionRef.current = null
+      setIsRecording(false)
+      return
+    }
+
     const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     if (!SpeechRecognition) {
       alert('Tu navegador no soporta transcripción de voz.')
@@ -154,21 +178,41 @@ export default function AppointmentModal({
 
     const recognition = new SpeechRecognition()
     recognition.lang = 'es-ES'
-    recognition.continuous = false
-    recognition.interimResults = false
+    recognition.continuous = true
+    recognition.interimResults = true
 
     recognition.onstart = () => setIsRecording(true)
-    recognition.onend = () => setIsRecording(false)
-    recognition.onerror = () => setIsRecording(false)
-
-    recognition.onresult = (event: any) => {
-      const transcript = event.results[0][0].transcript
-      setFormData(prev => ({
-        ...prev,
-        description: prev.description ? `${prev.description} ${transcript}` : transcript
-      }))
+    
+    recognition.onend = () => {
+      setIsRecording(false)
+      recognitionRef.current = null
+    }
+    
+    recognition.onerror = (event: any) => {
+      console.warn('Speech recognition error:', event.error)
+      // 'no-speech' is common - just let it restart or stop gracefully
+      if (event.error !== 'no-speech') {
+        setIsRecording(false)
+        recognitionRef.current = null
+      }
     }
 
+    recognition.onresult = (event: any) => {
+      let finalTranscript = ''
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        if (event.results[i].isFinal) {
+          finalTranscript += event.results[i][0].transcript
+        }
+      }
+      if (finalTranscript) {
+        setFormData(prev => ({
+          ...prev,
+          description: prev.description ? `${prev.description} ${finalTranscript}` : finalTranscript
+        }))
+      }
+    }
+
+    recognitionRef.current = recognition
     recognition.start()
   }
 
@@ -419,52 +463,73 @@ export default function AppointmentModal({
 
                 <div className="form-group-compact">
                   <label className="form-label-aquatech">📸 Adjuntos (Max 5MB)</label>
-                  <div 
-                    className="upload-zone-aquatech" 
-                    onClick={(e) => {
-                      if ((e.target as HTMLElement).closest('.preview-item-aquatech')) return;
-                      document.getElementById('file-input-mobile')?.click();
-                    }}
-                  >
+                  <div className="attachment-actions-row">
+                    <button 
+                      type="button" 
+                      className="btn-attach-aquatech"
+                      onClick={() => {
+                        const input = document.createElement('input')
+                        input.type = 'file'
+                        input.accept = 'image/*,video/*'
+                        input.capture = 'environment' as any
+                        input.onchange = (e: any) => {
+                          const files = e.target.files ? Array.from(e.target.files) as File[] : []
+                          const newPreviews = files.map((file: File) => ({
+                            url: URL.createObjectURL(file),
+                            type: file.type,
+                            name: file.name
+                          }))
+                          setFormData(prev => ({
+                            ...prev,
+                            mediaFiles: [...prev.mediaFiles, ...files],
+                            previews: [...prev.previews, ...newPreviews]
+                          }))
+                        }
+                        input.click()
+                      }}
+                    >
+                      📷 Cámara
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn-attach-aquatech"
+                      onClick={() => document.getElementById('file-input-gallery')?.click()}
+                    >
+                      📁 Archivos
+                    </button>
                     <input
-                      id="file-input-mobile"
+                      id="file-input-gallery"
                       type="file"
                       accept="image/*,video/*,audio/*,application/pdf"
                       multiple
                       style={{ display: 'none' }}
                       onChange={handleFileChange}
                     />
-                    {formData.previews.length === 0 ? (
-                      <div className="upload-info-compact">
-                        <span>🖼️ 🎬 🎙️</span>
-                        <span>Seleccionar archivos</span>
-                      </div>
-                    ) : (
-                      <div className="preview-gallery-aquatech">
-                        {formData.previews.map((file, idx) => (
-                          <div key={idx} className="preview-item-aquatech">
-                            {file.type.startsWith('image/') ? (
-                              <img src={file.url} alt="preview" />
-                            ) : (
-                              <div className="preview-icon-aquatech">
-                                {file.type.startsWith('video/') ? '🎬' : 
-                                 file.type.startsWith('audio/') ? '🎙️' : '📄'}
-                              </div>
-                            )}
-                            <button 
-                              type="button"
-                              className="remove-preview-btn"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                removeFile(idx);
-                              }}
-                            >✕</button>
-                          </div>
-                        ))}
-                        <div className="add-more-preview">+</div>
-                      </div>
-                    )}
                   </div>
+                  {formData.previews.length > 0 && (
+                    <div className="preview-gallery-aquatech" style={{ marginTop: '10px' }}>
+                      {formData.previews.map((file, idx) => (
+                        <div key={idx} className="preview-item-aquatech">
+                          {file.type.startsWith('image/') ? (
+                            <img src={file.url} alt="preview" />
+                          ) : (
+                            <div className="preview-icon-aquatech">
+                              {file.type.startsWith('video/') ? '🎬' : 
+                               file.type.startsWith('audio/') ? '🎙️' : '📄'}
+                            </div>
+                          )}
+                          <button 
+                            type="button"
+                            className="remove-preview-btn"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              removeFile(idx);
+                            }}
+                          >✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
                 </div>
 
                 <div className="form-group-compact">
@@ -473,10 +538,10 @@ export default function AppointmentModal({
                     <button 
                       type="button" 
                       className={`btn-voice-aquatech ${isRecording ? 'recording' : ''}`}
-                      onClick={startSpeechToText}
-                      title="Dictar notas"
+                      onClick={toggleSpeechToText}
+                      title={isRecording ? 'Detener dictado' : 'Dictar notas'}
                     >
-                      {isRecording ? '🔴 Grabando...' : '🎤 Dictar'}
+                      {isRecording ? '🔴 Detener' : '🎤 Dictar'}
                     </button>
                   </div>
                   <textarea 
@@ -715,6 +780,33 @@ export default function AppointmentModal({
           transition: all 0.2s;
         }
         .upload-zone-aquatech:hover { background: rgba(255,255,255,0.02); border-color: #58c7ff; }
+
+        .attachment-actions-row {
+          display: flex;
+          gap: 10px;
+        }
+
+        .btn-attach-aquatech {
+          flex: 1;
+          background: rgba(88, 199, 255, 0.08);
+          border: 1px solid rgba(88, 199, 255, 0.25);
+          color: #58c7ff;
+          padding: 12px 10px;
+          border-radius: 10px;
+          font-size: 0.85rem;
+          font-weight: 700;
+          cursor: pointer;
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+        }
+
+        .btn-attach-aquatech:hover {
+          background: rgba(88, 199, 255, 0.15);
+          border-color: #58c7ff;
+        }
 
         .preview-gallery-aquatech {
           display: flex;
