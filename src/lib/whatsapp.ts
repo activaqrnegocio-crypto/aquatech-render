@@ -83,7 +83,8 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
               number: cleanPhone,
               mediatype: finalMediaType,
               media: att.data, 
-              fileName: sanitizedName,
+              // Para PTT (notas de voz), mejor no enviar fileName o falla en algunas versiones
+              ...(isAudio && isNativeAudio ? {} : { fileName: sanitizedName }),
               ptt: isAudio && isNativeAudio 
             }),
           }
