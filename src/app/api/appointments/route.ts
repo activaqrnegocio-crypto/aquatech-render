@@ -142,6 +142,12 @@ export async function POST(request: Request) {
             const locClientText = clientLocation ? `\n📍 *Ubicación Cliente:*\n${clientLocation}` : '';
             const locOpText = operatorLocation ? `\n📡 *Ubicación Operario (GPS):*\n${operatorLocation}` : '';
             
+            // Listado de archivos para diagnóstico
+            const allAttachments = [...(attachments || []), ...(attachmentLinks || [])];
+            const fileManifest = allAttachments.length > 0 
+              ? `\n📦 *Archivos adjuntos:* ${allAttachments.map(a => a.name).join(', ')}` 
+              : '';
+
             // Los links de respaldo para Videos y Audios
             const videoLinks = attachmentLinks?.filter((a: any) => a.type === 'video') || [];
             const audioLinks = attachmentLinks?.filter((a: any) => a.type === 'audio') || [];
@@ -154,7 +160,7 @@ export async function POST(request: Request) {
               linksText += `\n\n🔊 *Audios (Respaldo):*\n${audioLinks.map((a: any) => `• [Escuchar Audio](${a.url})`).join('\n')}`;
             }
 
-            const message = `*Notificación Aquatech*\n\nHola ${appointment.user.name}, tienes una *nueva tarea* asignada:\n📌 *${title}*\n📅 Fecha: ${startDateLocale}\n⏰ Hora: ${startTimeLocale}${descrText}${locClientText}${locOpText}${linksText}\n\nConsulta más detalles en tu perfil.`;
+            const message = `*Notificación Aquatech*\n\nHola ${appointment.user.name}, tienes una *nueva tarea* asignada:\n📌 *${title}*\n📅 Fecha: ${startDateLocale}\n⏰ Hora: ${startTimeLocale}${descrText}${locClientText}${locOpText}${fileManifest}${linksText}\n\nConsulta más detalles en tu perfil.`;
 
             // Enviar mensaje de texto + adjuntos reales (imgs, audios, docs)
             await sendWhatsAppMessage(appointment.user.phone, message, attachments);

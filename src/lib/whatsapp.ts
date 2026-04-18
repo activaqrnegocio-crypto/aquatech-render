@@ -63,6 +63,7 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
         const isNativeAudio = att.name.toLowerCase().endsWith('.ogg') || att.name.toLowerCase().endsWith('.opus');
         const isAudio = mediaType === 'audio';
         
+        console.log(`[WA] Intentando enviar ${att.name} como ${mediaType} (PTT: ${isAudio && isNativeAudio})`);
         const fileResp = await fetch(
           `${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`,
           {
@@ -76,13 +77,23 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
               mediatype: mediaType,
               media: att.data, 
               fileName: att.name,
-              ptt: isAudio && isNativeAudio // Solo PTT si es formato nativo
+              ptt: isAudio && isNativeAudio 
             }),
           }
         );
+
         if (!fileResp.ok) {
           const err = await fileResp.text();
-          console.error('Evolution API Media Error:', err);
+          console.error(`[WA-ERROR] Error enviando ${att.name}:`, err);
+          if (mediaType === 'audio') {
+            await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
+              body: JSON.stringify({ number: cleanPhone, mediatype: 'document', media: att.data, fileName: att.name, ptt: false }),
+            }).catch(e => console.error('[WA-RETRY-ERROR]', e));
+          }
+        } else {
+          console.log(`[WA-SUCCESS] ${att.name} enviado correctamente.`);
         }
       } catch (e: any) {
         console.error('WhatsApp Service Media Exception:', e.message);
