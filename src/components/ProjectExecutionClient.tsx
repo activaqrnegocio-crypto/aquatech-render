@@ -838,7 +838,7 @@ export default function ProjectExecutionClient({
         }
         if (!customMsg) removeMessageDraft()
         else removeNoteDraft()
-        router.refresh()
+
       } catch (e) {
          await db.outbox.add({
             type: 'MESSAGE',
