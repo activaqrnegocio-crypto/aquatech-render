@@ -59,11 +59,18 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
           }
         }
 
+        // Sanitizar nombre de archivo (quitar caracteres que WhatsApp rechaza)
+        const sanitizedName = att.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
+
         // WhatsApp solo acepta PTT para formatos nativos (ogg/opus)
         const isNativeAudio = att.name.toLowerCase().endsWith('.ogg') || att.name.toLowerCase().endsWith('.opus');
         const isAudio = mediaType === 'audio';
         
-        console.log(`[WA] Intentando enviar ${att.name} como ${mediaType} (PTT: ${isAudio && isNativeAudio})`);
+        // Si no es nativo, mejor enviar como documento para asegurar entrega
+        const finalMediaType = (isAudio && !isNativeAudio) ? 'document' : mediaType;
+
+        console.log(`[WA] Enviando ${sanitizedName} como ${finalMediaType} (PTT: ${isAudio && isNativeAudio})`);
+
         const fileResp = await fetch(
           `${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`,
           {
@@ -74,9 +81,9 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
             },
             body: JSON.stringify({
               number: cleanPhone,
-              mediatype: mediaType,
+              mediatype: finalMediaType,
               media: att.data, 
-              fileName: att.name,
+              fileName: sanitizedName,
               ptt: isAudio && isNativeAudio 
             }),
           }
@@ -84,16 +91,16 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
 
         if (!fileResp.ok) {
           const err = await fileResp.text();
-          console.error(`[WA-ERROR] Error enviando ${att.name}:`, err);
-          if (mediaType === 'audio') {
+          console.error(`[WA-ERROR] Falló ${sanitizedName}:`, err);
+          
+          // Último recurso: Documento genérico
+          if (finalMediaType !== 'document') {
             await fetch(`${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json', apikey: EVOLUTION_API_KEY },
-              body: JSON.stringify({ number: cleanPhone, mediatype: 'document', media: att.data, fileName: att.name, ptt: false }),
-            }).catch(e => console.error('[WA-RETRY-ERROR]', e));
+              body: JSON.stringify({ number: cleanPhone, mediatype: 'document', media: att.data, fileName: sanitizedName, ptt: false }),
+            }).catch(() => {});
           }
-        } else {
-          console.log(`[WA-SUCCESS] ${att.name} enviado correctamente.`);
         }
       } catch (e: any) {
         console.error('WhatsApp Service Media Exception:', e.message);
