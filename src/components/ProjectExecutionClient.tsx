@@ -715,40 +715,73 @@ export default function ProjectExecutionClient({
     const phaseIdToSend = customPhase !== undefined ? customPhase : activePhase
     
     if (!msgToSend.trim() && !mediaFile && !customMsg) return
-    setLoading(true)
-    try {
-      let location: any = null
-      if ('geolocation' in navigator) {
-        location = await new Promise((resolve) => {
-          navigator.geolocation.getCurrentPosition(
-            pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-            () => resolve(null),
-            { enableHighAccuracy: true, timeout: 25000 }
-          )
-        })
-      }
+    
+    // Determine type
+    const determinedType = forcedType || (extraData?.amount ? 'EXPENSE_LOG' : (
+      mediaFile ? (
+        mediaFile.type.startsWith('image/') ? 'IMAGE' : 
+        mediaFile.type.startsWith('audio/') ? 'AUDIO' : 
+        mediaFile.type.startsWith('video/') ? 'VIDEO' : 'DOCUMENT'
+      ) : 'TEXT'
+    ))
 
-      if (customMsg === undefined && !activeRecord) {
-        // Only require jornada for technical advances or specific actions, not general text/replies
-        // Allow text messages without jornada if it's just a note or general chat
-      }
+    const isTechnicalAction = mediaFile || customPhase !== undefined
+    if (isTechnicalAction && !activeRecord) {
+      alert("⚠️ JORNADA NO INICIADA: Debes pulsar 'Iniciar Jornada' antes de registrar bitácora técnica o archivos.")
+      return
+    }
 
-      const isTechnicalAction = mediaFile || customPhase !== undefined
-      if (isTechnicalAction && !activeRecord) {
-        alert("⚠️ JORNADA NO INICIADA: Debes pulsar 'Iniciar Jornada' antes de registrar bitácora técnica o archivos.")
-        setLoading(false)
-        return
+    // --- OPTIMISTIC UI UPDATE ---
+    const tempId = `temp-${Date.now()}-${Math.random()}`
+    let tempMediaUrl = null
+    if (mediaFile) {
+      try { tempMediaUrl = URL.createObjectURL(mediaFile) } catch(e){}
+    }
+    
+    setLiveChat((prev: any[]) => [
+      ...prev,
+      {
+        id: tempId,
+        content: msgToSend,
+        type: determinedType,
+        media: tempMediaUrl ? { url: tempMediaUrl, mimeType: mediaFile?.type || '' } : null,
+        extraData: extraData || null,
+        createdAt: new Date().toISOString(),
+        isMe: true,
+        userName: session?.user?.name || 'Yo',
+        userBranch: (session?.user as any)?.branch || null,
+        status: 'sending'
       }
+    ])
 
-      if (!location) {
-        if (isTechnicalAction) {
-          alert("⚠️ UBICACIÓN NO DETECTADA: Para registros técnicos y fotos es obligatorio el GPS.")
-          setLoading(false)
-          return
-        } else {
-          console.warn("Ubicación no detectada, enviando mensaje sin coordenadas.")
+    // Clear drafts instantly so they can keep typing
+    if (!customMsg) removeMessageDraft()
+    else removeNoteDraft()
+
+    // --- ASYNC BACKGROUND PROCESSING ---
+    const processMessage = async () => {
+      try {
+        let location: any = null
+        if ('geolocation' in navigator) {
+          location = await new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+              () => resolve(null),
+              { enableHighAccuracy: true, timeout: 15000 }
+            )
+          })
         }
-      }
+
+        if (!location) {
+          if (isTechnicalAction) {
+            alert("⚠️ UBICACIÓN NO DETECTADA: Para registros técnicos y fotos es obligatorio el GPS.")
+            // Remove optimistic message
+            setLiveChat(prev => prev.filter(m => m.id !== tempId))
+            return
+          } else {
+            console.warn("Ubicación no detectada, enviando mensaje sin coordenadas.")
+          }
+        }
 
       let mediaData = null
       if (mediaFile) {
@@ -782,13 +815,7 @@ export default function ProjectExecutionClient({
       const payload = { 
         phaseId: phaseIdToSend, 
         content: msgToSend, 
-        type: forcedType || (extraData?.amount ? 'EXPENSE_LOG' : (
-          mediaFile ? (
-            mediaFile.type.startsWith('image/') ? 'IMAGE' : 
-            mediaFile.type.startsWith('audio/') ? 'AUDIO' : 
-            mediaFile.type.startsWith('video/') ? 'VIDEO' : 'DOCUMENT'
-          ) : 'TEXT'
-        )),
+        type: determinedType,
         media: mediaData,
         extraData: cleanExtraData
       }
@@ -803,9 +830,9 @@ export default function ProjectExecutionClient({
             lng: location?.lng,
             status: 'pending'
          })
-         if (!customMsg) removeMessageDraft()
-         else removeNoteDraft()
-         setLoading(false)
+         
+         // Mark as pending in UI
+         setLiveChat(prev => prev.map(m => m.id === tempId ? { ...m, status: 'pending_sync' } : m))
          return
       }
 
@@ -820,25 +847,18 @@ export default function ProjectExecutionClient({
         if (res.ok) {
           const createdMsg = await res.json()
         
-          // Update live chat and expenses in one go
-          setLiveChat((prev: any[]) => [
-            ...prev, 
-            {
-              ...createdMsg,
-              isMe: true,
-              userName: session?.user?.name || 'Yo',
-              userBranch: (session?.user as any)?.branch || null
-            }
-          ])
+          // Replace optimistic message with real message
+          setLiveChat(prev => prev.map(m => m.id === tempId ? {
+            ...createdMsg,
+            isMe: true,
+            userName: session?.user?.name || 'Yo',
+            userBranch: (session?.user as any)?.branch || null
+          } : m))
           
-          // If it was an expense, trigger a refresh to update total spent
           if (payload.type === 'EXPENSE_LOG') {
             router.refresh()
           }
         }
-        if (!customMsg) removeMessageDraft()
-        else removeNoteDraft()
-
       } catch (e) {
          await db.outbox.add({
             type: 'MESSAGE',
@@ -849,14 +869,18 @@ export default function ProjectExecutionClient({
             lng: location?.lng,
             status: 'pending'
          })
-         if (!customMsg) removeMessageDraft()
-         else removeNoteDraft()
+         setLiveChat(prev => prev.map(m => m.id === tempId ? { ...m, status: 'pending_sync' } : m))
       }
-    } catch (e) {
-      alert("Error procesando mensaje")
-    } finally {
-      setLoading(false)
+      } catch (outerError) {
+        console.error("Outer background process error:", outerError);
+        setLiveChat(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m))
+      }
     }
+
+    processMessage().catch(err => {
+      console.error("Error background message process:", err)
+      setLiveChat(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m))
+    })
   }
 
   const handleUploadToGallery = async (file: ProjectFile, category: string = 'MASTER') => {
