@@ -142,12 +142,16 @@ export async function POST(request: Request) {
             const locClientText = clientLocation ? `\n📍 *Ubicación Cliente:*\n${clientLocation}` : '';
             const locOpText = operatorLocation ? `\n📡 *Ubicación Operario (GPS):*\n${operatorLocation}` : '';
             
-            // Los links solo para videos (según requerimiento)
+            // Los links de respaldo para Videos y Audios
             const videoLinks = attachmentLinks?.filter((a: any) => a.type === 'video') || [];
+            const audioLinks = attachmentLinks?.filter((a: any) => a.type === 'audio') || [];
 
             let linksText = '';
             if (videoLinks.length) {
               linksText += `\n\n🎥 *Videos (Links):*\n${videoLinks.map((a: any) => `• ${a.url}`).join('\n')}`;
+            }
+            if (audioLinks.length) {
+              linksText += `\n\n🔊 *Audios (Respaldo):*\n${audioLinks.map((a: any) => `• [Escuchar Audio](${a.url})`).join('\n')}`;
             }
 
             const message = `*Notificación Aquatech*\n\nHola ${appointment.user.name}, tienes una *nueva tarea* asignada:\n📌 *${title}*\n📅 Fecha: ${startDateLocale}\n⏰ Hora: ${startTimeLocale}${descrText}${locClientText}${locOpText}${linksText}\n\nConsulta más detalles en tu perfil.`;

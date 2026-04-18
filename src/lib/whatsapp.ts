@@ -49,6 +49,8 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
           mediaType = 'document'; // Fallback seguro
         }
 
+        // WhatsApp solo acepta PTT para formatos nativos (ogg/opus)
+        const isNativeAudio = att.name.toLowerCase().endsWith('.ogg') || att.name.toLowerCase().endsWith('.opus');
         const isAudio = mediaType === 'audio';
         
         const fileResp = await fetch(
@@ -64,7 +66,7 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
               mediatype: mediaType,
               media: att.data, 
               fileName: att.name,
-              ptt: isAudio // Si es audio, enviar como nota de voz
+              ptt: isAudio && isNativeAudio // Solo PTT si es formato nativo
             }),
           }
         );
