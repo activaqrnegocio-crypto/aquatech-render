@@ -91,6 +91,9 @@ export async function POST(req: Request) {
           totalAmount: Number(data.totalAmount || 0),
 
           notes: operatorNotes,
+          optionalTitle: data.optionalTitle || null,
+          optionalDescription: data.optionalDescription || null,
+          optionalImage: data.optionalImage || null,
           validUntil: data.validUntil ? new Date(data.validUntil) : null,
           items: {
             create: items.map((item: any) => ({

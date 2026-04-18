@@ -17,6 +17,7 @@ const Send = ({ size = 20 }: any) => <svg {...svgProps(size)}><line x1="22" x2="
 const MoreVertical = ({ size = 20 }: any) => <svg {...svgProps(size)}><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
 const Smile = ({ size = 20 }: any) => <svg {...svgProps(size)}><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg>
 const Play = ({ size = 16 }: any) => <svg {...svgProps(size)} fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+const ImageIcon = ({ size = 20 }: any) => <svg {...svgProps(size)}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
 const getSenderColor = (name: string) => {
   const colors = [
     '#25d366', '#34d399', '#3b82f6', '#f59e0b', '#ef4444', 
@@ -34,7 +35,7 @@ interface ProjectChatUnifiedProps {
   project: any
   messages: any[]
   userId: number
-  onSendMessage: (content: string, type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'EXPENSE_LOG' | 'NOTE', extraData?: any) => void
+  onSendMessage: (content: string, type: 'TEXT' | 'IMAGE' | 'VIDEO' | 'AUDIO' | 'FILE' | 'EXPENSE_LOG' | 'NOTE' | 'LOCATION', extraData?: any) => void
   onDayAction?: () => void
   activeRecord?: any
   isOperatorView?: boolean
@@ -65,13 +66,15 @@ export default function ProjectChatUnified({
   const [selectedPhaseId, setSelectedPhaseId] = useState<number | null>(null)
   const [expenseModal, setExpenseModal] = useState<{ isOpen: boolean; isNote: boolean }>({ isOpen: false, isNote: false })
   const [expenseForm, setExpenseForm] = useState({ amount: '', description: '', file: null as File | null })
+  const cameraInputRef = useRef<HTMLInputElement>(null)
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatBodyRef = useRef<HTMLDivElement>(null)
 
   const [autoScroll, setAutoScroll] = useState(true)
   const [showNewMsgBtn, setShowNewMsgBtn] = useState(false)
   const [msgCount, setMsgCount] = useState(messages.length)
-  const [filesFilter, setFilesFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
+  const [gpsStatus, setGpsStatus] = useState<string | null>(null)
+  const [filesFilter, setFilesFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS' | 'EXPENSES'>('ALL')
   
   const allMedia = useMemo(() => {
     const list: any[] = []
@@ -94,9 +97,25 @@ export default function ProjectChatUnified({
           })
         }
       })
+      if (m.type === 'EXPENSE_LOG' || m.type === 'NOTE') {
+        list.push({
+          id: `msg-exp-${m.id}`,
+          filename: m.content || 'Gasto',
+          url: m.extraData?.receiptUrl || m.extraData?.url || '',
+          type: 'EXPENSES',
+          amount: m.extraData?.amount,
+          timestamp: m.createdAt || m.timestamp,
+          sender: m.userName || m.senderName || 'Sistema'
+        })
+      }
     })
-    return list.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    return list;
   }, [messages])
+
+  const evidenceGallery = useMemo(() => {
+    if (!project?.gallery) return []
+    return project.gallery.filter((item: any) => item.category === 'EVIDENCE')
+  }, [project?.gallery])
 
   const filteredMedia = useMemo(() => {
     if (filesFilter === 'ALL') return allMedia
@@ -135,6 +154,53 @@ export default function ProjectChatUnified({
     setInputValue('')
   }
 
+  const handleGetGPS = () => {
+    if (!navigator.geolocation) {
+      return alert('La geolocalización no es compatible con este navegador.')
+    }
+    
+    setGpsStatus('Obteniendo ubicación...')
+    
+    const options = { 
+      enableHighAccuracy: true, 
+      timeout: 10000, 
+      maximumAge: 0 
+    }
+
+    const onSuccess = (position: any) => {
+      const { latitude, longitude } = position.coords
+      const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`
+      onSendMessage(`📍 Ubicación compartida: ${mapsUrl}`, 'LOCATION', { 
+         phaseId: selectedPhaseId,
+         lat: latitude,
+         lng: longitude
+      })
+      setGpsStatus(null)
+    }
+
+    const onError = (error: any) => {
+      console.warn('GPS High Accuracy Error, trying normal:', error)
+      // Fallback a baja precisión si falla la alta (común en PC)
+      navigator.geolocation.getCurrentPosition(
+        onSuccess,
+        (err2) => {
+          console.error('GPS Fatal Error:', err2)
+          let msg = 'No se pudo obtener la ubicación.';
+          switch(err2.code) {
+            case 1: msg = 'Permiso denegado. Por favor, permita el acceso a la ubicación.'; break;
+            case 2: msg = 'La ubicación no está disponible.'; break;
+            case 3: msg = 'Se agotó el tiempo de espera.'; break;
+          }
+          alert(msg);
+          setGpsStatus(null)
+        },
+        { enableHighAccuracy: false, timeout: 15000 }
+      )
+    }
+
+    navigator.geolocation.getCurrentPosition(onSuccess, onError, options)
+  }
+
   const handleKeyPress = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault()
@@ -161,6 +227,14 @@ export default function ProjectChatUnified({
       }
     } catch (err) {
       console.error("Error finalizing phase:", err);
+    }
+  }
+
+  const handleCameraChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const type = file.type.startsWith('video/') ? 'VIDEO' : 'IMAGE';
+      onSendMessage('', type, { file });
     }
   }
 
@@ -271,45 +345,12 @@ export default function ProjectChatUnified({
              <h1>{project.title}</h1>
              <p style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
                 <span style={{ whiteSpace: 'nowrap' }}>{activeRecord ? '🟢 Jornada Activa' : '⚪ Jornada cerrada'}</span>
-                
-                <select 
-                  value={selectedPhaseId || ''} 
-                  onChange={(e) => setSelectedPhaseId(e.target.value ? Number(e.target.value) : null)}
-                  style={{ 
-                    background: 'rgba(255,255,255,0.1)', 
-                    border: '1px solid rgba(255,255,255,0.2)', 
-                    color: 'white', 
-                    fontSize: '0.7rem', 
-                    borderRadius: '6px',
-                    padding: '2px 6px',
-                    cursor: 'pointer',
-                    outline: 'none',
-                    maxWidth: '120px',
-                    textOverflow: 'ellipsis'
-                  }}
-                >
-                  <option value="" style={{ color: 'black' }}>General (Toda la obra)</option>
-                  {project.phases?.map((p: any) => (
-                    <option key={p.id} value={p.id} style={{ color: 'black' }}>
-                      {p.title} {p.status === 'COMPLETED' ? '✅' : ''}
-                    </option>
-                  ))}
-                </select>
-
-                {selectedPhaseId && project.phases?.find((p:any) => p.id === Number(selectedPhaseId))?.status !== 'COMPLETED' && (
-                  <button 
-                    onClick={handleFinalizePhase}
-                    style={{ background: '#10b981', color: 'white', border: 'none', padding: '3px 8px', borderRadius: '10px', fontSize: '0.6rem', cursor: 'pointer', fontWeight: 'bold' }}
-                  >
-                    Finalizar Fase
-                  </button>
-                )}
              </p>
            </div>
 
         </div>
         <div className="header-actions">
-           {showSearch ? (
+           {false && showSearch && (
              <div style={{ display: 'flex', alignItems: 'center', background: 'var(--bg-deep)', borderRadius: '20px', padding: '4px 12px', marginRight: '8px' }}>
                <input 
                  type="text" 
@@ -321,7 +362,8 @@ export default function ProjectChatUnified({
                />
                <button onClick={() => { setShowSearch(false); setSearchQuery(''); }} style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '0' }}>✕</button>
              </div>
-           ) : (
+           )}
+           {!showSearch && (
              <>
                {isOperatorView && (
                  <button 
@@ -339,12 +381,55 @@ export default function ProjectChatUnified({
            
            {showMenu && (
              <div className="dropdown-menu">
-               <div className="menu-item" onClick={() => { setShowSearch(true); setShowMenu(false); }}>🔍 Buscar</div>
-               <div className="menu-item" onClick={() => { setShowFilesBrowser(true); setShowMenu(false); }}>📁 Archivos y docs</div>
+               <div className="menu-item" onClick={() => { setShowFilesBrowser(true); setShowMenu(false); }}>📁 Archivos y documentos</div>
              </div>
            )}
         </div>
       </header>
+
+      {/* --- QUICK EVIDENCE GALLERY --- */}
+      {evidenceGallery.length > 0 && (
+        <div style={{ 
+          padding: '10px 16px', 
+          backgroundColor: 'rgba(255,255,255,0.02)', 
+          borderBottom: '1px solid rgba(255,255,255,0.05)',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '8px'
+        }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: '#d946ef', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+              📸 Archivos Finales (Evidencia)
+            </span>
+            <span onClick={() => setShowFilesBrowser(true)} style={{ fontSize: '0.6rem', color: 'var(--primary)', cursor: 'pointer' }}>Ver todo</span>
+          </div>
+          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }} className="hide-scrollbar">
+            {evidenceGallery.map((file: any, i: number) => (
+              <div 
+                key={i} 
+                onClick={() => window.open(file.url, '_blank')}
+                style={{ 
+                  flexShrink: 0, 
+                  width: '60px', 
+                  height: '60px', 
+                  borderRadius: '8px', 
+                  overflow: 'hidden', 
+                  border: '1px solid rgba(255,255,255,0.1)',
+                  position: 'relative'
+                }}
+              >
+                {file.mimeType?.startsWith('image/') ? (
+                  <img src={file.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="evidence" />
+                ) : (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
+                    <Play size={20} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
 
       {/* --- MESSAGE LIST --- */}
       <div 
@@ -397,8 +482,46 @@ export default function ProjectChatUnified({
                  
                  {/* Text Content */}
                  {msg.content && (msg.type === 'TEXT' || msg.type === 'MESSAGE' || msg.type === 'DOCUMENT' || msg.type === 'FILE' || !msg.type) && <p>{msg.content}</p>}
-                 
-                 {/* Media Rendering */}
+                                  {(msg.type === 'LOCATION' || (msg.content && msg.content.includes('google.com/maps'))) && (
+                    <div className="location-bubble" style={{ 
+                      backgroundColor: 'rgba(255,255,255,0.05)', 
+                      borderRadius: '8px', 
+                      padding: '12px',
+                      border: '1px solid var(--primary)',
+                      marginTop: '5px',
+                      marginBottom: '10px'
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                        <span style={{ fontSize: '1.5rem' }}>📍</span>
+                        <div>
+                           <div style={{ fontWeight: 'bold', fontSize: '0.9rem' }}>Ubicación Compartida</div>
+                           <div style={{ fontSize: '0.7rem', opacity: 0.7 }}>Google Maps</div>
+                        </div>
+                      </div>
+                      <button 
+                        onClick={() => {
+                          const urlMatch = msg.content.match(/https:\/\/www\.google\.com\/maps\S*/);
+                          if (urlMatch) window.open(urlMatch[0], '_blank');
+                        }}
+                        style={{ 
+                          width: '100%', 
+                          padding: '10px', 
+                          borderRadius: '8px', 
+                          background: 'var(--primary)', 
+                          border: 'none', 
+                          color: 'white', 
+                          fontWeight: 'bold', 
+                          cursor: 'pointer',
+                          fontSize: '0.85rem',
+                          boxShadow: '0 2px 4px rgba(0,0,0,0.2)'
+                        }}
+                      >
+                        Ver en el Mapa
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Media Rendering */}
                  {mediaArray.length > 0 && mediaArray.map((m: any, mIdx: number) => (
                    <div key={m.id || mIdx} className="media-attachment-container">
                      {(m.mimeType?.startsWith('image/') || m.type === 'IMAGE' || (!m.mimeType && m.url?.match(/\.(jpg|jpeg|png|gif|webp)$/i))) && (
@@ -516,15 +639,9 @@ export default function ProjectChatUnified({
         <div className="attachments-menu">
           <div className="attachments-grid">
             <AttachmentItem 
-              icon={<Camera size={24} />} 
-              label="Cámara" 
-              color="#d3396d" 
-              onClick={() => setShowMediaCapture('video')} 
-            />
-            <AttachmentItem 
-              icon={<Camera size={24} />} 
-              label="Galería" 
-              color="#bf59cf" 
+              icon={<ImageIcon size={28} />} 
+              label="GALERÍA" 
+              color="#00a884" 
               onClick={() => {
                 const input = document.createElement('input');
                 input.type = 'file';
@@ -537,9 +654,9 @@ export default function ProjectChatUnified({
               }} 
             />
             <AttachmentItem 
-              icon={<Paperclip size={24} />} 
+              icon={<Paperclip size={28} />} 
               label="Documento" 
-              color="#5157ae" 
+              color="#5f66cd" 
               onClick={() => {
                 const input = document.createElement('input');
                 input.type = 'file';
@@ -553,22 +670,16 @@ export default function ProjectChatUnified({
             />
 
             <AttachmentItem 
-              icon={<span style={{ fontSize: '1.5rem' }}>💰</span>} 
-              label="Gastos" 
-              color="#00a884" 
-              onClick={() => handleExpenseAction(false)} 
-            />
-            <AttachmentItem 
-              icon={<span style={{ fontSize: '1.5rem' }}>📝</span>} 
-              label="NOTAS" 
-              color="#1fa855" 
-              onClick={handleNoteAction} 
-            />
-            <AttachmentItem 
-              icon={<span style={{ fontSize: '1.5rem' }}>🏷️</span>} 
+              icon={<span style={{ fontSize: '1.8rem' }}>💰</span>} 
               label="Nota Gasto" 
               color="#007bfc" 
               onClick={() => handleExpenseAction(true)} 
+            />
+             <AttachmentItem 
+              icon={<span style={{ fontSize: '1.8rem' }}>📍</span>} 
+              label={gpsStatus || "Ubicación"} 
+              color={gpsStatus ? "#f59e0b" : "#009688"} 
+              onClick={handleGetGPS} 
             />
           </div>
         </div>
@@ -586,29 +697,21 @@ export default function ProjectChatUnified({
 
               {/* Filters */}
               <div style={{ padding: '10px 20px', display: 'flex', gap: '8px', overflowX: 'auto', whiteSpace: 'nowrap', borderBottom: '1px solid rgba(255,255,255,0.05)' }} className="hide-scrollbar">
-                {[
-                  { id: 'ALL', label: 'Todo' },
-                  { id: 'IMAGES', label: 'Fotos' },
-                  { id: 'VIDEOS', label: 'Videos' },
-                  { id: 'AUDIOS', label: 'Audio' },
-                  { id: 'DOCS', label: 'Docs' }
-                ].map(f => (
+                {['ALL', 'IMAGES', 'VIDEOS', 'AUDIOS', 'DOCS', 'EXPENSES'].map(f => (
                   <button
-                    key={f.id}
-                    onClick={() => setFilesFilter(f.id as any)}
-                    style={{ 
-                      padding: '6px 16px', 
-                      borderRadius: '20px', 
-                      border: 'none', 
-                      background: filesFilter === f.id ? 'var(--primary)' : 'rgba(255,255,255,0.08)',
-                      color: filesFilter === f.id ? 'white' : 'var(--text-muted)',
-                      fontSize: '0.85rem',
-                      fontWeight: '600',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s ease'
+                    key={f}
+                    onClick={() => setFilesFilter(f as any)}
+                    style={{
+                      padding: '6px 14px',
+                      borderRadius: '20px',
+                      fontSize: '0.75rem',
+                      backgroundColor: filesFilter === f ? 'var(--primary)' : 'rgba(255,255,255,0.05)',
+                      color: filesFilter === f ? 'white' : 'var(--text-muted)',
+                      border: 'none',
+                      cursor: 'pointer'
                     }}
                   >
-                    {f.label}
+                    {f === 'ALL' ? 'Todo' : f === 'IMAGES' ? 'Fotos' : f === 'VIDEOS' ? 'Videos' : f === 'AUDIOS' ? 'Audio' : f === 'DOCS' ? 'Docs' : 'Gastos'}
                   </button>
                 ))}
               </div>
@@ -714,9 +817,17 @@ export default function ProjectChatUnified({
              <button onClick={() => setShowAttachments(!showAttachments)} className="btn-icon">
                 <Paperclip />
              </button>
-             <button onClick={() => setShowMediaCapture('video')} className="btn-icon">
+             <button onClick={() => cameraInputRef.current?.click()} className="btn-icon">
                 <Camera />
              </button>
+             <input 
+                type="file"
+                accept="image/*,video/*"
+                capture="environment"
+                ref={cameraInputRef}
+                style={{ display: 'none' }}
+                onChange={handleCameraChange}
+             />
            </div>
            
            <button 

@@ -566,7 +566,7 @@ export default function Sidebar() {
       </aside>
 
       {/* Mobile Bottom Nav */}
-      <nav className="mobile-nav" style={chatView ? { display: 'none' } : undefined}>
+      <nav className="mobile-nav">
         {isAdmin ? (
           <>
             {[

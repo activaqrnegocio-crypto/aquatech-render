@@ -6,7 +6,7 @@ const EVOLUTION_API_URL = process.env.EVOLUTION_API_URL;
 const EVOLUTION_API_KEY = process.env.EVOLUTION_API_KEY;
 const EVOLUTION_INSTANCE_NAME = process.env.EVOLUTION_INSTANCE_NAME;
 
-export async function sendWhatsAppMessage(phone: string, message: string) {
+export async function sendWhatsAppMessage(phone: string, message: string, attachments?: Array<{type: string; name: string; data: string}>) {
   if (!EVOLUTION_API_URL || !EVOLUTION_API_KEY || !EVOLUTION_INSTANCE_NAME) {
     console.error('WhatsApp Service: Faltan credenciales de Evolution API en .env');
     return { success: false, error: 'Configuración incompleta' };
@@ -14,36 +14,68 @@ export async function sendWhatsAppMessage(phone: string, message: string) {
 
   // Limpiar el número de teléfono (solo dígitos)
   const cleanPhone = phone.replace(/\D/g, '');
-  
-  // Asegurar que tenga el formato que Evolution API espera (ej: 593967491847)
-  // Si no tiene código de país, podrías asumir uno por defecto, pero aquí confiamos en el DB.
-  
+
+  // Envío del mensaje de texto
   try {
-    const response = await fetch(
+    const textResp = await fetch(
       `${EVOLUTION_API_URL}/message/sendText/${EVOLUTION_INSTANCE_NAME}`,
       {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'apikey': EVOLUTION_API_KEY,
+          apikey: EVOLUTION_API_KEY,
         },
-        body: JSON.stringify({
-          number: cleanPhone,
-          text: message,
-        }),
+        body: JSON.stringify({ number: cleanPhone, text: message }),
       }
     );
-
-    if (!response.ok) {
-      const errorData = await response.text();
-      console.error('Evolution API Error:', errorData);
-      return { success: false, error: 'Error en la respuesta de la API' };
+    if (!textResp.ok) {
+      const err = await textResp.text();
+      console.error('Evolution API Text Error:', err);
+      return { success: false, error: 'Error enviando texto' };
     }
-
-    const data = await response.json();
-    return { success: true, data };
-  } catch (error: any) {
-    console.error('WhatsApp Service Exception:', error.message);
-    return { success: false, error: error.message };
+  } catch (e: any) {
+    console.error('WhatsApp Service Text Exception:', e.message);
+    return { success: false, error: e.message };
   }
+
+  // Si hay adjuntos, enviarlos uno a uno usando el endpoint de media
+  if (attachments && attachments.length) {
+    for (const att of attachments) {
+      try {
+        // Mapeo de mediatype para Evolution API
+        let mediaType = att.type;
+        if (mediaType === 'application') mediaType = 'document';
+        if (!['image', 'video', 'audio', 'document'].includes(mediaType)) {
+          mediaType = 'document'; // Fallback seguro
+        }
+
+        const fileResp = await fetch(
+          `${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: EVOLUTION_API_KEY,
+            },
+            body: JSON.stringify({
+              number: cleanPhone,
+              mediatype: mediaType,
+              media: att.data, 
+              fileName: att.name,
+            }),
+          }
+        );
+        if (!fileResp.ok) {
+          const err = await fileResp.text();
+          console.error('Evolution API Media Error:', err);
+        }
+      } catch (e: any) {
+        console.error('WhatsApp Service Media Exception:', e.message);
+      }
+      // Pequeño retardo de 500ms para asegurar el orden en la cola de WhatsApp
+      await new Promise(res => setTimeout(res, 500));
+    }
+  }
+
+  return { success: true };
 }

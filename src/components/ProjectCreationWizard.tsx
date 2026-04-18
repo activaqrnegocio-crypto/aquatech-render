@@ -22,6 +22,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
   const [isMounted, setIsMounted] = useState(false)
   const [step, setStep] = useLocalStorage('project_draft_step', 1)
   const [loading, setLoading] = useState(false)
+  const [gpsLoading, setGpsLoading] = useState(false)
 
   useEffect(() => {
     setIsMounted(true)
@@ -34,6 +35,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
     type: 'INSTALLATION',
     subtype: '',
     address: '',
+    locationLink: '',
     city: '',
     startDate: new Date().toISOString().split('T')[0],
     endDate: '',
@@ -204,10 +206,13 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
       if (!projectData.title || projectData.title.trim().length < 2) {
         return setError('El nombre del proyecto es obligatorio.')
       }
+      if (!clientData.name || clientData.name.trim().length < 2) {
+        return setError('El nombre del cliente es obligatorio.')
+      }
     }
     
     setError('')
-    if (step < 4) setStep(s => s + 1)
+    if (step < 2) setStep(s => s + 1)
   }
 
   const handleBack = () => {
@@ -215,9 +220,36 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
     if (step > 1) setStep(s => s - 1)
   }
 
+  const handleGetGPS = async () => {
+    setGpsLoading(true)
+    if (!navigator.geolocation) {
+      alert('Tu navegador no soporta geolocalización')
+      setGpsLoading(false)
+      return
+    }
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const { latitude, longitude } = pos.coords
+      const mapsUrl = `https://www.google.com/maps?q=${latitude},${longitude}`
+      setProjectData({ ...projectData, locationLink: mapsUrl })
+      setGpsLoading(false)
+    }, (err) => {
+      console.error(err)
+      alert('No se pudo obtener la ubicación')
+      setGpsLoading(false)
+    })
+  }
+
   const handleCreate = async () => {
     if (!projectData.title) return setError('Falta el nombre del proyecto.')
-    if (budgetItems.length === 0) return setError('Faltan los ítems de la cotización.')
+    
+    // Auto-fill budget if empty to pass validation
+    const finalBudgetItems = budgetItems.length > 0 ? budgetItems : [{
+      name: 'Levantamiento Técnico / Inspección',
+      quantity: 1,
+      estimatedCost: 0,
+      unit: 'GLOBAL',
+      isTaxed: false
+    }]
     
     setLoading(true)
     setError('')
@@ -226,12 +258,12 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
       ...projectData,
       subtype: projectData.type === 'OTHER' ? projectData.subtype : '',
       client: clientData,
-      phases: phases,
-      team: selectedTeam,
-      budgetItems: budgetItems,
+      phases: phases.length > 0 ? phases : [{ title: 'Fase Inicial', description: 'Levantamiento general', estimatedDays: 1 }],
+      team: selectedTeam.length > 0 ? selectedTeam : [String(session?.user?.id)],
+      budgetItems: finalBudgetItems,
       categoryList: projectData.categoryList.map(c => c === 'OTRO' ? (projectData.otherCategory || 'OTRO') : c),
       contractTypeList: projectData.contractTypeList.map(c => c === 'OTHER' ? (projectData.otherContractType || 'OTHER') : c),
-      technicalSpecs: projectData.technicalSpecs,
+      technicalSpecs: { ...projectData.technicalSpecs, locationLink: projectData.locationLink },
       specsAudioUrl: projectData.specsAudioUrl,
       specsTranscription: projectData.technicalSpecs.description,
       status: projectData.status,
@@ -411,10 +443,8 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
   if (!isMounted) return <div style={{ minHeight: '400px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}><div className="loading-spinner" /></div>;
 
   const steps_config = [
-    { id: 1, title: 'Datos del Proyecto y Cliente', icon: '📋' },
-    { id: 2, title: 'Especificaciones y Fases', icon: '⚙️' },
-    { id: 3, title: 'Equipo de Trabajo', icon: '👥' },
-    { id: 4, title: 'Presupuesto Final', icon: '💰' },
+    { id: 1, title: 'Datos Proyecto y Cliente', icon: '📋' },
+    { id: 2, title: 'Multimedia / Levantamiento', icon: '📸' },
   ]
 
   return (
@@ -484,7 +514,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="responsive-2col">
                         <div>
                            <label className="form-label">Título del Proyecto *</label>
-                           <input type="text" className="form-input" placeholder="Ej. Piscina Residencial Familia Ruiz" value={projectData.title} onChange={e => setProjectData({...projectData, title: e.target.value})} />
+                           <input type="text" className="form-input" placeholder="Ej. Piscina Residencial Familia Ruiz" value={projectData.title || ''} onChange={e => setProjectData({...projectData, title: e.target.value})} />
                         </div>
                         <div>
                            <label className="form-label">Etapa del Proyecto</label>
@@ -495,7 +525,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                         </div>
                      </div>
 
-                     <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }} className="responsive-2col">
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }} className="responsive-2col">
                         <div>
                            <label className="form-label">Tipo de Proyecto</label>
                            <select className="form-input" value={projectData.type} onChange={e => setProjectData({...projectData, type: e.target.value})}>
@@ -507,20 +537,55 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                            {projectData.type === 'OTRO' && (
                               <input 
                                 type="text" className="form-input mt-2" placeholder="Especificar tipo..." 
-                                value={projectData.subtype} 
+                                value={projectData.subtype || ''} 
                                 onChange={e => setProjectData({...projectData, subtype: e.target.value})}
                               />
                            )}
                         </div>
                         <div>
                            <label className="form-label">Fecha Proyectada</label>
-                           <input type="date" className="form-input" value={projectData.startDate} onChange={e => setProjectData({...projectData, startDate: e.target.value})} />
+                           <input type="date" className="form-input" value={projectData.startDate || ''} onChange={e => setProjectData({...projectData, startDate: e.target.value})} />
                         </div>
                         <div>
-                           <label className="form-label">Ciudad / Ubicación</label>
-                           <input type="text" className="form-input" placeholder="Ciudad" value={projectData.city} onChange={e => setProjectData({...projectData, city: e.target.value})} />
+                           <label className="form-label">Ciudad</label>
+                           <input type="text" className="form-input" placeholder="Ciudad" value={projectData.city || ''} onChange={e => setProjectData({...projectData, city: e.target.value})} />
                         </div>
                      </div>
+
+                      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '20px' }}>
+                        <div style={{ display: 'flex', gap: '8px', alignItems: 'flex-end' }}>
+                           <div style={{ flex: 1 }}>
+                              <label className="form-label">Ubicación GPS / Google Maps</label>
+                              <input 
+                                 type="text" 
+                                 className="form-input" 
+                                 placeholder="El enlace se generará al presionar el botón 📍 GPS" 
+                                 value={projectData.locationLink || ''} 
+                                 onChange={e => {
+                                    setProjectData({...projectData, locationLink: e.target.value});
+                                    updateSpec('locationLink', e.target.value);
+                                 }} 
+                              />
+                           </div>
+                           <button 
+                             type="button" 
+                             onClick={handleGetGPS}
+                             disabled={gpsLoading}
+                             className="btn btn-secondary"
+                             style={{ 
+                               height: '38px', 
+                               display: 'flex', 
+                               alignItems: 'center', 
+                               gap: '6px',
+                               fontSize: '0.85rem',
+                               padding: '0 20px',
+                               fontWeight: '600'
+                             }}
+                           >
+                             {gpsLoading ? 'Obteniendo...' : '📍 GPS'}
+                           </button>
+                        </div>
+                      </div>
                      <hr style={{ border: 'none', borderTop: '1px solid var(--border)', margin: '15px 0' }} />
 
                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
@@ -530,25 +595,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                         </button>
                      </div>
 
-                     <div style={{ position: 'relative' }} ref={clientDropdownRef}>
-                        <label className="form-label">Buscar Cliente Existente</label>
-                        <input 
-                           type="text" className="form-input" placeholder="Nombre o RUC..." 
-                           value={clientSearchText}
-                           onChange={(e) => { setClientSearchText(e.target.value); setShowClientDropdown(true); }}
-                        />
-                        {showClientDropdown && (
-                           <div style={{ position: 'absolute', top: '100%', left: 0, right: 0, backgroundColor: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: '12px', marginTop: '8px', maxHeight: '200px', overflowY: 'auto', zIndex: 110, boxShadow: '0 10px 25px rgba(0,0,0,0.5)' }}>
-                              <div style={{ padding: '12px', cursor: 'pointer', color: 'var(--primary)', fontWeight: 'bold' }} onClick={() => selectExistingClient('NEW')}>+ Nuevo Cliente Manual</div>
-                              {filteredClients.map(c => (
-                                 <div key={c.id} style={{ padding: '10px 15px', cursor: 'pointer', borderBottom: '1px solid var(--border)' }} onClick={() => selectExistingClient(c.id)}>
-                                    <div style={{ fontWeight: '600' }}>{c.name}</div>
-                                    <div style={{ fontSize: '0.7rem', opacity: 0.6 }}>{c.ruc} | {c.phone}</div>
-                                 </div>
-                              ))}
-                           </div>
-                        )}
-                     </div>
+                     {/* Client search removed per user request */}
 
                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }} className="responsive-2col">
                         <input type="text" className="form-input" placeholder="Nombre completo *" value={clientData.name} onChange={e => setClientData({...clientData, name: e.target.value})} disabled={!isNewClient} />
@@ -569,73 +616,18 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                        </div>
                     </div>
                     <textarea className="form-input mb-6" rows={3} placeholder="Describe el alcance técnico o usa los botones de voz/video..." value={projectData.technicalSpecs.description || ''} onChange={e => updateSpec('description', e.target.value)} />
-
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                      <h4 style={{ margin: 0 }}>Fases de Trabajo</h4>
-                      <button type="button" className="btn btn-ghost btn-xs" onClick={addPhase}>+ Añadir Fase</button>
-                    </div>
-                    {phases.map((ph, idx) => (
-                      <div key={ph.id} style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginBottom: '20px', padding: '15px', backgroundColor: 'var(--bg-deep)', borderRadius: '12px', border: '1px solid var(--border)' }}>
-                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                               <span style={{ fontWeight: 'bold', color: 'var(--primary)' }}>{idx+1}</span>
-                               <input type="text" className="form-input" style={{ width: '250px' }} placeholder="Título etapa" value={ph.title} onChange={e => updatePhase(idx, 'title', e.target.value)} />
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                               <MediaCapture mode="audio" compact onCapture={(blob, type, text) => updatePhase(idx, 'description', (ph.description || '') + ' ' + text)} />
-                               <MediaCapture mode="video" compact onCapture={(blob, type, text) => updatePhase(idx, 'description', (ph.description || '') + ' ' + text)} />
-                               {phases.length > 1 && <button type="button" style={{ color: 'var(--danger)', background: 'none', border: 'none', cursor: 'pointer', fontSize: '1.2rem' }} onClick={() => removePhase(idx)}>×</button>}
-                            </div>
-                         </div>
-                         <textarea className="form-input" rows={2} placeholder="Descripción de esta fase..." value={ph.description} onChange={e => updatePhase(idx, 'description', e.target.value)} />
-                         <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <label style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Días estimados:</label>
-                            <input type="number" className="form-input" style={{ width: '70px' }} value={ph.estimatedDays} onChange={e => updatePhase(idx, 'estimatedDays', e.target.value)} />
-                         </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {s.id === 3 && (
-                  <div className="animate-fade-in">
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '10px' }}>
-                       {availableTeam.map(op => {
-                         const isSelected = selectedTeam.includes(String(op.id))
-                         return (
-                           <div key={op.id} onClick={() => toggleTeamMember(op.id)} style={{ 
-                             padding: '12px', border: isSelected ? '1px solid var(--primary)' : '1px solid var(--border)',
-                             borderRadius: '10px', backgroundColor: isSelected ? 'rgba(56, 189, 248, 0.1)' : 'var(--bg-deep)',
-                             cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', transition: 'all 0.2s'
-                           }}>
-                             <div style={{ width: '10px', height: '10px', borderRadius: '50%', backgroundColor: isSelected ? 'var(--primary)' : 'var(--border)' }} />
-                             <span style={{ fontSize: '0.85rem' }}>{op.name}</span>
-                           </div>
-                         )
-                       })}
-                    </div>
-                    <button type="button" className="btn btn-ghost btn-xs mt-4" onClick={fetchTeam}>🔄 Actualizar lista</button>
-                  </div>
-                )}
-
-                {s.id === 4 && (
-                  <div className="animate-fade-in">
-                    <BudgetBuilder 
-                      initialItems={budgetItems}
-                      materials={materials}
-                      onItemsChange={handleBudgetChange}
-                      showPreviewActions={true}
-                      onGeneratePDF={(preview) => generatePDF(preview)}
-                    />
                   </div>
                 )}
 
                 {/* Navigation inside accordion */}
-                <div style={{ display: 'flex', gap: '10px', marginTop: '25px', justifyContent: 'flex-end' }}>
-                   {s.id < 4 ? (
-                      <button type="button" className="btn btn-primary" onClick={handleNext}>Validar y Siguiente &rarr;</button>
+                 <div style={{ display: 'flex', gap: '10px', marginTop: '25px', justifyContent: 'flex-end' }}>
+                   {step === 1 ? (
+                      <button type="button" className="btn btn-primary" onClick={handleNext}>Multimedia &rarr;</button>
                    ) : (
-                      <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={loading}>{loading ? 'Creando...' : 'Finalizar Proyecto'}</button>
+                      <>
+                        <button type="button" className="btn btn-ghost" onClick={handleBack}>&larr; Volver</button>
+                        <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={loading}>{loading ? 'Creando...' : 'Finalizar Proyecto'}</button>
+                      </>
                    )}
                 </div>
               </div>
@@ -679,6 +671,42 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                   <button onClick={() => setShowGallery(false)} className="btn btn-ghost btn-sm">Cerrar</button>
                </div>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
+                   <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '25px', padding: '15px', backgroundColor: 'rgba(56, 189, 248, 0.05)', borderRadius: '16px', border: '1px dashed var(--primary)' }}>
+                       <div style={{ textAlign: 'center' }}>
+                          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Captura rápida</p>
+                          <div style={{ display: 'flex', gap: '15px' }}>
+                             <MediaCapture 
+                                mode="audio" 
+                                onCapture={(blob, type) => {
+                                   const fileObj: any = {
+                                      id: `capture-${Date.now()}`,
+                                      name: `Audio-Planos-${new Date().toLocaleTimeString()}.webm`,
+                                      type: 'DOCUMENT',
+                                      url: URL.createObjectURL(blob),
+                                      size: blob.size,
+                                      category: 'PLANOS'
+                                   }
+                                   setUploadedFiles(prev => [...prev, fileObj])
+                                }} 
+                             />
+                             <MediaCapture 
+                                mode="video" 
+                                onCapture={(blob, type) => {
+                                   const isVideo = blob.type.startsWith('video/')
+                                   const fileObj: any = {
+                                      id: `capture-${Date.now()}`,
+                                      name: `${isVideo ? 'Video' : 'Foto'}-Planos-${new Date().toLocaleTimeString()}.${isVideo ? 'webm' : 'jpg'}`,
+                                      type: isVideo ? 'VIDEO' : 'IMAGE',
+                                      url: URL.createObjectURL(blob),
+                                      size: blob.size,
+                                      category: 'PLANOS'
+                                   }
+                                   setUploadedFiles(prev => [...prev, fileObj])
+                                }} 
+                             />
+                          </div>
+                       </div>
+                   </div>
                   <ProjectUploader 
                     files={uploadedFiles} 
                     onAddFile={(newFile) => setUploadedFiles(prev => [...prev, newFile])} 

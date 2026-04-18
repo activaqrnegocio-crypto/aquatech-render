@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { title, description, startTime, endTime, userId, userIds, projectId } = body
+    const { title, description, startTime, endTime, userId, userIds, projectId, clientLocation, operatorLocation, attachments, attachmentLinks } = body;
 
     const isAdmin = checkIsAdmin((session.user as any).role)
     
@@ -119,12 +119,11 @@ export async function POST(request: Request) {
     const response = NextResponse.json(results.length === 1 ? results[0] : results)
 
     // PASO 2: Enviar notificaciones SECUENCIALMENTE después de crear las citas
-    // Usar setImmediate-like pattern para no bloquear la response
     const sendNotifications = async () => {
       for (let i = 0; i < results.length; i++) {
         const appointment = results[i]
 
-        // 🔔 Push Notification (instantánea, no depende de API externa)
+        // 🔔 Push Notification
         const startLocale = formatTimeEcuador(startTime)
         notifyUser(
           appointment.userId,
@@ -134,22 +133,31 @@ export async function POST(request: Request) {
           `task-${appointment.id}`
         )
 
-        // 📱 WhatsApp: enviar CON await para respetar rate limits de Evolution API
+        // WhatsApp
         if (appointment.user?.phone) {
           try {
             const startTimeLocale = formatTimeEcuador(startTime);
             const startDateLocale = formatDateEcuador(startTime);
-            const descrText = description ? `\n📝 *Nota / Instrucción:*\n${description}` : '';
+            const descrText = description ? `\n📝 *Notas:*\n${description}` : '';
+            const locClientText = clientLocation ? `\n📍 *Ubicación Cliente:*\n${clientLocation}` : '';
+            const locOpText = operatorLocation ? `\n📡 *Ubicación Operario (GPS):*\n${operatorLocation}` : '';
             
-            const message = `*Notificación Aquatech*\n\nHola ${appointment.user.name}, tienes una *nueva tarea* asignada:\n📌 *${title}*\n📅 Fecha: ${startDateLocale}\n⏰ Hora: ${startTimeLocale}${descrText}\n\nConsulta más detalles en tu perfil.`;
-            
-            await sendWhatsAppMessage(appointment.user.phone, message);
+            // Los links solo para videos (según requerimiento)
+            const videoLinks = attachmentLinks?.filter((a: any) => a.type === 'video') || [];
+            let linksText = '';
+            if (videoLinks.length) {
+              linksText += `\n\n🎥 *Videos (Links):*\n${videoLinks.map((a: any) => `• ${a.url}`).join('\n')}`;
+            }
+
+            const message = `*Notificación Aquatech*\n\nHola ${appointment.user.name}, tienes una *nueva tarea* asignada:\n📌 *${title}*\n📅 Fecha: ${startDateLocale}\n⏰ Hora: ${startTimeLocale}${descrText}${locClientText}${locOpText}${linksText}\n\nConsulta más detalles en tu perfil.`;
+
+            // Enviar mensaje de texto + adjuntos reales (imgs, audios, docs)
+            await sendWhatsAppMessage(appointment.user.phone, message, attachments);
             console.log(`✅ WA enviado a ${appointment.user.name} (${appointment.user.phone})`);
           } catch (err) {
             console.error(`❌ Error enviando WA a ${appointment.user.name}:`, err);
           }
 
-          // Delay de 1.5s entre envíos para respetar rate-limit de Evolution API
           if (i < results.length - 1) {
             await new Promise(resolve => setTimeout(resolve, 1500));
           }
@@ -157,7 +165,6 @@ export async function POST(request: Request) {
       }
     }
 
-    // Lanzar notificaciones sin bloquear la respuesta HTTP
     sendNotifications().catch(err => {
       console.error('Error global en notificaciones:', err);
     })

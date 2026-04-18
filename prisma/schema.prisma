@@ -8,23 +8,23 @@ datasource db {
 }
 
 model User {
-  id               Int               @id @default(autoincrement())
-  name             String            @db.VarChar(255)
-  email            String?           @unique @db.VarChar(255)
-  phone            String?           @db.VarChar(50)
-  role             UserRole          @default(OPERATOR)
-  username         String            @unique @db.VarChar(100)
-  passwordHash     String            @map("password_hash") @db.VarChar(255)
-  isActive         Boolean           @default(true) @map("is_active")
-  createdAt        DateTime          @default(now()) @map("created_at")
-  updatedAt        DateTime          @updatedAt @map("updated_at")
-  image            String?           @db.LongText
-  sessionVersion   Int               @default(1) @map("session_version")
-  displayPassword  String?           @map("display_password") @db.VarChar(255)
-  branch           String?           @db.VarChar(100)
-  permissions      String?           @db.Text
+  id               Int                @id @default(autoincrement())
+  name             String             @db.VarChar(255)
+  email            String?            @unique @db.VarChar(255)
+  phone            String?            @db.VarChar(50)
+  role             UserRole           @default(OPERATOR)
+  username         String             @unique @db.VarChar(100)
+  passwordHash     String             @map("password_hash") @db.VarChar(255)
+  isActive         Boolean            @default(true) @map("is_active")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  image            String?            @db.LongText
+  sessionVersion   Int                @default(1) @map("session_version")
+  displayPassword  String?            @map("display_password") @db.VarChar(255)
+  branch           String?            @db.VarChar(100)
+  permissions      String?            @db.Text
   appointments     Appointment[]
-  blogPosts        BlogPost[]        @relation("BlogPostAuthor")
+  blogPosts        BlogPost[]         @relation("BlogPostAuthor")
   chatMessages     ChatMessage[]
   contentPipelines ContentPipeline[]
   dayRecords       DayRecord[]
@@ -32,9 +32,9 @@ model User {
   phaseCompletions PhaseCompletion[]
   projectTeams     ProjectTeam[]
   projectViews     ProjectView[]
-  createdProjects  Project[]         @relation("ProjectCreator")
-  createdQuotes    Quote[]           @relation("QuoteCreator")
+  createdProjects  Project[]          @relation("ProjectCreator")
   pushSubs         PushSubscription[]
+  createdQuotes    Quote[]            @relation("QuoteCreator")
 
   @@map("users")
 }
@@ -202,7 +202,6 @@ model BudgetItem {
 model Quote {
   id              Int         @id @default(autoincrement())
   projectId       Int?        @map("project_id")
-  isBudget        Boolean     @default(false) @map("is_budget")
   clientId        Int         @map("client_id")
   status          QuoteStatus @default(BORRADOR)
   totalAmount     Decimal     @default(0.00) @map("total_amount") @db.Decimal(12, 2)
@@ -221,6 +220,10 @@ model Quote {
   subtotal15      Decimal     @default(0.00) @map("subtotal_15") @db.Decimal(12, 2)
   subtotal        Decimal     @default(0.00) @map("subtotal") @db.Decimal(12, 2)
   userId          Int?        @map("user_id")
+  optionalTitle       String?     @db.VarChar(255)
+  optionalDescription String?     @db.Text
+  optionalImage       String?     @db.MediumText
+  isBudget        Boolean     @default(false) @map("is_budget")
   items           QuoteItem[]
   client          Client      @relation(fields: [clientId], references: [id])
   project         Project?    @relation(fields: [projectId], references: [id])
@@ -278,10 +281,10 @@ model ChatMessage {
   userId    Int           @map("user_id")
   content   String?       @db.Text
   type      MessageType   @default(TEXT)
-  extraData Json?       @map("extra_data")
   createdAt DateTime      @default(now()) @map("created_at")
   lat       Decimal?      @db.Decimal(10, 7)
   lng       Decimal?      @db.Decimal(10, 7)
+  extraData String?       @map("extra_data") @db.LongText
   phase     ProjectPhase? @relation(fields: [phaseId], references: [id])
   project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
   user      User          @relation(fields: [userId], references: [id])
@@ -313,22 +316,25 @@ model ProjectView {
   userId    Int      @map("user_id")
   projectId Int      @map("project_id")
   lastSeen  DateTime @default(now()) @map("last_seen")
-  user      User     @relation(fields: [userId], references: [id])
   project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
 
   @@unique([userId, projectId])
+  @@index([projectId], map: "project_views_project_id_fkey")
   @@map("project_views")
 }
 
 model ProjectGalleryItem {
-  id        Int      @id @default(autoincrement())
-  projectId Int      @map("project_id")
-  url       String   @db.VarChar(500)
-  filename  String   @db.VarChar(255)
-  mimeType  String   @map("mime_type") @db.VarChar(100)
-  sizeBytes Int?     @map("size_bytes")
-  createdAt DateTime @default(now()) @map("created_at")
-  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  id         Int      @id @default(autoincrement())
+  projectId  Int      @map("project_id")
+  url        String   @db.VarChar(500)
+  filename   String   @db.VarChar(255)
+  mimeType   String   @map("mime_type") @db.VarChar(100)
+  sizeBytes  Int?     @map("size_bytes")
+  category   String   @default("MASTER") @db.VarChar(50)
+  isOfficial Boolean  @default(true) @map("is_official")
+  createdAt  DateTime @default(now()) @map("created_at")
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
 
   @@index([projectId])
   @@map("project_gallery_items")
@@ -642,6 +648,7 @@ enum MessageType {
   DAY_END
   PHASE_COMPLETE
   DOCUMENT
+  LOCATION
 }
 
 enum PipelineStatus {
@@ -698,4 +705,16 @@ enum SocialPostStatus {
 enum SocialPlatform {
   FACEBOOK
   INSTAGRAM
+}
+
+model Resource {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(255)
+  description String?  @db.Text
+  imageUrl    String?  @db.LongText
+  type        String?  @db.VarChar(100)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("resources")
 }

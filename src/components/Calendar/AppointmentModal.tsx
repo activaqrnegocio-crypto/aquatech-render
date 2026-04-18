@@ -41,7 +41,10 @@ export default function AppointmentModal({
     endTime: '',
     projectId: '',
     userId: userId > 0 ? userId.toString() : '',
-    status: 'PENDIENTE'
+    clientLocation: '',
+    operatorLocation: '',
+    mediaFiles: [] as File[],
+    previews: [] as { url: string; type: string; name: string }[]
   })
 
   useEffect(() => {
@@ -59,7 +62,10 @@ export default function AppointmentModal({
           endTime: formatForDateTimeInput(initialData.endTime),
           projectId: initialData.projectId?.toString() || '',
           userId: initialData.userId?.toString() || (userId > 0 ? userId.toString() : ''),
-          status: initialData.status || 'PENDIENTE'
+          clientLocation: initialData.clientLocation || '',
+          operatorLocation: initialData.operatorLocation || '',
+          mediaFiles: [],
+          previews: []
         })
       } else {
         const now = getLocalNow()
@@ -75,15 +81,21 @@ export default function AppointmentModal({
           endTime: formatForDateTimeInput(inOneHour),
           projectId: '',
           userId: userId > 0 ? userId.toString() : '',
-          status: 'PENDIENTE'
+          clientLocation: '',
+          operatorLocation: '',
+          mediaFiles: [],
+          previews: []
         })
       }
     } else {
       document.body.style.overflow = ''
+      // Cleanup previews when closing
+      formData.previews.forEach(p => URL.revokeObjectURL(p.url))
     }
 
     return () => {
       document.body.style.overflow = ''
+      formData.previews.forEach(p => URL.revokeObjectURL(p.url))
     }
   }, [isOpen, initialData, userId])
 
@@ -115,8 +127,9 @@ export default function AppointmentModal({
     }
   }, [selectedOperatorIds, isAdminView, isOpen])
 
+  const [isRecording, setIsRecording] = useState(false)
+
   if (!isOpen || !mounted) return null
-  const body = document.body
 
   const toggleOperator = (id: number) => {
     setSelectedOperatorIds(prev =>
@@ -132,52 +145,151 @@ export default function AppointmentModal({
     }
   }
 
+  const startSpeechToText = () => {
+    const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    if (!SpeechRecognition) {
+      alert('Tu navegador no soporta transcripción de voz.')
+      return
+    }
+
+    const recognition = new SpeechRecognition()
+    recognition.lang = 'es-ES'
+    recognition.continuous = false
+    recognition.interimResults = false
+
+    recognition.onstart = () => setIsRecording(true)
+    recognition.onend = () => setIsRecording(false)
+    recognition.onerror = () => setIsRecording(false)
+
+    recognition.onresult = (event: any) => {
+      const transcript = event.results[0][0].transcript
+      setFormData(prev => ({
+        ...prev,
+        description: prev.description ? `${prev.description} ${transcript}` : transcript
+      }))
+    }
+
+    recognition.start()
+  }
+
   const getTargetUserIds = (): number[] => {
     return selectedOperatorIds
   }
 
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files ? Array.from(e.target.files) : []
+    const newPreviews = files.map(file => ({
+      url: URL.createObjectURL(file),
+      type: file.type,
+      name: file.name
+    }))
+    setFormData(prev => ({
+      ...prev, 
+      mediaFiles: [...prev.mediaFiles, ...files],
+      previews: [...prev.previews, ...newPreviews]
+    }))
+  }
+
+  const removeFile = (idx: number) => {
+    setFormData(prev => {
+      URL.revokeObjectURL(prev.previews[idx].url)
+      return {
+        ...prev,
+        mediaFiles: prev.mediaFiles.filter((_, i) => i !== idx),
+        previews: prev.previews.filter((_, i) => i !== idx)
+      }
+    })
+  }
+
+  // Helper para comprimir imágenes (mantener para ahorro de espacio en WA real)
+  const compressImage = (file: File): Promise<File> => {
+    return new Promise((resolve) => {
+      if (!file.type.startsWith('image/')) return resolve(file)
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        const img = new Image()
+        img.onload = () => {
+          const canvas = document.createElement('canvas')
+          let width = img.width, height = img.height
+          const MAX_WIDTH = 1200
+          if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
+          canvas.width = width; canvas.height = height
+          const ctx = canvas.getContext('2d')
+          ctx?.drawImage(img, 0, 0, width, height)
+          canvas.toBlob((blob) => {
+            resolve(blob ? new File([blob], file.name, { type: 'image/jpeg' }) : file)
+          }, 'image/jpeg', 0.6)
+        }
+        img.src = e.target?.result as string
+      }
+      reader.readAsDataURL(file)
+    })
+  }
+
+  // Helper para procesar archivos según tipo (Videos -> CDN, Otros -> Base64)
+  const processFilesMixed = async (files: File[]) => {
+    const realFiles: any[] = []
+    const linkFiles: any[] = []
+    
+    for (const file of files) {
+      const isVideo = file.type.startsWith('video/')
+      
+      if (isVideo) {
+        // Subir a Bunny.net
+        const resp = await fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
+          method: 'POST',
+          body: file
+        })
+        if (resp.ok) {
+          const { url } = await resp.json()
+          linkFiles.push({ type: 'video', name: file.name, url })
+        }
+      } else {
+        // Convertir a Base64 (comprimir si es imagen)
+        const processedFile = file.type.startsWith('image/') ? await compressImage(file) : file
+        const data = await new Promise<string>((resolve) => {
+          const reader = new FileReader()
+          reader.onload = () => resolve((reader.result as string).split(',')[1])
+          reader.readAsDataURL(processedFile)
+        })
+        realFiles.push({ type: processedFile.type.split('/')[0], name: processedFile.name, data })
+      }
+    }
+    return { realFiles, linkFiles }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    
-    // Validar que fin > inicio
     const start = new Date(formData.startTime)
     const end = new Date(formData.endTime)
-    
-    if (end <= start) {
-      alert('Error: La fecha de fin debe ser posterior a la fecha de inicio.')
-      return
-    }
+    if (end <= start) { alert('Error: La fecha de fin debe ser posterior.'); return; }
 
     const targetUserIds = getTargetUserIds()
-    if (targetUserIds.length === 0) {
-      alert('Debes seleccionar al menos un operador.')
-      return
-    }
+    if (targetUserIds.length === 0) { alert('Selecciona al menos un operador.'); return; }
 
     setLoading(true)
     try {
+      const { realFiles, linkFiles } = await processFilesMixed(formData.mediaFiles)
+
+      const payload = {
+        ...formData,
+        startTime: forceEcuadorTZ(formData.startTime),
+        endTime: forceEcuadorTZ(formData.endTime),
+        attachments: realFiles, // Estos se envían como archivos reales
+        attachmentLinks: linkFiles, // Estos van como links en el mensaje
+        userIds: targetUserIds,
+        userId: targetUserIds[0]
+      }
+
       if (initialData?.id) {
-        // Editing — single save
-        await onSave({
-          ...formData,
-          startTime: forceEcuadorTZ(formData.startTime),
-          endTime: forceEcuadorTZ(formData.endTime),
-          userId: Number(formData.userId),
-          id: initialData.id
-        })
+        await onSave({ ...payload, id: initialData.id })
       } else {
-        // Creating — send all target user IDs  
-        await onSave({
-          ...formData,
-          startTime: forceEcuadorTZ(formData.startTime),
-          endTime: forceEcuadorTZ(formData.endTime),
-          userIds: targetUserIds,
-          userId: targetUserIds[0], // fallback for single
-        })
+        await onSave(payload)
       }
       onClose()
     } catch (error) {
-      alert('Error al guardar el agendamiento')
+      console.error('Error:', error)
+      alert('Error al guardar')
     } finally {
       setLoading(false)
     }
@@ -195,121 +307,108 @@ export default function AppointmentModal({
 
         <form onSubmit={handleSubmit} className="modal-form">
           <div className="modal-scroll">
-            <div className="modal-grid">
-              <div className="modal-col">
-                <div className="form-group">
-                  <label className="form-label">Título de la Actividad</label>
+            <div className="modal-content-layout">
+              {/* Columna Izquierda: Identidad y Ubicación */}
+              <div className="modal-column">
+                <div className="form-group-compact">
+                  <label className="form-label-aquatech">Título de la Actividad</label>
                   <input 
-                    className="form-input"
+                    className="form-input-aquatech"
                     type="text"
                     required
                     value={formData.title}
                     onChange={e => setFormData({...formData, title: e.target.value})}
-                    placeholder="Ej: Mantenimiento Preventivo"
+                    placeholder="Ej: Mantenimiento"
                   />
                 </div>
 
                 {isAdminView && (
-                  <div className="form-group">
-                    <label className="form-label">Asignar a Operador</label>
-                    <div style={{ position: 'relative' }}>
-                      <div 
-                        className={`form-select ${isEditing ? 'disabled' : ''}`} 
-                        style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', cursor: isEditing ? 'not-allowed' : 'pointer' }}
-                        onClick={() => !isEditing && setIsDropdownOpen(!isDropdownOpen)}
-                      >
-                        <span style={{ fontSize: '0.85rem' }}>
-                          {selectedOperatorIds.length === 0 
-                            ? 'Seleccionar operador...' 
-                            : selectedOperatorIds.length === operators.length 
-                              ? 'Todos los operadores seleccionados'
-                              : `${selectedOperatorIds.length} operador${selectedOperatorIds.length > 1 ? 'es' : ''} seleccionado${selectedOperatorIds.length > 1 ? 's' : ''}`
-                          }
-                        </span>
-                        <span style={{ fontSize: '0.7rem' }}>▼</span>
+                  <div className="form-group-compact">
+                    <label className="form-label-aquatech">Asignar Operadores</label>
+                    <div className="operator-dropdown-wrapper">
+                      <div className="operator-dropdown-trigger" onClick={() => !isEditing && setIsDropdownOpen(!isDropdownOpen)}>
+                        {selectedOperatorIds.length === 0 ? 'Seleccionar operador...' : `${selectedOperatorIds.length} seleccionados`}
                       </div>
-
                       {isDropdownOpen && !isEditing && (
-                        <div style={{
-                          position: 'absolute',
-                          top: '100%',
-                          left: 0,
-                          right: 0,
-                          marginTop: '4px',
-                          background: 'var(--bg-card)',
-                          border: '1px solid var(--border-active)',
-                          borderRadius: 'var(--radius-md)',
-                          boxShadow: 'var(--shadow-md)',
-                          zIndex: 10,
-                          maxHeight: '350px',
-                          overflowY: 'auto'
-                        }}>
-                          <label className={`assign-multi-item ${selectedOperatorIds.length === operators.length ? 'checked' : ''}`} style={{ borderBottom: '1px solid var(--border)', borderRadius: 'var(--radius-md) var(--radius-md) 0 0' }}>
-                            <input
-                              type="checkbox"
-                              checked={selectedOperatorIds.length === operators.length}
-                              onChange={() => {
-                                toggleAllOperators()
-                                setFormData(prev => ({ ...prev, projectId: '' }))
-                              }}
-                            />
-                            <span className="assign-multi-name" style={{ fontWeight: 700 }}>TODOS</span>
+                        <div className="operator-dropdown-menu">
+                          <label className="operator-item">
+                            <input type="checkbox" checked={selectedOperatorIds.length === operators.length} onChange={toggleAllOperators} />
+                            <span>TODOS</span>
                           </label>
-
-                          <div style={{ padding: '4px' }}>
-                            {operators.map(op => (
-                              <label key={op.id} className={`assign-multi-item ${selectedOperatorIds.includes(op.id) ? 'checked' : ''}`}>
-                                <input
-                                  type="checkbox"
-                                  checked={selectedOperatorIds.includes(op.id)}
-                                  onChange={() => {
-                                    toggleOperator(op.id)
-                                    setFormData(prev => ({ ...prev, projectId: '' }))
-                                  }}
-                                />
-                                <span className="assign-multi-name">{op.name}</span>
-                              </label>
-                            ))}
-                          </div>
+                          {operators.map(op => (
+                            <label key={op.id} className="operator-item">
+                              <input type="checkbox" checked={selectedOperatorIds.includes(op.id)} onChange={() => toggleOperator(op.id)} />
+                              <span>{op.name}</span>
+                            </label>
+                          ))}
                         </div>
                       )}
                     </div>
                   </div>
                 )}
 
-                <div className="form-group">
-                  <label className="form-label">Proyecto Relacionado (Opcional)</label>
+                <div className="form-group-compact">
+                  <label className="form-label-aquatech">Proyecto Relacionado</label>
                   <select 
-                    className="form-select"
+                    className="form-select-aquatech"
                     value={formData.projectId}
                     onChange={e => setFormData({...formData, projectId: e.target.value})}
                   >
-                    <option value="">No vinculado a proyecto</option>
+                    <option value="">No vinculado</option>
                     {filteredProjects.map(p => (
-                      <option key={p.id} value={p.id}>
-                        {p.title} ({p.status === 'LEAD' ? 'Negociando' : p.status})
-                      </option>
+                      <option key={p.id} value={p.id}>{p.title}</option>
                     ))}
                   </select>
                 </div>
+
+                <div className="location-row-aquatech">
+                  <div className="form-group-compact">
+                    <label className="form-label-aquatech">📍 Cliente</label>
+                    <input
+                      className="form-input-aquatech"
+                      type="text"
+                      placeholder="Link..."
+                      value={formData.clientLocation || ''}
+                      onChange={e => setFormData({...formData, clientLocation: e.target.value})}
+                    />
+                  </div>
+                  <div className="form-group-compact">
+                    <label className="form-label-aquatech">👷 Operario</label>
+                    <button 
+                      type="button" 
+                      className="btn-gps-aquatech" 
+                      onClick={() => {
+                        if (navigator.geolocation) {
+                          navigator.geolocation.getCurrentPosition(pos => {
+                            const link = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
+                            setFormData(prev => ({...prev, operatorLocation: link}));
+                          });
+                        }
+                      }}
+                    >
+                      {formData.operatorLocation ? '✨ OK' : '📡 GPS'}
+                    </button>
+                  </div>
+                </div>
               </div>
 
-              <div className="modal-col">
-                <div className="datetime-row">
-                  <div className="form-group">
-                    <label className="form-label">Inicio</label>
+              {/* Columna Derecha: Tiempo, Multimedia y Notas */}
+              <div className="modal-column">
+                <div className="time-row-aquatech">
+                  <div className="form-group-compact">
+                    <label className="form-label-aquatech">Horario Inicio</label>
                     <input 
-                      className="form-input"
+                      className="form-input-aquatech"
                       type="datetime-local"
                       required
                       value={formData.startTime}
                       onChange={e => setFormData({...formData, startTime: e.target.value})}
                     />
                   </div>
-                  <div className="form-group">
-                    <label className="form-label">Fin</label>
+                  <div className="form-group-compact">
+                    <label className="form-label-aquatech">Horario Fin</label>
                     <input 
-                      className="form-input"
+                      className="form-input-aquatech"
                       type="datetime-local"
                       required
                       value={formData.endTime}
@@ -318,27 +417,73 @@ export default function AppointmentModal({
                   </div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Estado</label>
-                  <select 
-                    className="form-select"
-                    value={formData.status}
-                    onChange={e => setFormData({...formData, status: e.target.value})}
+                <div className="form-group-compact">
+                  <label className="form-label-aquatech">📸 Adjuntos (Max 5MB)</label>
+                  <div 
+                    className="upload-zone-aquatech" 
+                    onClick={(e) => {
+                      if ((e.target as HTMLElement).closest('.preview-item-aquatech')) return;
+                      document.getElementById('file-input-mobile')?.click();
+                    }}
                   >
-                    <option value="PENDIENTE">Pendiente</option>
-                    <option value="EN_PROGRESO">En Progreso</option>
-                    <option value="COMPLETADA">Completada</option>
-                    <option value="CANCELADA">Cancelada</option>
-                  </select>
+                    <input
+                      id="file-input-mobile"
+                      type="file"
+                      accept="image/*,video/*,audio/*,application/pdf"
+                      multiple
+                      style={{ display: 'none' }}
+                      onChange={handleFileChange}
+                    />
+                    {formData.previews.length === 0 ? (
+                      <div className="upload-info-compact">
+                        <span>🖼️ 🎬 🎙️</span>
+                        <span>Seleccionar archivos</span>
+                      </div>
+                    ) : (
+                      <div className="preview-gallery-aquatech">
+                        {formData.previews.map((file, idx) => (
+                          <div key={idx} className="preview-item-aquatech">
+                            {file.type.startsWith('image/') ? (
+                              <img src={file.url} alt="preview" />
+                            ) : (
+                              <div className="preview-icon-aquatech">
+                                {file.type.startsWith('video/') ? '🎬' : 
+                                 file.type.startsWith('audio/') ? '🎙️' : '📄'}
+                              </div>
+                            )}
+                            <button 
+                              type="button"
+                              className="remove-preview-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                removeFile(idx);
+                              }}
+                            >✕</button>
+                          </div>
+                        ))}
+                        <div className="add-more-preview">+</div>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
-                <div className="form-group">
-                  <label className="form-label">Notas / Instrucciones</label>
+                <div className="form-group-compact">
+                  <div className="label-with-action-aquatech">
+                    <label className="form-label-aquatech">📝 Notas / Instrucciones</label>
+                    <button 
+                      type="button" 
+                      className={`btn-voice-aquatech ${isRecording ? 'recording' : ''}`}
+                      onClick={startSpeechToText}
+                      title="Dictar notas"
+                    >
+                      {isRecording ? '🔴 Grabando...' : '🎤 Dictar'}
+                    </button>
+                  </div>
                   <textarea 
-                    className="form-textarea modal-textarea"
+                    className="form-textarea-aquatech"
                     value={formData.description}
                     onChange={e => setFormData({...formData, description: e.target.value})}
-                    placeholder="Detalles adicionales para el operador..."
+                    placeholder="Detalles..."
                   />
                 </div>
               </div>
@@ -382,155 +527,350 @@ export default function AppointmentModal({
         .modal-overlay {
           position: fixed;
           inset: 0;
-          background: rgba(0,0,0,0.85);
+          background: rgba(0,0,0,0.8);
           backdrop-filter: blur(8px);
           display: flex;
           align-items: center;
           justify-content: center;
           z-index: 20000000;
-          padding: 24px;
         }
 
         .modal-container {
-          width: 100%;
-          max-width: 960px;
-          height: auto;
-          max-height: calc(100vh - 48px);
+          width: 95vw;
+          max-width: 1100px;
+          height: 95dvh; /* Forzar altura relativa al viewport */
+          background: #010816;
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 12px;
           display: flex;
           flex-direction: column;
-          background: var(--bg-card);
-          border: 1px solid var(--border-active);
-          border-radius: var(--radius-lg);
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+          overflow: hidden; /* Evitar que el contenedor crezca */
+        }
+
+        .modal-form {
+          flex: 1;
+          display: flex;
+          flex-direction: column;
           overflow: hidden;
-          box-shadow: 0 20px 50px rgba(0,0,0,0.5);
         }
 
         .modal-header {
           flex-shrink: 0;
-          border-bottom: 1px solid var(--border);
-          padding: var(--space-md) var(--space-lg);
+          padding: 16px 24px;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
         }
 
-        .modal-form {
-          display: flex;
-          flex-direction: column;
-          flex: 1;
-          min-height: 0;
-          overflow: hidden;
+        .card-title {
+          color: white;
+          font-size: 1.2rem;
+          font-weight: 700;
         }
 
         .modal-scroll {
-          flex: 1;
+          padding: 24px;
           overflow-y: auto;
-          -webkit-overflow-scrolling: touch;
-          padding: var(--space-lg);
         }
 
-        .modal-grid {
+        .modal-content-layout {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: var(--space-lg);
+          gap: 32px;
         }
 
-        .modal-col {
+        .modal-column {
           display: flex;
           flex-direction: column;
-          gap: var(--space-md);
+          gap: 20px;
         }
 
-        .modal-textarea {
-          min-height: 80px;
-          resize: vertical;
+        .form-group-compact {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
         }
 
-        .datetime-row {
+        .form-label-aquatech {
+          color: #58c7ff; /* Celeste brillante exacto */
+          font-size: 0.75rem;
+          font-weight: 700;
+          text-transform: uppercase;
+          letter-spacing: 0.8px;
+        }
+
+        .form-input-aquatech, .form-select-aquatech, .form-textarea-aquatech, .operator-dropdown-trigger {
+          background: rgba(255,255,255,0.03); /* Fondo más suave como en el calendario */
+          border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 8px;
+          color: white;
+          padding: 10px 14px;
+          font-size: 0.95rem;
+          outline: none;
+          transition: all 0.2s;
+          appearance: none; /* Eliminar estilo nativo para mayor control */
+        }
+
+        .form-select-aquatech {
+          background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+          background-repeat: no-repeat;
+          background-position: right 12px center;
+          background-size: 16px;
+          padding-right: 40px;
+        }
+
+        .form-select-aquatech option {
+          background-color: #010816; /* Forzar fondo oscuro en las opciones */
+          color: white;
+        }
+
+        .form-input-aquatech:focus, .form-select-aquatech:focus {
+          border-color: #58c7ff;
+          background: rgba(255,255,255,0.05);
+        }
+
+        .form-textarea-aquatech {
+          height: 80px;
+          resize: none;
+          overflow-y: auto;
+        }
+
+        .label-with-action-aquatech {
+          display: flex;
+          justify-content: space-between;
+          align-items: center;
+          margin-bottom: 4px;
+        }
+
+        .btn-voice-aquatech {
+          background: rgba(88, 199, 255, 0.1);
+          border: 1px solid rgba(88, 199, 255, 0.3);
+          color: #58c7ff;
+          padding: 4px 10px;
+          border-radius: 6px;
+          font-size: 0.75rem;
+          font-weight: 600;
+          cursor: pointer;
+          display: flex;
+          align-items: center;
+          gap: 5px;
+          transition: all 0.2s;
+        }
+
+        .btn-voice-aquatech.recording {
+          background: rgba(255, 0, 0, 0.2);
+          border-color: rgba(255, 0, 0, 0.5);
+          color: #ff4d4d;
+          animation: pulse-red 1.5s infinite;
+        }
+
+        @keyframes pulse-red {
+          0% { transform: scale(1); }
+          50% { transform: scale(1.05); }
+          100% { transform: scale(1); }
+        }
+
+        .location-row-aquatech {
           display: grid;
           grid-template-columns: 1fr 1fr;
-          gap: var(--space-sm);
+          gap: 10px;
+          background: rgba(255,255,255,0.02);
+          padding: 10px;
+          border-radius: 10px;
+          border: 1px solid rgba(255,255,255,0.05);
         }
 
-        .modal-footer {
+        .btn-gps-aquatech {
+          background: transparent;
+          border: 1px solid #58c7ff;
+          color: white;
+          padding: 10px;
+          border-radius: 8px;
+          cursor: pointer;
+          font-weight: 600;
+          height: 100%;
+          min-height: 45px;
+        }
+
+        .time-row-aquatech {
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          gap: 16px;
+        }
+
+        .upload-zone-aquatech {
+          border: 1px dashed rgba(255,255,255,0.2);
+          padding: 12px;
+          border-radius: 10px;
+          text-align: center;
+          cursor: pointer;
+          min-height: 80px;
           display: flex;
-          gap: var(--space-sm);
-          padding: var(--space-md) var(--space-lg);
-          border-top: 1px solid var(--border);
-          flex-shrink: 0;
-          background: var(--bg-card);
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+        .upload-zone-aquatech:hover { background: rgba(255,255,255,0.02); border-color: #58c7ff; }
+
+        .preview-gallery-aquatech {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 8px;
+          width: 100%;
         }
 
-        .modal-btn {
-          flex: 1;
-          min-width: 0;
+        .preview-item-aquatech {
+          width: 50px;
+          height: 50px;
+          border-radius: 6px;
+          overflow: hidden;
+          position: relative;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.1);
         }
 
-        .assign-multi-item {
+        .preview-item-aquatech img {
+          width: 100%;
+          height: 100%;
+          object-fit: cover;
+        }
+
+        .preview-icon-aquatech {
+          width: 100%;
+          height: 100%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.2rem;
+        }
+
+        .remove-preview-btn {
+          position: absolute;
+          top: 0; right: 0;
+          background: rgba(255,0,0,0.8);
+          color: white;
+          border: none;
+          width: 16px; height: 16px;
+          font-size: 10px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          cursor: pointer;
+        }
+
+        .add-more-preview {
+          width: 50px; height: 50px;
+          border: 1px dashed rgba(255,255,255,0.2);
+          border-radius: 6px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 1.2rem;
+          color: rgba(255,255,255,0.5);
+        }
+
+        .upload-info-compact {
+          display: flex;
+          flex-direction: column;
+          gap: 4px;
+        }
+        .upload-info-compact span:first-child { font-size: 1.5rem; }
+        .upload-info-compact span:last-child { font-size: 0.8rem; opacity: 0.6; }
+
+        .operator-dropdown-wrapper { position: relative; }
+        .operator-dropdown-trigger { cursor: pointer; display: flex; justify-content: space-between; align-items: center; }
+        .operator-dropdown-trigger::after { content: '▼'; font-size: 0.7rem; opacity: 0.5; }
+        
+        .operator-dropdown-menu {
+          position: absolute;
+          top: 100%; left: 0; right: 0;
+          background: #0f172a;
+          border: 1px solid rgba(255,255,255,0.1);
+          z-index: 100;
+          max-height: 200px;
+          overflow-y: auto;
+          margin-top: 5px;
+          border-radius: 8px;
+        }
+        .operator-item {
           display: flex;
           align-items: center;
           gap: 10px;
-          padding: 8px 12px;
-          border-radius: var(--radius-sm);
+          padding: 10px 16px;
           cursor: pointer;
-          transition: background 0.2s ease;
         }
-        .assign-multi-item:hover {
-          background: var(--bg-surface);
+        .operator-item:hover { background: rgba(255,255,255,0.05); }
+
+        .modal-footer {
+          padding: 20px 24px;
+          border-top: 1px solid rgba(255,255,255,0.05);
+          display: flex;
+          justify-content: flex-end;
+          gap: 12px;
         }
-        .assign-multi-item.checked {
-          background: var(--primary-glow);
+
+        .btn-primary {
+          background: #58c7ff;
+          color: #000;
+          font-weight: 700;
+          border: none;
+          padding: 12px 30px;
+          border-radius: 8px;
+          cursor: pointer;
         }
-        .assign-multi-item input[type="checkbox"] {
-          accent-color: var(--primary);
-          width: 16px;
-          height: 16px;
-        }
-        .assign-multi-name {
-          font-size: 0.85rem;
-          font-weight: 500;
-          color: var(--text);
+
+        .btn-secondary {
+          background: transparent;
+          border: 1px solid rgba(255,255,255,0.2);
+          color: white;
+          padding: 12px 30px;
+          border-radius: 8px;
         }
 
         @media (max-width: 768px) {
-          .modal-overlay {
-            padding: 0;
-            z-index: 20000000 !important;
-            background: var(--bg-body);
-            display: block;
+          .modal-overlay { background: #010816; overflow: hidden; }
+          .modal-container { 
+            width: 100vw; height: 100dvh; max-height: 100dvh; 
+            border-radius: 0; border: none;
+            background: #010816;
+            overflow: hidden;
           }
-          .modal-container {
-            width: 100% !important;
-            max-width: 100% !important;
-            height: 100dvh !important;
-            max-height: 100dvh !important;
-            border-radius: 0;
-            border: none;
-            position: fixed;
-            top: 0;
-            left: 0;
+          .modal-header { padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); }
+          .modal-scroll { 
+            padding: 16px; 
+            overflow-y: auto; /* Permitir scroll si es muy necesario, pero compactado */
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
           }
-          .modal-scroll {
-            padding: var(--space-md);
+          .modal-content-layout { 
+            display: flex;
+            flex-direction: column;
+            gap: 12px; 
           }
-          .modal-grid {
-            grid-template-columns: 1fr;
-            gap: var(--space-sm);
+          .modal-column { 
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
           }
-          .modal-footer {
-            padding: var(--space-md);
-            padding-bottom: max(var(--space-md), env(safe-area-inset-bottom));
-            flex-direction: row; /* Default mobile horizontal */
-            gap: 10px;
+          .form-group-compact { gap: 4px; }
+          .form-label-aquatech { font-size: 0.7rem; }
+          .form-input-aquatech, .form-select-aquatech, .operator-dropdown-trigger { padding: 10px 14px; font-size: 0.85rem; }
+          .location-row-aquatech { grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
+          .btn-gps-aquatech { min-height: 40px; padding: 8px; font-size: 0.8rem; }
+          .time-row-aquatech { 
+            grid-template-columns: 1fr; /* Cambiamos a una sola columna en móvil para evitar cortes */
+            gap: 10px; 
           }
-          .modal-header {
-             padding: 12px 16px;
-          }
-          .modal-header h3 {
-             font-size: 1.1rem;
-          }
-        }
-
-        @media (max-width: 480px) {
-          .modal-footer {
-            flex-direction: column; /* Stack on very small screens */
+          .upload-zone-aquatech { padding: 12px; }
+          .form-textarea-aquatech { min-height: 60px; }
+          .modal-footer { 
+            position: relative; 
+            padding: 16px;
+            background: #010816;
+            border-top: 1px solid rgba(255,255,255,0.1);
           }
         }
       `}</style>

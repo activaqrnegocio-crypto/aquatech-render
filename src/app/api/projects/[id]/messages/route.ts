@@ -118,7 +118,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
         type: finalType,
         lat: lat ? Number(lat) : null,
         lng: lng ? Number(lng) : null,
-        extraData: extraData ? extraData : undefined,
+        extraData: extraData ? (typeof extraData === 'string' ? extraData : JSON.stringify(extraData)) : undefined,
         createdAt: createdAt ? new Date(createdAt) : undefined,
         media: (mediaUrl || (media && media.url)) ? {
           create: {

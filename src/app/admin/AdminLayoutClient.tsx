@@ -9,7 +9,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   const pathname = usePathname()
   const router = useRouter()
   const isLoginPage = pathname === '/admin/login'
-  const isDashboard = pathname === '/admin' || pathname === '/admin/'
+  const isDashboard = pathname === '/admin' || pathname === '/admin/' || pathname === '/admin/operador' || pathname === '/admin/operador/'
 
   if (isLoginPage) {
     return <main>{children}</main>

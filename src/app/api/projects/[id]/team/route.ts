@@ -4,6 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { isAdmin } from '@/lib/rbac'
 import { notifyUser } from '@/lib/push'
+import { sendWhatsAppMessage } from '@/lib/whatsapp'
 
 export async function PUT(
   request: Request,
@@ -54,9 +55,29 @@ export async function PUT(
       const project = await prisma.project.findUnique({ where: { id: projectId }, select: { title: true } })
       const title = project?.title || 'Nuevo Proyecto'
       
-      Promise.allSettled(newlyAddedIds.map(uid => 
-        notifyUser(uid, `🚀 Has sido asignado a un proyecto`, `Proyecto: ${title}`, `/admin/operador/proyecto/${projectId}`, `project-${projectId}`)
-      )).catch(() => {})
+      const usersToNotify = await prisma.user.findMany({
+        where: { id: { in: newlyAddedIds } },
+        select: { id: true, phone: true, name: true }
+      });
+
+      // Run notifications sequentially and AWAIT them so Next.js doesn't kill the process early
+      for (let i = 0; i < usersToNotify.length; i++) {
+        const user = usersToNotify[i];
+        
+        // Web Push
+        await notifyUser(user.id, `🚀 Has sido asignado a un proyecto`, `Proyecto: ${title}`, `/admin/operador/proyecto/${projectId}`, `project-${projectId}`).catch((e) => console.error('Push error', e));
+        
+        // WhatsApp
+        if (user.phone) {
+          const message = `🚀 *Aquatech CRM*\nHola ${user.name},\nhas sido asignado al proyecto: *${title}*.\nPor favor, revisa la plataforma para más detalles.`;
+          await sendWhatsAppMessage(user.phone, message).catch((e) => console.error('WA error', e));
+        }
+
+        // Delay 1.5s between messages to avoid collapsing Evolution API
+        if (i < usersToNotify.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+      }
     }
 
     return NextResponse.json({ success: true, message: 'Equipo actualizado correctamente' })

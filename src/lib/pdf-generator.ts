@@ -141,6 +141,11 @@ export interface PDFConfig {
   notes?: string;
   action?: 'save' | 'preview' | 'blob' | 'instance';
   sellerName?: string;
+  optionalSection?: {
+    title: string;
+    description: string;
+    imageBase64: string;
+  };
 }
 
 export function generateProfessionalPDF(
@@ -359,6 +364,45 @@ export function generateProfessionalPDF(
   
   doc.setFont('helvetica', 'bold');
   doc.text('**Gracias por preferirnos**', 105, sigY + 14, { align: 'center' });
+
+  // --- 6. OPTIONAL SECTION ---
+  if (config.optionalSection && (config.optionalSection.title || config.optionalSection.imageBase64)) {
+    let optY = sigY + 25;
+    
+    if (optY + 60 > pageHeight - 10) {
+      doc.addPage();
+      addAquatechHeader(doc, `${config.docType} Nº: ${config.docId}`, 'CASTILLO CASTILLO PABLO JOSE');
+      optY = 65;
+    }
+
+    if (config.optionalSection.title) {
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(AQUATECH_BLUE[0], AQUATECH_BLUE[1], AQUATECH_BLUE[2]);
+      doc.text(config.optionalSection.title.toUpperCase(), 105, optY, { align: 'center' });
+      doc.setTextColor(0);
+      optY += 6;
+    }
+    
+    if (config.optionalSection.description) {
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
+      const splitDesc = doc.splitTextToSize(config.optionalSection.description, 160);
+      doc.text(splitDesc, 105, optY, { align: 'center' });
+      optY += (splitDesc.length * 4.5);
+    }
+
+    if (config.optionalSection.imageBase64) {
+      try {
+        const imgWidth = 92;
+        const imgHeight = 52;
+        const imgX = (210 - imgWidth) / 2; // Center horizontally on A4
+        doc.addImage(config.optionalSection.imageBase64, 'JPEG', imgX, optY + 2, imgWidth, imgHeight);
+      } catch (e) {
+        console.error("Error adding optional image to PDF", e);
+      }
+    }
+  }
 
   // --- 6. FILENAME LOGIC ---
   const sanitize = (text: string) => text.trim().toUpperCase().replace(/[^A-Z0-9]/g, '_').replace(/_+/g, '_');

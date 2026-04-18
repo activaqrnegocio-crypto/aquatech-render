@@ -151,7 +151,6 @@ export default function QuotesListClient({ initialQuotes, activeProjects = [] }:
           <thead>
             <tr style={{ borderBottom: '1px solid var(--border-color)', backgroundColor: 'var(--bg-deep)' }}>
               <th style={{ padding: '20px 15px', textAlign: 'left', whiteSpace: 'nowrap' }}>Cliente / ID</th>
-              <th style={{ padding: '20px 15px', textAlign: 'left', whiteSpace: 'nowrap' }}>Estado Presupuesto</th>
               <th style={{ padding: '20px 15px', textAlign: 'left', whiteSpace: 'nowrap' }}>Fecha</th>
               <th style={{ padding: '20px 15px', textAlign: 'right', whiteSpace: 'nowrap' }}>Total</th>
               <th style={{ padding: '20px 15px', textAlign: 'center', whiteSpace: 'nowrap' }}>Acciones Especiales</th>
@@ -165,37 +164,6 @@ export default function QuotesListClient({ initialQuotes, activeProjects = [] }:
                   <div style={{ fontWeight: '600' }}>{quote.clientName || quote.client?.name || 'C. Final'}</div>
                   <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Cotización #{quote.id}</div>
                 </td>
-                <td style={{ padding: '15px' }}>
-                   {quote.isBudget ? (
-                     <div style={{ 
-                       display: 'inline-flex', 
-                       alignItems: 'center', 
-                       gap: '6px', 
-                       color: '#ffffff', 
-                       backgroundColor: '#059669', 
-                       padding: '4px 10px', 
-                       borderRadius: '8px',
-                       boxShadow: '0 2px 6px rgba(5, 150, 105, 0.3)',
-                       border: '1px solid #34d399'
-                     }}>
-                        <span style={{ fontSize: '1.2rem' }}>💎</span>
-                        <div>
-                          <div style={{ fontSize: '0.75rem', fontWeight: '900', letterSpacing: '0.05em' }}>PRESUPUESTO OFICIAL</div>
-                          <div style={{ fontSize: '0.65rem', fontWeight: '600', opacity: 0.9 }}>{quote.project?.title}</div>
-                        </div>
-                     </div>
-                   ) : quote.projectId ? (
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#64748b' }}>
-                        <span style={{ fontSize: '1rem' }}>📎</span>
-                        <div>
-                          <div style={{ fontSize: '0.75rem', fontWeight: '500' }}>Vinculada a {quote.project?.title}</div>
-                          <button onClick={() => openModal('LINK', quote.id)} className="btn btn-link btn-xs" style={{ padding: 0, fontSize: '0.7rem', fontWeight: 'bold', color: 'var(--primary)' }}>Hacer Oficial</button>
-                        </div>
-                      </div>
-                   ) : (
-                     <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem', fontStyle: 'italic' }}>Sin vinculación oficial</div>
-                   )}
-                </td>
                 <td style={{ padding: '15px' }} suppressHydrationWarning>
                    <div style={{ fontSize: '0.85rem' }}>{formatDateEcuador(quote.createdAt)}</div>
                 </td>
@@ -204,16 +172,6 @@ export default function QuotesListClient({ initialQuotes, activeProjects = [] }:
                 </td>
                 <td style={{ padding: '15px', textAlign: 'center' }}>
                   <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                    {(!quote.projectId) && (
-                      <button 
-                        onClick={() => openModal('LINK', quote.id)}
-                        className="btn btn-primary btn-xs" 
-                        style={{ fontSize: '0.65rem', borderRadius: '6px', padding: '6px 10px' }}
-                        title="Sincronizar presupuesto del proyecto"
-                      >
-                        Vincular Presupuesto
-                      </button>
-                    )}
                     <button 
                       onClick={() => openModal('SHARE', quote.id)}
                       className="btn btn-ghost btn-xs" 
@@ -237,7 +195,7 @@ export default function QuotesListClient({ initialQuotes, activeProjects = [] }:
             ))}
             {filtered.length === 0 && (
               <tr>
-                <td colSpan={6} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
+                <td colSpan={5} style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
                   No se encontraron cotizaciones.
                 </td>
               </tr>

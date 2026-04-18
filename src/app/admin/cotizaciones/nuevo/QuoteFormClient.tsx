@@ -130,6 +130,22 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
 
   const [isFirstRender, setIsFirstRender] = useState(true)
 
+  // Optional Section State
+  const [optionalTitle, setOptionalTitle] = useState('')
+  const [optionalDescription, setOptionalDescription] = useState('')
+  const [optionalImageBase64, setOptionalImageBase64] = useState('')
+
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0]
+    if (file) {
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setOptionalImageBase64(reader.result as string)
+      }
+      reader.readAsDataURL(file)
+    }
+  }
+
   // Auto-close project dropdown
   useEffect(() => {
     function handleClickOutside(event: MouseEvent) {
@@ -228,7 +244,10 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
          description: p.name,
          total: p.lineTotal,
          discountPct: p.discountPct || 0
-      }))
+      })),
+      optionalTitle,
+      optionalDescription,
+      optionalImage: optionalImageBase64
     }
 
     setLoading(true)
@@ -259,7 +278,12 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
           docId: initialQuote?.id || 'TEMP',
           notes: payload.notes,
           sellerName: session?.user?.name || 'Aquatech',
-          action: 'instance'
+          action: 'instance',
+          optionalSection: {
+            title: optionalTitle,
+            description: optionalDescription,
+            imageBase64: optionalImageBase64
+          }
         })
         
         bitacoraData = {
@@ -491,10 +515,39 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
             <label style={{ margin: 0, fontWeight: 'bold' }}>Notas / Términos de Referencia</label>
             <div style={{ display: 'flex', gap: '10px' }}>
               <MediaCapture mode="audio" onCapture={(b: Blob, t: string, text: string) => setNotes((prev: string) => (prev ? prev + ' ' + text : text))} />
-              <MediaCapture mode="video" onCapture={(b: Blob, t: string, text: string) => setNotes((prev: string) => (prev ? prev + ' ' + text : text))} />
             </div>
           </div>
           <textarea className="form-input" style={{ height: '100px' }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Términos comerciales, validez, tiempos de entrega..."></textarea>
+        </div>
+        {/* Optional Extra Section */}
+        <div className="card shadow-sm" style={{ padding: '25px', borderRadius: '16px', borderLeft: '4px solid #f59e0b' }}>
+          <h3 style={{ color: '#d97706', display: 'flex', alignItems: 'center', gap: '10px', margin: '0 0 20px 0', fontSize: '1.1rem' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg>
+            Sección Final Adicional (Opcional en PDF)
+          </h3>
+          <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
+            Esta información se agregará al final de la cotización, debajo de las firmas. Ideal para incluir especificaciones técnicas extra o una imagen de referencia.
+          </p>
+          <div style={{ display: 'grid', gap: '15px' }}>
+            <div className="form-group">
+              <label>Título de la Sección</label>
+              <input type="text" className="form-input" value={optionalTitle} onChange={e => setOptionalTitle(e.target.value)} placeholder="Ej: Especificaciones del Filtro..." />
+            </div>
+            <div className="form-group">
+              <label>Descripción</label>
+              <textarea className="form-input" style={{ height: '80px' }} value={optionalDescription} onChange={e => setOptionalDescription(e.target.value)} placeholder="Detalles extra..."></textarea>
+            </div>
+            <div className="form-group">
+              <label>Imagen Adjunta</label>
+              <input type="file" accept="image/*" className="form-input" onChange={handleImageUpload} />
+              {optionalImageBase64 && (
+                <div style={{ marginTop: '10px' }}>
+                  <img src={optionalImageBase64} alt="Preview" style={{ maxHeight: '100px', borderRadius: '8px' }} />
+                  <button type="button" onClick={() => setOptionalImageBase64('')} className="btn btn-ghost btn-xs" style={{ color: 'var(--danger)', marginLeft: '10px' }}>Quitar Imagen</button>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -589,8 +642,11 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
         .btn-pill-alt.active { background: var(--secondary); color: white; box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3); }
         
         .quote-summary-container {
+          position: -webkit-sticky;
           position: sticky;
-          top: 20px;
+          top: 100px;
+          align-self: flex-start;
+          height: max-content;
           z-index: 10;
         }
 

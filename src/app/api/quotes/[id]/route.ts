@@ -94,6 +94,9 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
           totalAmount: Number(data.totalAmount || 0),
 
           notes: data.notes,
+          optionalTitle: data.optionalTitle || null,
+          optionalDescription: data.optionalDescription || null,
+          optionalImage: data.optionalImage || null,
           validUntil: data.validUntil ? new Date(data.validUntil) : null,
           
           items: {

@@ -1,52 +1,54 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { NextResponse } from 'next/server'
+import { getServerSession } from 'next-auth'
+import { authOptions } from '@/lib/auth'
 
-export async function POST(req: NextRequest) {
+export async function POST(request: Request) {
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File;
-    
-    if (!file) {
-      return NextResponse.json({ error: 'No se incluyó ningún archivo' }, { status: 400 });
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
-    const arrayBuffer = await file.arrayBuffer();
-    const timestamp = Date.now();
-    // Limpieza de nombre
-    const cleanName = file.name.replace(/[^a-zA-Z0-9.\-_]/g, '-');
-    const filename = `${timestamp}-${cleanName}`;
+    const { searchParams } = new URL(request.url)
+    const filename = searchParams.get('filename') || `upload-${Date.now()}`
     
-    // Use standard hostname if specific one is not provided
-    const storageHost = process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
-    const storageZone = process.env.BUNNY_STORAGE_ZONE || 'cesarweb';
-    const accessKey = process.env.BUNNY_STORAGE_API_KEY || '';
-    
-    // Ensure filename is clean
-    const cleanFilename = filename.toLowerCase();
-    const zoneUrl = `https://${storageHost}/${storageZone}/Hidromasaje-Aquatech/cotizaciones/${cleanFilename}`;
+    // Bunny.net Credentials
+    const storageZone = process.env.BUNNY_STORAGE_ZONE
+    const accessKey = process.env.BUNNY_STORAGE_API_KEY
+    const storageHost = process.env.BUNNY_STORAGE_HOST
+    const pullZoneUrl = process.env.BUNNY_PULLZONE_URL
 
-    console.log(`[Upload API] Target: ${zoneUrl}`);
+    if (!storageZone || !accessKey || !storageHost) {
+      return NextResponse.json({ error: 'Bunny.net not configured' }, { status: 500 })
+    }
 
-    const response = await fetch(zoneUrl, {
+    // Clean filename for URL
+    const cleanName = filename.replace(/[^a-zA-Z0-9.-]/g, '_').toLowerCase()
+    const path = `crm/appointments/${Date.now()}-${cleanName}`
+
+    // Proxy the request to Bunny.net using streaming
+    const bunnyResp = await fetch(`https://${storageHost}/${storageZone}/${path}`, {
       method: 'PUT',
       headers: {
         'AccessKey': accessKey,
         'Content-Type': 'application/octet-stream',
       },
-      body: Buffer.from(arrayBuffer), // Convert to Buffer for better compatibility with some fetch environments
-    });
+      body: request.body, // Pass the request stream directly
+      // @ts-ignore
+      duplex: 'half'
+    })
 
-    if (response.ok) {
-      const pullZoneUrl = process.env.BUNNY_PULLZONE_URL || 'https://cesarweb.b-cdn.net';
-      const publicUrl = `${pullZoneUrl}/Hidromasaje-Aquatech/cotizaciones/${filename}`;
-      console.log(`[Upload API] Éxito: ${publicUrl}`);
-      return NextResponse.json({ url: publicUrl });
-    } else {
-      const errorText = await response.text();
-      console.error(`[Upload API] Error Bunny CDN (${response.status}): ${errorText}`);
-      return NextResponse.json({ error: `Fallo CDN (${response.status}): ${errorText}` }, { status: 500 });
+    if (!bunnyResp.ok) {
+      const errorText = await bunnyResp.text()
+      console.error('Bunny.net Upload Error:', errorText)
+      return NextResponse.json({ error: 'Failed to upload to CDN' }, { status: 502 })
     }
-  } catch (err: any) {
-    console.error(`[Upload API] Error fatal: ${err.message}`);
-    return NextResponse.json({ error: err.message }, { status: 500 });
+
+    const url = `${pullZoneUrl}/${path}`
+    return NextResponse.json({ url })
+
+  } catch (error) {
+    console.error('Upload route error:', error)
+    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
   }
 }

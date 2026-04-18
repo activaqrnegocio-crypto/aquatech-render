@@ -82,7 +82,12 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
         docId: quote.id,
         notes: quote.notes,
         sellerName: session?.user?.name || quote.creator?.name || 'Aquatech',
-        action: 'instance'
+        action: 'instance',
+        optionalSection: {
+          title: quote.optionalTitle || '',
+          description: quote.optionalDescription || '',
+          imageBase64: quote.optionalImage || ''
+        }
       });
 
       // Convert to base64
@@ -146,7 +151,12 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
       docType: 'COTIZACIÓN',
       docId: quote.id,
       notes: quote.notes,
-      sellerName: session?.user?.name || quote.creator?.name || 'Aquatech'
+      sellerName: session?.user?.name || quote.creator?.name || 'Aquatech',
+      optionalSection: {
+        title: quote.optionalTitle || '',
+        description: quote.optionalDescription || '',
+        imageBase64: quote.optionalImage || ''
+      }
     })
   }
 
@@ -173,14 +183,14 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
         </div>
       </div>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 350px', gap: '30px', alignItems: 'start' }}>
+      <div className="quote-detail-layout">
         <div className="card shadow-md" style={{ padding: '0', overflow: 'hidden' }}>
           <div style={{ backgroundColor: 'var(--bg-deep)', padding: '20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between' }}>
             <h4 style={{ margin: 0, textTransform: 'uppercase', letterSpacing: '1px' }}>Vista Previa de Documento</h4>
             <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{new Date(quote.createdAt).toLocaleString()}</div>
           </div>
           
-          <div style={{ padding: '40px', backgroundColor: 'white', color: '#333', fontSize: '13px', lineHeight: '1.5' }}>
+          <div className="preview-container">
             {/* Header Preview */}
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '40px' }}>
               <img src="/logo.jpg" alt="AQUA TECH" style={{ height: '60px', width: 'auto', objectFit: 'contain' }} />
@@ -361,6 +371,33 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
           </div>
         </div>
       </div>
+      <style jsx>{`
+        .quote-detail-layout {
+          display: grid;
+          grid-template-columns: 1fr 350px;
+          gap: 30px;
+          align-items: start;
+        }
+        .preview-container {
+          padding: 40px;
+          background-color: white;
+          color: #333;
+          font-size: 13px;
+          line-height: 1.5;
+          overflow-x: auto;
+        }
+        @media (max-width: 1024px) {
+          .quote-detail-layout {
+            grid-template-columns: 1fr;
+          }
+        }
+        @media (max-width: 768px) {
+          .preview-container {
+            padding: 15px;
+            font-size: 11px;
+          }
+        }
+      `}</style>
     </>
   )
 }

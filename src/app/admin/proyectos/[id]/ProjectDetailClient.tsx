@@ -17,9 +17,11 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const { data: session } = useSession()
   const searchParams = useSearchParams()
   const pathname = usePathname()
-  const [activeTab, setActiveTab] = useState<'BITACORA' | 'GALLERY' | 'EXPENSES'>(() => {
+  const [activeTab, setActiveTab] = useState<'BITACORA' | 'GALLERY' | 'EVIDENCE'>(() => {
     const view = searchParams.get('view')
-    if (view === 'BITACORA' || view === 'GALLERY' || view === 'EXPENSES') return view
+    if (view === 'BITACORA' || view === 'GALLERY' || view === 'EVIDENCE') return view
+    // Fallback for legacy URL with 'EXPENSES'
+    if (view === 'EXPENSES') return 'EVIDENCE'
     return 'BITACORA'
   })
 
@@ -27,7 +29,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const GALLERY_LABEL = 'Planos y Referencias'
 
   // Sync tab with URL
-  const setActiveTabWithUrl = (tab: 'BITACORA' | 'GALLERY' | 'EXPENSES') => {
+  const setActiveTabWithUrl = (tab: 'BITACORA' | 'GALLERY' | 'EVIDENCE') => {
     setActiveTab(tab)
     const params = new URLSearchParams(searchParams.toString())
     params.set('view', tab)
@@ -36,8 +38,8 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
 
   useEffect(() => {
     const view = searchParams.get('view')
-    if (view === 'BITACORA' || view === 'GALLERY' || view === 'EXPENSES') {
-      setActiveTab(view)
+    if (view === 'BITACORA' || view === 'GALLERY' || view === 'EVIDENCE' || view === 'EXPENSES') {
+      setActiveTab(view === 'EXPENSES' ? 'EVIDENCE' : view as any)
     }
   }, [searchParams])
   
@@ -60,13 +62,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   )
 
   const [gallery, setGallery] = useState<any[]>(initialGallery)
-  const [isUploading, setIsUploading] = useState(false)
-  const [showAllGallery, setShowAllGallery] = useState(false)
-  const [galleryFilter, setGalleryFilter] = useState('ALL')
-  const [currentStatus, setCurrentStatus] = useState(project.status)
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
-  const GALLERY_LIMIT = 12
-
+  
   // --- EXPENSES STATE ---
   const [expenses, setExpenses] = useState(project.expenses || [])
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
@@ -81,6 +77,32 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const [expenseImage, setExpenseImage] = useState<string | null>(null)
   const [expenseImagePreview, setExpenseImagePreview] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const masterGallery = useMemo(() => {
+    const baseFiles = gallery.filter(i => (i.category || 'MASTER') === 'MASTER')
+    const expenseFiles = (expenses || []).map((exp: any) => ({
+      id: `exp-${exp.id}`,
+      url: exp.receiptUrl || '',
+      filename: exp.description || 'Gasto',
+      mimeType: exp.receiptUrl ? 'image/jpeg' : 'text/plain',
+      type: 'EXPENSE',
+      amount: exp.amount,
+      date: exp.date,
+      isExpense: true
+    }))
+    return [...baseFiles, ...expenseFiles]
+  }, [gallery, expenses])
+  const evidenceGallery = useMemo(() => gallery.filter(i => i.category === 'EVIDENCE'), [gallery])
+
+  const [isUploading, setIsUploading] = useState(false)
+  const [showAllGallery, setShowAllGallery] = useState(false)
+  const [showAllEvidence, setShowAllEvidence] = useState(false)
+  const [galleryFilter, setGalleryFilter] = useState('ALL')
+  const [evidenceFilter, setEvidenceFilter] = useState('ALL')
+  const [currentStatus, setCurrentStatus] = useState(project.status)
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
+  const GALLERY_LIMIT = 12
+
   
   const [isEditingBudget, setIsEditingBudget] = useState(false)
   const [editBudget, setEditBudget] = useState(project.estimatedBudget || 0)
@@ -462,13 +484,13 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     }
   }
 
-  const handleUploadToGallery = async (file: ProjectFile) => {
+  const handleUploadToGallery = async (file: ProjectFile, category: string = 'MASTER') => {
     setIsUploading(true)
     try {
       const resp = await fetch(`/api/projects/${project.id}/gallery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(file)
+        body: JSON.stringify({ ...file, category })
       })
       if (resp.ok) {
         const newItem = await resp.json()
@@ -687,11 +709,12 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   // Handler for ProjectChatUnified component
   const handleChatUnifiedSend = async (content: string, type: string, extraData?: any) => {
     setIsSending(true)
+    console.log('Sending message:', { content, type, extraData }) // Debug log
     try {
       let payload: any = {
         content,
         phaseId: activePhase,
-        type: ['EXPENSE_LOG', 'NOTE', 'IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT'].includes(type) ? type : 'TEXT',
+        type: ['EXPENSE_LOG', 'NOTE', 'IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'LOCATION'].includes(type) ? type : 'TEXT',
         extraData: extraData || {}
       }
 
@@ -709,48 +732,56 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                          file.type.startsWith('video/') ? 'VIDEO' : 
                          file.type.startsWith('audio/') ? 'AUDIO' : 'DOCUMENT';
         }
-        // If it's another type (like EXPENSE_LOG) but has a file, 
-        // we keep the original type but the media is already attached in payload.media
       }
 
       // Ensure phaseId from extraData (selected in chat) overrides the activePhase if present
       if (extraData?.phaseId) {
         payload.phaseId = extraData.phaseId;
       }
+      
+      // GPS coords
+      if (extraData?.lat) payload.lat = extraData.lat
+      if (extraData?.lng) payload.lng = extraData.lng
 
       const res = await fetch(`/api/projects/${project.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify({
+          ...payload,
+          extraData: payload.extraData ? (typeof payload.extraData === 'string' ? payload.extraData : JSON.stringify(payload.extraData)) : undefined
+        })
       })
 
-      if (res.ok) {
-        const newMessage = await res.json()
-        setChatMessages((prev: any) => {
-          const exists = prev.some((m: any) => m.id === newMessage.id)
-          if (exists) return prev
-          return [...prev, {
-            ...newMessage,
-            isMe: true,
-            userName: session?.user?.name || 'Administrador'
-          }]
-        })
-
-        // 🔥 REAL-TIME EXPENSE SYNC: If message was an expense, update the expenses list locally
-        if (payload.type === 'EXPENSE_LOG' && payload.extraData?.amount) {
-           const newExp = {
-             id: Math.random(), // Temp ID until next poll
-             amount: payload.extraData.amount,
-             description: payload.content || 'Gasto desde chat',
-             date: payload.extraData.date || new Date().toISOString(),
-             category: payload.extraData.category || 'OTRO',
-             isNote: payload.extraData.isNote || false
-           }
-           setExpenses((prev: any) => [newExp, ...prev])
-        }
-
-        router.refresh()
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        throw new Error(err.error || `Error ${res.status}`)
       }
+
+      const newMessage = await res.json()
+      setChatMessages((prev: any) => {
+        const exists = prev.some((m: any) => m.id === newMessage.id)
+        if (exists) return prev
+        return [...prev, {
+          ...newMessage,
+          isMe: true,
+          userName: session?.user?.name || 'Administrador'
+        }]
+      })
+
+      // 🔥 REAL-TIME EXPENSE SYNC: If message was an expense, update the expenses list locally
+      if (payload.type === 'EXPENSE_LOG' && payload.extraData?.amount) {
+         const newExp = {
+           id: Math.random(), // Temp ID until next poll
+           amount: payload.extraData.amount,
+           description: payload.content || 'Gasto desde chat',
+           date: payload.extraData.date || new Date().toISOString(),
+           category: payload.extraData.category || 'OTRO',
+           isNote: payload.extraData.isNote || false
+         }
+         setExpenses((prev: any) => [newExp, ...prev])
+      }
+
+      router.refresh()
     } catch (error) {
       console.error('Error sending message:', error)
       alert('Error al enviar el mensaje')
@@ -1267,13 +1298,17 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
             {translateType(project.type)} {project.subtype ? `— ${project.subtype}` : ''}
           </p>
         </div>
-        <div style={{ textAlign: 'right' }}>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Subtotal: $ {theoreticalBudget.toFixed(2)}</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>IVA 15%: $ {ivaAmount.toFixed(2)}</div>
-          <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>Total a cobrar</div>
-          <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--primary)' }}>
-            $ {grandTotal.toFixed(2)}
-          </div>
+        <div style={{ textAlign: 'right', display: 'none' }}>
+          {session?.user?.role !== 'OPERADOR' && (
+            <>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Subtotal: $ {theoreticalBudget.toFixed(2)}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>IVA 15%: $ {ivaAmount.toFixed(2)}</div>
+              <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>Total a cobrar</div>
+              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                $ {grandTotal.toFixed(2)}
+              </div>
+            </>
+          )}
         </div>
       </div>
 
@@ -1407,7 +1442,22 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Dirección</span>
                     {!isEditingFicha ? (
-                      <span style={{ color: 'var(--text)', fontSize: '0.9rem', textAlign: 'right', maxWidth: '60%' }}>{project.address || 'N/A'}</span>
+                      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px', maxWidth: '60%' }}>
+                        {project.address && (project.address.includes('google.com/maps') || project.address.includes('maps.app.goo.gl')) ? (
+                          <a 
+                            href={project.address.match(/https?:\/\/\S+/)?.[0] || project.address} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="btn btn-primary btn-sm"
+                            style={{ padding: '6px 16px', fontSize: '0.85rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(54, 162, 235, 0.2)' }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                            Ver en Mapa
+                          </a>
+                        ) : (
+                          <span style={{ color: 'var(--text)', fontSize: '0.9rem', textAlign: 'right' }}>{project.address || 'N/A'}</span>
+                        )}
+                      </div>
                     ) : (
                       <input type="text" value={editAddress} onChange={e => setEditAddress(e.target.value)} className="form-input" style={{ width: '60%', padding: '4px 8px', fontSize: '0.9rem' }} />
                     )}
@@ -1545,7 +1595,22 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Dirección Fiscal</span>
                   {!isEditingFicha ? (
-                    <span style={{ color: 'var(--text)', fontSize: '0.9rem', textAlign: 'right', maxWidth: '60%' }}>{project.client?.address || 'N/A'}</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', maxWidth: '60%' }}>
+                      {project.client?.address && (project.client.address.includes('google.com/maps') || project.client.address.includes('maps.app.goo.gl')) ? (
+                        <a 
+                          href={project.client.address.match(/https?:\/\/\S+/)?.[0] || project.client.address} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="btn btn-warning btn-sm"
+                          style={{ padding: '6px 16px', fontSize: '0.85rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: 'var(--warning)', border: '1px solid var(--warning)', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.15)' }}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                          Abrir Ubicación
+                        </a>
+                      ) : (
+                        <span style={{ color: 'var(--text)', fontSize: '0.9rem', textAlign: 'right' }}>{project.client?.address || 'N/A'}</span>
+                      )}
+                    </div>
                   ) : (
                     <input type="text" value={editClientAddress} onChange={e => setEditClientAddress(e.target.value)} className="form-input" style={{ width: '60%', padding: '4px 8px', fontSize: '0.9rem' }} />
                   )}
@@ -1559,7 +1624,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                   Especificaciones Técnicas
                 </h4>
                 {!isEditingFicha ? (
-                  <div style={{ padding: '14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', fontSize: '0.9rem', color: 'var(--text)', lineHeight: '1.6', border: '1px solid var(--border-color)', minHeight: '100px', whiteSpace: 'pre-wrap' }}>
+                  <div style={{ padding: '14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', fontSize: '0.9rem', color: 'var(--text)', lineHeight: '1.6', border: '1px solid var(--border-color)', minHeight: '100px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                     {(() => {
                       try { 
                         const specs = JSON.parse(project.technicalSpecs || '{}')
@@ -1581,24 +1646,26 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           </div>
 
           {/* Resumen Financiero Rápido */}
-          <div style={{ marginTop: '25px', padding: '20px', background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.05), rgba(34, 197, 94, 0.05))', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-around', flexWrap: 'wrap', gap: '20px' }}>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>Subtotal</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text)' }}>$ {theoreticalBudget.toFixed(2)}</div>
+          {session?.user?.role !== 'OPERADOR' && (
+            <div style={{ marginTop: '25px', padding: '20px', background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.05), rgba(34, 197, 94, 0.05))', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'none', justifyContent: 'space-around', flexWrap: 'wrap', gap: '20px' }}>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>Subtotal</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text)' }}>$ {theoreticalBudget.toFixed(2)}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>IVA 15%</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text)' }}>$ {ivaAmount.toFixed(2)}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>Total a cobrar</div>
+                <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--primary)' }}>$ {grandTotal.toFixed(2)}</div>
+              </div>
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>Gastado Real</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: isCostoExcedido ? 'var(--danger)' : 'var(--success)' }}>$ {realExpenses.toFixed(2)}</div>
+              </div>
             </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>IVA 15%</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: 'var(--text)' }}>$ {ivaAmount.toFixed(2)}</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>Total a cobrar</div>
-              <div style={{ fontSize: '1.5rem', fontWeight: 'bold', color: 'var(--primary)' }}>$ {grandTotal.toFixed(2)}</div>
-            </div>
-            <div style={{ textAlign: 'center' }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>Gastado Real</div>
-              <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: isCostoExcedido ? 'var(--danger)' : 'var(--success)' }}>$ {realExpenses.toFixed(2)}</div>
-            </div>
-          </div>
+          )}
           </div>
         </div>
       </div>
@@ -1618,8 +1685,8 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           {[
             { id: 'BITACORA', label: 'Chat', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>, activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.1)', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)' },
             { id: 'GALLERY', label: GALLERY_LABEL, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.1)', gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
-            { id: 'EXPENSES', label: 'Finanzas', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>, activeColor: 'var(--success)', bgColor: 'rgba(34, 197, 94, 0.1)', gradient: 'linear-gradient(135deg, #10b981, #34d399)' }
-          ].map(tab => (
+            { id: 'EVIDENCE', label: 'Finales', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>, activeColor: '#d946ef', bgColor: 'rgba(217, 70, 239, 0.1)', gradient: 'linear-gradient(135deg, #a855f7, #d946ef)' }
+          ].filter(tab => session?.user?.role !== 'OPERADOR' || tab.id !== 'EVIDENCE').map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTabWithUrl(tab.id as any)}
@@ -1716,11 +1783,24 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
 
               <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '20px' }}>
                 {(showAllGallery 
-                  ? (galleryFilter === 'ALL' ? gallery : gallery.filter((i: any) => i.type === galleryFilter || (galleryFilter === 'IMAGE' && i.mimeType?.startsWith('image/')) || (galleryFilter === 'VIDEO' && i.mimeType?.startsWith('video/')) || (galleryFilter === 'DOCUMENT' && !i.mimeType?.startsWith('image/') && !i.mimeType?.startsWith('video/'))))
-                  : (galleryFilter === 'ALL' ? gallery : gallery.filter((i: any) => i.type === galleryFilter || (galleryFilter === 'IMAGE' && i.mimeType?.startsWith('image/')) || (galleryFilter === 'VIDEO' && i.mimeType?.startsWith('video/')) || (galleryFilter === 'DOCUMENT' && !i.mimeType?.startsWith('image/') && !i.mimeType?.startsWith('video/')))).slice(0, GALLERY_LIMIT)
+                  ? (galleryFilter === 'ALL' ? masterGallery : masterGallery.filter((i: any) => i.type === galleryFilter || (galleryFilter === 'IMAGE' && i.mimeType?.startsWith('image/')) || (galleryFilter === 'VIDEO' && i.mimeType?.startsWith('video/')) || (galleryFilter === 'DOCUMENT' && !i.mimeType?.startsWith('image/') && !i.mimeType?.startsWith('video/') && i.type !== 'EXPENSE')))
+                  : (galleryFilter === 'ALL' ? masterGallery : masterGallery.filter((i: any) => i.type === galleryFilter || (galleryFilter === 'IMAGE' && i.mimeType?.startsWith('image/')) || (galleryFilter === 'VIDEO' && i.mimeType?.startsWith('video/')) || (galleryFilter === 'DOCUMENT' && !i.mimeType?.startsWith('image/') && !i.mimeType?.startsWith('video/') && i.type !== 'EXPENSE'))).slice(0, GALLERY_LIMIT)
                 ).map((item: any) => (
                   <div key={item.id} className="group" style={{ position: 'relative', aspectRatio: '1/1', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)' }}>
-                    {item.mimeType.startsWith('image/') ? (
+                    {item.isExpense ? (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(34, 197, 94, 0.05)', padding: '15px', position: 'relative' }}>
+                        {item.url ? (
+                          <img src={item.url} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.3 }} />
+                        ) : (
+                          <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--success)" strokeWidth="1.5" style={{ opacity: 0.5 }}><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                        )}
+                        <div style={{ zIndex: 1, textAlign: 'center' }}>
+                          <div style={{ fontSize: '1.1rem', fontWeight: 'bold', color: 'var(--success)' }}>$ {item.amount}</div>
+                          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', marginTop: '4px', maxWidth: '100%', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{item.filename}</div>
+                        </div>
+                        <div style={{ position: 'absolute', top: '8px', right: '8px', padding: '2px 6px', borderRadius: '4px', backgroundColor: 'var(--success)', color: 'white', fontSize: '0.6rem', fontWeight: 'bold' }}>GASTO</div>
+                      </div>
+                    ) : item.mimeType.startsWith('image/') ? (
                       <img src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : item.mimeType.startsWith('video/') ? (
                       <video src={item.url} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
@@ -1735,10 +1815,15 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                         <span style={{ fontSize: '0.7rem', color: 'var(--info)', maxWidth: '90%', textAlign: 'center', wordWrap: 'break-word' }}>{item.filename}</span>
                       </div>
                     )}
-                    {(!item.mimeType.startsWith('video/') && !item.mimeType.startsWith('audio/')) && (
+                    {(!item.mimeType.startsWith('video/') && !item.mimeType.startsWith('audio/') && !item.isExpense) && (
                       <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: '0.3s' }} className="group-hover:opacity-100">
                         <button onClick={() => window.open(item.url, '_blank')} className="btn btn-primary btn-sm">Ver</button>
                         <button onClick={() => handleDeleteFromGallery(item.id)} className="btn btn-danger btn-sm" style={{ marginLeft: '5px' }}>✕</button>
+                      </div>
+                    )}
+                    {(item.isExpense && item.url) && (
+                      <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: '0.3s' }} className="group-hover:opacity-100">
+                        <button onClick={() => window.open(item.url, '_blank')} className="btn btn-primary btn-sm">Ver Recibo</button>
                       </div>
                     )}
                     {(item.mimeType.startsWith('video/') || item.mimeType.startsWith('audio/')) && (
@@ -1749,7 +1834,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                   </div>
                 ))}
               </div>
-              {gallery.length > GALLERY_LIMIT && (
+              {masterGallery.length > GALLERY_LIMIT && (
                 <button onClick={() => setShowAllGallery(!showAllGallery)} className="btn btn-ghost" style={{ width: '100%', marginTop: '20px' }}>
                   {showAllGallery ? 'Ver Menos' : 'Ver Todos'}
                 </button>
@@ -1757,116 +1842,70 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
             </div>
           </div>
           
-          {/* 3. GESTIÓN DE GASTOS */}
-          <div style={{ display: activeTab === 'EXPENSES' ? 'block' : 'none' }}>
+          {/* 3. FINALES - Galería de Evidencias */}
+          <div style={{ display: activeTab === 'EVIDENCE' ? 'block' : 'none' }}>
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '25px' }}>
-                <div>
-                  <h3 style={{ margin: 0, fontSize: '1.4rem' }}>Control de Gastos</h3>
-                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Historial detallado y auditoría de egresos.</p>
+              <div style={{ display: 'flex', flexWrap: 'wrap', justifyContent: 'space-between', alignItems: 'center', gap: '20px', marginBottom: '25px', paddingBottom: '20px', borderBottom: '1px solid rgba(255,255,255,0.05)' }}>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.4rem', color: '#d946ef', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                    Finales
+                  </h3>
+                  <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Evidencias de obra, fotos para publicidad y documentación visual del progreso.</p>
                 </div>
-                <button 
-                  onClick={() => {
-                    setEditingExpense(null)
-                    setExpenseForm({ amount: '', description: '', isNote: false, date: new Date().toISOString().split('T')[0] })
-                    setExpenseImage(null)
-                    setExpenseImagePreview(null)
-                    setIsExpenseModalOpen(true)
-                  }}
-                  className="btn btn-primary"
-                >
-                  + Agregar Gasto/Nota
-                </button>
+                
+                <ProjectUploader 
+                  files={[]} 
+                  onAddFile={(file) => handleUploadToGallery(file, 'EVIDENCE')}
+                  onRemoveFile={() => {}}
+                  minimal={true}
+                  showGrid={false}
+                  onFilterChange={(f) => setEvidenceFilter(f)}
+                />
               </div>
 
-              <div style={{ overflowX: 'auto', overflowY: 'auto', maxHeight: '500px', overscrollBehavior: 'contain' }}>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '0.9rem' }}>
-                  <thead style={{ position: 'sticky', top: 0, backgroundColor: 'var(--bg-card)', zIndex: 1 }}>
-                    <tr style={{ borderBottom: '1px solid var(--border-color)', color: 'var(--text-muted)' }}>
-                      <th style={{ padding: '12px', textAlign: 'left' }}>Fecha</th>
-                      <th style={{ padding: '12px', textAlign: 'left' }}>Responsable</th>
-                      <th style={{ padding: '12px', textAlign: 'left' }}>Descripción</th>
-                      <th style={{ padding: '12px', textAlign: 'left' }}>Tipo</th>
-                      <th style={{ padding: '12px', textAlign: 'right' }}>Monto</th>
-                      <th style={{ padding: '12px', textAlign: 'center' }}>Acciones</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {expenses.map((ex: any) => (
-                      <tr key={ex.id} style={{ borderBottom: '1px solid rgba(255,255,255,0.02)' }}>
-                        <td style={{ padding: '12px' }}>{formatDateEcuador(ex.date)}</td>
-                        <td style={{ padding: '12px' }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                            <div style={{ width: '24px', height: '24px', borderRadius: '50%', backgroundColor: 'var(--bg-deep)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '0.7rem' }}>
-                              {ex.user?.name.substring(0,2).toUpperCase()}
-                            </div>
-                            {ex.user?.name}
-                          </div>
-                        </td>
-                        <td style={{ padding: '12px' }}>
-                          <div>{ex.description}</div>
-                          {ex.lat && ex.lng && (
-                            <a href={`https://www.google.com/maps?q=${ex.lat},${ex.lng}`} target="_blank" rel="noreferrer" style={{ fontSize: '0.7rem', color: 'var(--info)' }}>📍 Ver Ubicación</a>
-                          )}
-                        </td>
-                        <td style={{ padding: '12px' }}>
-                          <span style={{ fontSize: '0.7rem', padding: '2px 8px', borderRadius: '4px', backgroundColor: ex.isNote ? 'rgba(245, 158, 11, 0.1)' : 'rgba(0, 112, 192, 0.1)', color: ex.isNote ? 'var(--warning)' : 'var(--primary)', fontWeight: 'bold' }}>
-                            {ex.isNote ? 'NOTA' : 'REAL'}
-                          </span>
-                        </td>
-                        <td style={{ padding: '12px', textAlign: 'right', fontWeight: 'bold' }}>$ {Number(ex.amount).toFixed(2)}</td>
-                        <td style={{ padding: '12px', textAlign: 'center' }}>
-                          <div style={{ display: 'flex', gap: '5px', justifyContent: 'center' }}>
-                            {ex.receiptUrl && (
-                              <div 
-                                onClick={() => {
-                                  setSelectedPreviewImage({ url: ex.receiptUrl, title: `Comprobante: ${ex.description}` })
-                                }}
-                                style={{ width: '24px', height: '24px', borderRadius: '4px', overflow: 'hidden', cursor: 'pointer', border: '1px solid var(--border-color)' }}
-                                title="Ver Comprobante"
-                              >
-                                <img src={ex.receiptUrl} alt="Recibo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                              </div>
-                            )}
-                            <button 
-                              onClick={() => {
-                                setEditingExpense(ex)
-                                setExpenseForm({
-                                  amount: ex.amount.toString(),
-                                  description: ex.description || '',
-                                  isNote: ex.isNote,
-                                  date: new Date(ex.date).toISOString().split('T')[0]
-                                })
-                                if (ex.receiptUrl) {
-                                  setExpenseImagePreview(ex.receiptUrl)
-                                  setExpenseImage(null) // It's already on server, no need for raw data
-                                } else {
-                                  setExpenseImagePreview(null)
-                                  setExpenseImage(null)
-                                }
-                                setIsExpenseModalOpen(true)
-                              }}
-                              className="btn btn-ghost btn-sm"
-                            >
-                              ✏️
-                            </button>
-                            <button onClick={() => handleDeleteExpense(ex.id)} className="btn btn-ghost btn-sm" style={{ color: 'var(--danger)' }}>✕</button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '20px' }}>
+                {(showAllEvidence 
+                  ? (evidenceFilter === 'ALL' ? evidenceGallery : evidenceGallery.filter((i: any) => i.type === evidenceFilter || (evidenceFilter === 'IMAGE' && i.mimeType?.startsWith('image/')) || (evidenceFilter === 'VIDEO' && i.mimeType?.startsWith('video/')) || (evidenceFilter === 'DOCUMENT' && !i.mimeType?.startsWith('image/') && !i.mimeType?.startsWith('video/'))))
+                  : (evidenceFilter === 'ALL' ? evidenceGallery : evidenceGallery.filter((i: any) => i.type === evidenceFilter || (evidenceFilter === 'IMAGE' && i.mimeType?.startsWith('image/')) || (evidenceFilter === 'VIDEO' && i.mimeType?.startsWith('video/')) || (evidenceFilter === 'DOCUMENT' && !i.mimeType?.startsWith('image/') && !i.mimeType?.startsWith('video/')))).slice(0, GALLERY_LIMIT)
+                ).map((item: any) => (
+                  <div key={item.id} className="group" style={{ position: 'relative', aspectRatio: '1/1', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)' }}>
+                    {item.mimeType.startsWith('image/') ? (
+                      <img src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : item.mimeType.startsWith('video/') ? (
+                      <video src={item.url} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : item.mimeType.startsWith('audio/') ? (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px' }}>
+                        <audio src={item.url} controls style={{ width: '100%', height: '40px' }} />
+                        <span style={{ fontSize: '0.7rem', color: '#a855f7', textAlign: 'center', wordBreak: 'break-all' }}>{item.filename}</span>
+                      </div>
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px' }}>
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                        <span style={{ fontSize: '0.7rem', color: '#a855f7', maxWidth: '90%', textAlign: 'center', wordWrap: 'break-word' }}>{item.filename}</span>
+                      </div>
+                    )}
+                    <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: '0.3s' }} className="group-hover:opacity-100">
+                      <button onClick={() => window.open(item.url, '_blank')} className="btn btn-primary btn-sm">Ver</button>
+                      <button onClick={() => handleDeleteFromGallery(item.id)} className="btn btn-danger btn-sm" style={{ marginLeft: '5px' }}>✕</button>
+                    </div>
+                  </div>
+                ))}
               </div>
+              {evidenceGallery.length > GALLERY_LIMIT && (
+                <button onClick={() => setShowAllEvidence(!showAllEvidence)} className="btn btn-ghost" style={{ width: '100%', marginTop: '20px' }}>
+                  {showAllEvidence ? 'Ver Menos' : 'Ver Todos'}
+                </button>
+              )}
             </div>
           </div>
         </div>
       </div>
 
       <>
-          <div className="project-main-grid">
+      <div className="project-main-grid">
 
-        <div className="card" style={{ padding: '0', overflow: 'hidden' }}>
+        <div className="card" style={{ padding: '0', overflow: 'hidden', display: 'none' }}>
           <div style={{ padding: '20px', borderBottom: '1px solid var(--border-color)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--text)' }}>Fases de Trabajo</h3>
             {!isEditingPhases ? (
@@ -2004,75 +2043,11 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           </div>
         </div>
 
-        <div>
-          {/* Equipo */}
-          <div className="card" style={{ marginBottom: '20px' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                Equipo Asignado
-              </h3>
-              {!isEditingTeam ? (
-                <button onClick={() => setIsEditingTeam(true)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }}>Editar</button>
-              ) : (
-                <div style={{ display: 'flex', gap: '5px' }}>
-                  <button onClick={() => setIsEditingTeam(false)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', color: 'var(--text-muted)' }} disabled={isSavingTeam}>Cancelar</button>
-                  <button onClick={handleSaveTeam} className="btn btn-primary btn-sm" style={{ padding: '4px 8px' }} disabled={isSavingTeam}>{isSavingTeam ? '...' : 'Guardar'}</button>
-                </div>
-              )}
-            </div>
-
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-              {!isEditingTeam ? (
-                <>
-                  {project.team.map((member: any) => (
-                    <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px' }}>
-                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>
-                        {member.user.name.substring(0,2).toUpperCase()}
-                      </div>
-                      <div>
-                        <div style={{ fontSize: '0.95rem', color: 'var(--text)' }}>{member.user.name}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{member.user.phone || 'Sin número'}</div>
-                      </div>
-                    </div>
-                  ))}
-                  {project.team.length === 0 && (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', padding: '10px' }}>No hay operadores asignados.</div>
-                  )}
-                </>
-              ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
-                  {availableOperators.map((op: any) => (
-                    <label key={op.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer' }}>
-                      <input 
-                        type="checkbox" 
-                        checked={selectedTeam.includes(op.id)}
-                        onChange={(e) => {
-                          if (e.target.checked) setSelectedTeam([...selectedTeam, op.id])
-                          else setSelectedTeam(selectedTeam.filter(id => id !== op.id))
-                        }}
-                        style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
-                      />
-                      <div>
-                        <div style={{ fontSize: '0.95rem' }}>{op.name}</div>
-                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{op.phone || 'Sin WhatsApp'}</div>
-                      </div>
-                    </label>
-                  ))}
-                  {availableOperators.length === 0 && (
-                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No hay operadores registrados en el sistema.</div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-
-        </div>
       </div>
 
-      <div className="grid-3" style={{ marginBottom: '30px', alignItems: 'stretch' }}>
+      <div className="grid-2" style={{ marginBottom: '30px', alignItems: 'stretch' }}>
         {/* COMPARATIVA DE GASTOS */}
-        <div className="card" style={{ minWidth: 0, borderLeft: `4px solid ${isCostoExcedido ? 'var(--danger)' : 'var(--success)'}`, padding: '24px', display: 'flex', flexDirection: 'column', height: '100%' }}>
+        <div className="card" style={{ minWidth: 0, borderLeft: `4px solid ${isCostoExcedido ? 'var(--danger)' : 'var(--success)'}`, padding: '24px', display: 'none', flexDirection: 'column', height: '100%' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
@@ -2125,7 +2100,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                   <button 
                     onClick={() => {
-                      setActiveTab('EXPENSES')
+                      setActiveTab('EVIDENCE')
                       setIsExpenseModalOpen(true)
                     }}
                     title="Registrar Gasto Directo"
@@ -2201,7 +2176,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         </div>
 
         {/* COMPARATIVA DE TIEMPO */}
-        <div className="card" style={{ minWidth: 0, borderLeft: `4px solid ${isTiempoExcedido ? 'var(--warning)' : 'var(--primary)'}`, padding: '24px' }}>
+        <div className="card" style={{ minWidth: 0, borderLeft: `4px solid ${isTiempoExcedido ? 'var(--warning)' : 'var(--primary)'}`, padding: '24px', display: 'none' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
             <h3 style={{ fontSize: '1.2rem', margin: 0, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
@@ -2259,28 +2234,110 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           </div>
         </div>
 
-        {/* CLIENTE RAPID VIEW */}
-        <div className="card" style={{ minWidth: 0 }}>
-          <h3 style={{ fontSize: '1.1rem', marginBottom: '15px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-            Información del Cliente
-          </h3>
-          <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '10px' }}>{project.client?.name || 'Cliente sin nombre'}</div>
-          
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-              {project.client?.phone || 'Sin teléfono'}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(320px, 1fr))', gap: '25px', marginBottom: '30px' }}>
+          {/* Equipo */}
+          <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', margin: 0 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+              <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                Equipo Asignado
+              </h3>
+              {!isEditingTeam ? (
+                <button onClick={() => setIsEditingTeam(true)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }}>Editar</button>
+              ) : (
+                <div style={{ display: 'flex', gap: '5px' }}>
+                  <button onClick={() => setIsEditingTeam(false)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', color: 'var(--text-muted)' }} disabled={isSavingTeam}>Cancelar</button>
+                  <button onClick={handleSaveTeam} className="btn btn-primary btn-sm" style={{ padding: '4px 8px' }} disabled={isSavingTeam}>{isSavingTeam ? '...' : 'Guardar'}</button>
+                </div>
+              )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
-              <span style={{ wordBreak: 'break-all', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                {project.client?.email || 'Sin email'}
-              </span>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
+              {!isEditingTeam ? (
+                <>
+                  {project.team.map((member: any) => (
+                    <div key={member.id} style={{ display: 'flex', alignItems: 'center', gap: '12px', padding: '10px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px' }}>
+                      <div style={{ width: '36px', height: '36px', borderRadius: '50%', backgroundColor: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', fontWeight: 'bold' }}>
+                        {member.user.name.substring(0,2).toUpperCase()}
+                      </div>
+                      <div>
+                        <div style={{ fontSize: '0.95rem', color: 'var(--text)' }}>{member.user.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{member.user.phone || 'Sin número'}</div>
+                      </div>
+                    </div>
+                  ))}
+                  {project.team.length === 0 && (
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', padding: '10px' }}>No hay operadores asignados.</div>
+                  )}
+                </>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '300px', overflowY: 'auto' }}>
+                  {availableOperators.map((op: any) => (
+                    <label key={op.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer' }}>
+                      <input 
+                        type="checkbox" 
+                        checked={selectedTeam.includes(op.id)}
+                        onChange={(e) => {
+                          if (e.target.checked) setSelectedTeam([...selectedTeam, op.id])
+                          else setSelectedTeam(selectedTeam.filter(id => id !== op.id))
+                        }}
+                        style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
+                      />
+                      <div>
+                        <div style={{ fontSize: '0.95rem' }}>{op.name}</div>
+                        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{op.phone || 'Sin WhatsApp'}</div>
+                      </div>
+                    </label>
+                  ))}
+                  {availableOperators.length === 0 && (
+                    <div style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>No hay operadores registrados en el sistema.</div>
+                  )}
+                </div>
+              )}
             </div>
-            <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginTop: '2px' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-              <span>{project.address || project.client?.address || 'Sin dirección'}</span>
+          </div>
+
+          {/* CLIENTE RAPID VIEW */}
+          <div className="card" style={{ minWidth: 0, margin: 0 }}>
+            <h3 style={{ fontSize: '1.1rem', marginBottom: '15px', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+              Información del Cliente
+            </h3>
+            <div style={{ fontSize: '1.1rem', fontWeight: 'bold', marginBottom: '10px' }}>{project.client?.name || 'Cliente sin nombre'}</div>
+            
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
+                {project.client?.phone || 'Sin teléfono'}
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+                <span style={{ wordBreak: 'break-all', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                  {project.client?.email || 'Sin email'}
+                </span>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginTop: '2px' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                {(() => {
+                  const addr = project.address || project.client?.address
+                  if (!addr) return <span>Sin dirección</span>
+                  if (addr.includes('google.com/maps') || addr.includes('maps.app.goo.gl')) {
+                    return (
+                      <a 
+                        href={addr.match(/https?:\/\/\S+/)?.[0] || addr} 
+                        target="_blank" 
+                        rel="noreferrer"
+                        className="btn btn-primary btn-sm"
+                        style={{ padding: '4px 12px', fontSize: '0.75rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                        Ver en Mapa
+                      </a>
+                    )
+                  }
+                  return <span>{addr}</span>
+                })()}
+              </div>
             </div>
           </div>
         </div>

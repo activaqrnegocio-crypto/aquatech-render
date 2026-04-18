@@ -41,9 +41,9 @@ export default function ProjectExecutionClient({
   
   const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState<'records' | 'chat'>(() => {
+  const [activeTab, setActiveTab] = useState<'records' | 'chat' | 'gallery'>(() => {
     const v = searchParams.get('view')
-    if (v === 'records' || v === 'chat') return v
+    if (v === 'records' || v === 'chat' || v === 'gallery') return v
     return 'records'
   })
   const pathname = usePathname()
@@ -52,6 +52,8 @@ export default function ProjectExecutionClient({
   const [liveChat, setLiveChat] = useState<any[]>(initialChat || [])
   const liveChatInitialized = useRef(false)
   const [mounted, setMounted] = useState(false)
+
+  const GALLERY_LABEL = "Planos y Referencias"
   
   useEffect(() => {
     setMounted(true)
@@ -238,14 +240,21 @@ export default function ProjectExecutionClient({
   const [isSavingExpense, setIsSavingExpense] = useState(false)
   const [galleryFilter, setGalleryFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
 
-  const filteredGallery = useMemo(() => {
-    if (!project.gallery) return []
-    // 1. First only official files (Master Plans) go here
-    const officialOnly = project.gallery.filter((item: any) => item.isOfficial === true)
+  const masterGallery = useMemo(() => {
+    const baseFiles = project.gallery.filter((item: any) => (item.category || 'MASTER') === 'MASTER')
+    const expenseFiles = (localExpenses || []).map((exp: any) => ({
+      id: `exp-${exp.id}`,
+      url: exp.receiptUrl || '',
+      filename: exp.description || 'Recibo',
+      mimeType: exp.receiptUrl ? 'image/jpeg' : 'text/plain',
+      category: 'MASTER',
+      isExpense: true
+    })).filter(e => e.url)
+
+    const list = [...baseFiles, ...expenseFiles]
     
-    // 2. Then apply the mime filter
-    if (galleryFilter === 'ALL') return officialOnly
-    return officialOnly.filter((item: any) => {
+    if (galleryFilter === 'ALL') return list
+    return list.filter((item: any) => {
       const mime = (item.mimeType || '').toLowerCase()
       if (galleryFilter === 'IMAGES') return mime.startsWith('image/')
       if (galleryFilter === 'VIDEOS') return mime.startsWith('video/')
@@ -254,6 +263,23 @@ export default function ProjectExecutionClient({
       return true
     })
   }, [project.gallery, galleryFilter])
+
+  const [evidenceFilter, setEvidenceFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
+  const evidenceGallery = useMemo(() => {
+    if (!project.gallery) return []
+    // Filter by EVIDENCE category
+    const list = project.gallery.filter((item: any) => item.category === 'EVIDENCE')
+    
+    if (evidenceFilter === 'ALL') return list
+    return list.filter((item: any) => {
+      const mime = (item.mimeType || '').toLowerCase()
+      if (evidenceFilter === 'IMAGES') return mime.startsWith('image/')
+      if (evidenceFilter === 'VIDEOS') return mime.startsWith('video/')
+      if (evidenceFilter === 'AUDIOS') return mime.startsWith('audio/')
+      if (evidenceFilter === 'DOCS') return !mime.startsWith('image/') && !mime.startsWith('video/') && !mime.startsWith('audio/')
+      return true
+    })
+  }, [project.gallery, evidenceFilter])
 
   const handleDownload = async (url: string, filename: string) => {
     setHandleDownloadLoading(url)
@@ -277,7 +303,7 @@ export default function ProjectExecutionClient({
   }
 
 
-  const setActiveTabWithUrl = (tab: 'records' | 'chat') => {
+  const setActiveTabWithUrl = (tab: 'records' | 'chat' | 'gallery') => {
     setActiveTab(tab)
     const params = new URLSearchParams(searchParams.toString())
     params.set('view', tab)
@@ -286,7 +312,7 @@ export default function ProjectExecutionClient({
 
   useEffect(() => {
     const view = searchParams.get('view')
-    if (view === 'records' || view === 'chat') {
+    if (view === 'records' || view === 'chat' || view === 'gallery') {
       setActiveTab(view)
     }
   }, [searchParams])
@@ -715,9 +741,13 @@ export default function ProjectExecutionClient({
       }
 
       if (!location) {
-        alert("⚠️ UBICACIÓN NO DETECTADA: Para bitácora de campo es obligatorio el GPS.")
-        setLoading(false)
-        return
+        if (isTechnicalAction) {
+          alert("⚠️ UBICACIÓN NO DETECTADA: Para registros técnicos y fotos es obligatorio el GPS.")
+          setLoading(false)
+          return
+        } else {
+          console.warn("Ubicación no detectada, enviando mensaje sin coordenadas.")
+        }
       }
 
       let mediaData = null
@@ -802,7 +832,6 @@ export default function ProjectExecutionClient({
             router.refresh()
           }
         }
-
         if (!customMsg) removeMessageDraft()
         else removeNoteDraft()
         router.refresh()
@@ -821,6 +850,42 @@ export default function ProjectExecutionClient({
       }
     } catch (e) {
       alert("Error procesando mensaje")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleUploadToGallery = async (file: ProjectFile, category: string = 'MASTER') => {
+    setLoading(true)
+    try {
+      const resp = await fetch(`/api/projects/${project.id}/gallery`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...file, category })
+      })
+      if (resp.ok) {
+        // Force refresh project data to update gallery
+        router.refresh()
+      }
+    } catch (e) {
+      console.error('Error uploading to gallery:', e)
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleDeleteFromGallery = async (itemId: number) => {
+    if (!confirm('¿Eliminar este archivo de la galería?')) return
+    setLoading(true)
+    try {
+      const resp = await fetch(`/api/projects/${project.id}/gallery/${itemId}`, {
+        method: 'DELETE'
+      })
+      if (resp.ok) {
+        router.refresh()
+      }
+    } catch (e) {
+      console.error('Error deleting from gallery:', e)
     } finally {
       setLoading(false)
     }
@@ -1257,45 +1322,6 @@ export default function ProjectExecutionClient({
             paddingBottom: isSmallScreen ? '100px' : '0' 
           }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '20px' }}>
-              <div className="card" style={{ minWidth: 0 }}>
-                <h3 style={{ fontSize: '1.2rem', marginBottom: '15px' }}>Registro de Jornada</h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginBottom: '20px', overflowWrap: 'break-word', wordBreak: 'break-word' }}>
-                  Registra tu hora de entrada y salida para contabilizar tus horas en obra.
-                </p>
-                {hasActiveRecordInOtherProject && (
-                  <div style={{ marginBottom: '15px', padding: '10px 15px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: 'var(--warning)', borderRadius: '8px', fontSize: '0.85rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-                    <span>Jornada activa en: <strong>{activeRecord.projectName}</strong>.</span>
-                  </div>
-                )}
-                <button 
-                  className={`btn btn-lg btn-full ${hasActiveRecordInThisProject || (pendingDayAction && pendingDayAction.type === 'DAY_START') ? 'btn-danger' : 'btn-primary'}`} 
-                  onClick={handleDayRecord}
-                  disabled={loading || hasActiveRecordInOtherProject}
-                  style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px' }}
-                >
-                  {loading ? 'Cargando...' : (hasActiveRecordInThisProject || (pendingDayAction && pendingDayAction.type === 'DAY_START')) ? (
-                    <>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg>
-                      {pendingDayAction?.type === 'DAY_START' ? 'Fichar Salida (Pendiente)' : 'Terminar Jornada'}
-                    </>
-                  ) : (
-                    <>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                      Iniciar Jornada
-                    </>
-                  )}
-                </button>
-                {(activeRecord || pendingDayAction) && mounted && (
-                  <p style={{ textAlign: 'center', color: 'var(--warning)', marginTop: '15px', fontWeight: 'bold', fontSize: '0.85rem' }}>
-                    {pendingDayAction ? (
-                      `Acción offline: ${pendingDayAction.type === 'DAY_START' ? 'Inicio en cola' : 'Fin en cola'}`
-                    ) : (
-                      `Día en progreso desde las ${formatTimeEcuador(activeRecord.startTime)}`
-                    )}
-                  </p>
-                )}
-              </div>
 
                 {/* Galería Principal (Planos/Fotos Admin) */}
                 {project.gallery && project.gallery.length > 0 && (
@@ -1303,9 +1329,9 @@ export default function ProjectExecutionClient({
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                       <h3 style={{ fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-                        Planos y Referencias
+                        {GALLERY_LABEL}
                       </h3>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{filteredGallery.length} Archivos Oficiales</span>
+                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{masterGallery.length} Archivos Oficiales</span>
                     </div>
                     
                      <div style={{ paddingBottom: '15px', display: 'flex', gap: '8px', overflowX: 'auto' }} className="hide-scrollbar">
@@ -1340,7 +1366,7 @@ export default function ProjectExecutionClient({
                       gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', 
                       gap: '12px'
                     }}>
-                      {filteredGallery.map((item: any) => (
+                      {masterGallery.map((item: any) => (
                         <div 
                           key={item.id} 
                           className="group"
@@ -1411,229 +1437,79 @@ export default function ProjectExecutionClient({
                   </div>
                 )}
 
-               <div className="card" style={{ minWidth: 0 }}>
-                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '10px' }}>
-                    <h3 style={{ fontSize: '1.2rem', margin: 0 }}>Gastos Registrados</h3>
-                    <div style={{ 
-                      backgroundColor: 'rgba(0, 112, 192, 0.1)', 
-                      padding: '4px 12px', 
-                      borderRadius: '20px', 
-                      border: '1px solid var(--primary)',
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: '8px'
-                    }}>
-                      <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Mi Gasto Total:</span>
-                      <span style={{ fontSize: '0.9rem', fontWeight: 'bold', color: 'var(--primary)' }}>$ {myTotalSpent.toFixed(2)}</span>
-                    </div>
-                  </div>
-                  
-                  {/* Expense Bar Visual */}
-                  <div style={{ width: '100%', height: '8px', backgroundColor: 'var(--bg-deep)', borderRadius: '4px', marginBottom: '20px', overflow: 'hidden' }}>
-                    <div style={{ 
-                      width: `${Math.min(100, (myTotalSpent > 0 ? 100 : 0))}%`, 
-                      height: '100%', 
-                      background: 'linear-gradient(90deg, var(--primary), #38bdf8)',
-                      borderRadius: '4px',
-                      transition: 'width 0.3s ease'
-                    }}></div>
-                  </div>
+              {/* Uploader de Finales - Visible para todos en vista de operador para facilitar pruebas y uso */}
+              <div className="card" style={{ minWidth: 0 }}>
+                <ProjectUploader 
+                  files={evidenceGallery}
+                  onAddFile={handleUploadMedia}
+                  title="Subir Finales (Foto/Video)"
+                />
+              </div>
 
-                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginBottom: '15px' }}>
-                   <button className="btn btn-primary btn-sm" onClick={() => setExpenseForm(!expenseForm)} disabled={loading || isPending}>
-                     {expenseForm ? 'Cancelar' : '+ Registrar Gasto'}
-                   </button>
-                 </div>
-
-                {expenseForm && (
-                  <form onSubmit={handleAddExpense} style={{ display: 'flex', flexDirection: 'column', gap: '15px', padding: '15px', backgroundColor: 'var(--bg-deep)', borderRadius: '8px', marginBottom: '20px' }}>
-                    <div className="form-group">
-                      <label className="form-label">Monto (L.)</label>
-                      <input type="number" step="0.01" className="form-input" value={amount} onChange={e => setAmount(e.target.value)} required />
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Descripción del gasto o detalle de la nota</label>
-                      <input type="text" className="form-input" value={description} onChange={e => setDescription(e.target.value)} required placeholder="Ej: Pasajes, Alimentación, Viáticos recibidos" />
-                    </div>
-                    <div className="form-group-checkbox" style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '5px 0' }}>
-                      <input 
-                        type="checkbox" 
-                        id="isNote" 
-                        checked={isNote} 
-                        onChange={e => setIsNote(e.target.checked)}
-                        style={{ width: '18px', height: '18px', cursor: 'pointer' }}
-                      />
-                      <label htmlFor="isNote" style={{ fontSize: '0.9rem', cursor: 'pointer', color: 'var(--primary)', fontWeight: 'bold' }}>
-                        ¿Es una Nota Informativa? (No afecta el gasto real)
-                      </label>
-                    </div>
-                    <div className="form-group">
-                      <label className="form-label">Evidencia Fotográfica (Opcional)</label>
-                      <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                        {!expensePhoto ? (
-                          <label className="btn btn-ghost" style={{ flex: 1, border: '1px dashed var(--primary)', height: '80px', display: 'flex', flexDirection: 'column', gap: '5px', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}>
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
-                            <span style={{ fontSize: '0.7rem' }}>Tomar Foto</span>
-                            <input 
-                              type="file" 
-                              accept="image/*" 
-                              capture="environment" 
-                              style={{ display: 'none' }} 
-                              onChange={async (e) => {
-                                const file = e.target.files?.[0]
-                                if (file) {
-                                  try {
-                                    const compressed = await optimizedCompress(file)
-                                    setExpensePhoto(compressed)
-                                  } catch (err) {
-                                    console.error('Compression error:', err)
-                                    alert('Error al procesar la imagen. Intenta con una más pequeña.')
-                                  }
-                                }
-                              }} 
-                            />
-                          </label>
+              {/* Galería de Finales integrada en Registros */}
+              <div className="card" style={{ minWidth: 0, marginTop: '10px' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
+                  <h3 style={{ fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#d946ef" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                    Archivos Finales
+                  </h3>
+                  <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{evidenceGallery.length} Archivos</span>
+                </div>
+                
+                {evidenceGallery.length === 0 ? (
+                  <div style={{ padding: '20px', textAlign: 'center', border: '2px dashed rgba(255,255,255,0.05)', borderRadius: '12px', opacity: 0.6 }}>
+                    <p style={{ fontSize: '0.85rem', margin: 0 }}>No hay fotos o videos finales aún.</p>
+                  </div>
+                ) : (
+                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '10px' }}>
+                    {evidenceGallery.map((item: any, idx: number) => (
+                      <div 
+                        key={idx}
+                        style={{ position: 'relative', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.1)' }}
+                        onClick={() => setSelectedPreviewImage(item)}
+                      >
+                        {item.mimeType?.startsWith('image/') ? (
+                          <img src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Final" />
+                        ) : item.mimeType?.startsWith('video/') ? (
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+                            <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                          </div>
                         ) : (
-                          <div style={{ position: 'relative', width: '100%', height: '120px', borderRadius: '8px', overflow: 'hidden', border: '1px solid var(--border-color)' }}>
-                            <img src={expensePhoto} alt="Recibo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            <button 
-                              type="button" 
-                              style={{ position: 'absolute', top: '5px', right: '5px', backgroundColor: 'rgba(239, 68, 68, 0.8)', color: 'white', border: 'none', borderRadius: '50%', width: '24px', height: '24px', cursor: 'pointer' }}
-                              onClick={() => setExpensePhoto(null)}
-                            >
-                              ✕
-                            </button>
+                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-deep)' }}>
+                            <span style={{ fontSize: '1.5rem' }}>📄</span>
                           </div>
                         )}
                       </div>
-                    </div>
-                    <button type="submit" className="btn btn-primary" disabled={loading}>Guardar Gasto</button>
-                  </form>
-                )}
-
-                {allExpenses.length === 0 && !expenseForm ? (
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', textAlign: 'center', padding: '20px 0' }}>No hay gastos o notas hoy.</p>
-                ) : (
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                    
-                    {/* REAL EXPENSES SECTION */}
-                    {allExpenses.filter(e => !e.isNote).length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                        <h4 style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '0 0 5px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>Gastos Realizados</h4>
-                        {allExpenses.filter(e => !e.isNote).map((e: any) => (
-                          <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', backgroundColor: 'var(--bg-deep)', borderRadius: '6px', borderLeft: e.isPending ? '3px solid var(--warning)' : 'none' }}>
-                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                              {(e.receiptUrl || e.receiptPhoto) ? (
-                                <div style={{ width: '36px', height: '36px', borderRadius: '4px', overflow: 'hidden', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)', flexShrink: 0, cursor: 'pointer' }} onClick={() => window.open(e.receiptUrl || e.receiptPhoto, '_blank')}>
-                                  <img src={e.receiptUrl || e.receiptPhoto} alt="Recibo" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                                </div>
-                              ) : (
-                                <div style={{ width: '36px', height: '36px', borderRadius: '4px', border: '1px solid var(--border-color)', backgroundColor: 'rgba(255, 255, 255, 0.05)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', flexShrink: 0 }}>
-                                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
-                                </div>
-                              )}
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
-                                  {e.description}
-                                  {e.isPending && <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>}
-                                </span>
-                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                  {e.isPending ? 'Pendiente' : (mounted ? formatDateEcuador(e.date) : '')} • {e.userName || 'Operador'}
-                                </span>
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ fontWeight: 'bold', color: e.isPending ? 'var(--warning)' : 'var(--text)' }}>$ {Number(e.amount).toFixed(2)}</span>
-                              {!e.isPending && (
-                                <div style={{ display: 'flex', gap: '5px' }}>
-                                  <button 
-                                    onClick={() => {
-                                      setEditingExpense(e)
-                                      setExpenseFormFields({
-                                        amount: e.amount.toString(),
-                                        description: e.description || '',
-                                        isNote: e.isNote,
-                                        date: new Date(e.date).toISOString().split('T')[0]
-                                      })
-                                      setIsExpenseModalOpen(true)
-                                    }}
-                                    className="btn btn-ghost" 
-                                    style={{ padding: '4px', color: 'var(--info)' }}
-                                  >
-                                    ✏️
-                                  </button>
-                                  <button onClick={() => handleDeleteExpense(e.id)} className="btn btn-ghost" style={{ padding: '4px', color: 'var(--danger)' }}>✕</button>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-
-                    {/* NOTES SECTION */}
-                    {allExpenses.filter(e => e.isNote).length > 0 && (
-                      <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '5px' }}>
-                        <h4 style={{ fontSize: '0.8rem', color: 'var(--primary)', margin: '0 0 5px 0', textTransform: 'uppercase', letterSpacing: '1px' }}>Notas / Montos Asignados</h4>
-                        {allExpenses.filter(e => e.isNote).map((e: any) => (
-                          <div key={e.id} style={{ display: 'flex', justifyContent: 'space-between', padding: '10px', backgroundColor: 'rgba(0, 112, 192, 0.05)', borderRadius: '6px', borderLeft: '3px solid var(--primary)' }}>
-                            <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
-                              <div style={{ width: '36px', height: '36px', borderRadius: '4px', border: '1px solid var(--primary)', backgroundColor: 'rgba(0, 112, 192, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)', flexShrink: 0 }}>
-                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-                              </div>
-                              <div style={{ display: 'flex', flexDirection: 'column' }}>
-                                <span style={{ color: 'var(--primary)', fontWeight: '500' }}>{e.description}</span>
-                                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>
-                                  {mounted ? formatDateEcuador(e.date) : ''} • {e.userName || 'Admin'}
-                                </span>
-                              </div>
-                            </div>
-                            <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                              <span style={{ fontWeight: 'bold', color: 'var(--text-muted)' }}>$ {Number(e.amount).toFixed(2)}</span>
-                              <div style={{ display: 'flex', gap: '5px' }}>
-                                <button 
-                                  onClick={() => {
-                                    setEditingExpense(e)
-                                    setExpenseFormFields({
-                                      amount: e.amount.toString(),
-                                      description: e.description || '',
-                                      isNote: e.isNote,
-                                      date: new Date(e.date).toISOString().split('T')[0]
-                                    })
-                                    setIsExpenseModalOpen(true)
-                                  }}
-                                  className="btn btn-ghost" 
-                                  style={{ padding: '4px', color: 'var(--info)' }}
-                                >
-                                  ✏️
-                                </button>
-                                <button onClick={() => handleDeleteExpense(e.id)} className="btn btn-ghost" style={{ padding: '4px', color: 'var(--danger)' }}>✕</button>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
+                    ))}
                   </div>
                 )}
               </div>
+
+              {/* NOTAS DE GASTO - Solo visualización */}
+              {allExpenses.filter(e => e.isNote).length > 0 && (
+                <div className="card" style={{ minWidth: 0, marginTop: '10px' }}>
+                  <h3 style={{ fontSize: '1.1rem', marginBottom: '15px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                    Notas de Gasto
+                  </h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                    {allExpenses.filter(e => e.isNote).map((note: any) => (
+                      <div key={note.id} style={{ padding: '12px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '10px', borderLeft: '3px solid var(--primary)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                          <span style={{ fontWeight: 'bold', fontSize: '0.85rem' }}>{note.userName}</span>
+                          <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{formatDateEcuador(note.date)}</span>
+                        </div>
+                        <p style={{ fontSize: '0.85rem', margin: 0 }}>{note.description}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
-
-            {/* Legacy Phase Advances Removed - Now handled in Chat */}
-
-
-            {!isFieldStaff && (
-              <div className="card" style={{ minWidth: 0 }}>
-                <ProjectUploader 
-                  files={projectMediaFiles}
-                  onAddFile={handleUploadMedia}
-                  title="Registros Multimedia"
-                />
-              </div>
-            )}
           </div>
         {/* End of REGISTROS */}
-        {/* 2. BITÁCORA / CHAT UNIFICADO - MODAL APPROACH */}
+    
+    {/* 2. BITÁCORA / CHAT UNIFICADO - MODAL APPROACH */}
         {activeTab === 'chat' && (
           <div 
             style={{ 
@@ -1694,6 +1570,7 @@ export default function ProjectExecutionClient({
             </div>
           </div>
         )}
+
       </div>
     </div>
       {/* End of Section Containers */}
@@ -1829,6 +1706,8 @@ export default function ProjectExecutionClient({
           </div>
         </div>
       )}
+      
+      {/* Mobile Navigation Footer Removed to use Global Footer */}
     </div>
   )
 }

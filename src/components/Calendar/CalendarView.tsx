@@ -135,7 +135,7 @@ export default function CalendarView({
       </div>
 
       <div className="calendar-grid-wrapper">
-        <div className="calendar-grid">
+        <div className={`calendar-grid ${viewMode === 'WEEK' ? 'is-week-view' : ''}`}>
           {['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'].map(d => (
             <div key={d} className="calendar-header-cell">
               <span className="full-day">{d}</span>
@@ -156,6 +156,9 @@ export default function CalendarView({
               >
                 {day && (
                   <div className="day-header">
+                    <span className="mobile-week-day-name">
+                      {['Dom', 'Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb'][day.getDay()]}
+                    </span>
                     <span className={`day-number ${isToday ? 'today' : ''}`}>
                       {day.getDate()}
                     </span>
@@ -281,6 +284,12 @@ export default function CalendarView({
           align-items: center;
           margin-bottom: 4px;
         }
+        .mobile-week-day-name {
+          display: none;
+          font-size: 0.65rem;
+          font-weight: 700;
+          color: var(--text-muted);
+        }
         .day-number {
           font-size: 0.85rem;
           font-weight: 500;
@@ -367,31 +376,52 @@ export default function CalendarView({
             padding: 3px;
           }
           .month-cell {
-            min-height: 55px;
+            min-height: 60px;
           }
           .week-cell {
-            min-height: 80px;
+            min-height: 130px;
           }
           .day-header {
-            margin-bottom: 2px;
+            margin-bottom: 4px;
           }
           .day-number {
-            width: 18px;
-            height: 18px;
-            font-size: 0.65rem;
+            width: 22px;
+            height: 22px;
+            font-size: 0.75rem;
           }
           .event-pill {
-            padding: 2px 3px;
-            font-size: 0.55rem;
+            padding: 4px 5px;
+            font-size: 0.65rem;
           }
           .event-time {
-            display: none;
+            display: block;
+            font-size: 0.55rem;
+            margin-top: 2px;
           }
           .event-title {
-            font-size: 0.5rem;
+            font-size: 0.65rem;
           }
           .day-events-container {
-            gap: 2px;
+            gap: 4px;
+          }
+          
+          /* Week View Mobile Overrides (4 top, 3 bottom) */
+          .is-week-view.calendar-grid {
+            grid-template-columns: repeat(4, 1fr) !important;
+          }
+          .is-week-view .calendar-header-cell {
+            display: none !important;
+          }
+          .is-week-view .mobile-week-day-name {
+            display: block;
+            text-transform: uppercase;
+            margin-bottom: 2px;
+            font-size: 0.75rem;
+          }
+          .is-week-view .day-header {
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
           }
         }
       `}</style>

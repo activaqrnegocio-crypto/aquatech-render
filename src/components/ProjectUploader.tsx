@@ -35,7 +35,7 @@ interface ProjectUploaderProps {
   onFilterChange?: (filter: FilterType) => void
 }
 
-type FilterType = 'ALL' | 'IMAGE' | 'VIDEO' | 'DOCUMENT'
+type FilterType = 'ALL' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'EXPENSE'
 
 export default function ProjectUploader({ 
   files, 
@@ -232,7 +232,7 @@ export default function ProjectUploader({
               <span>Filtrar</span>
             </div>
             
-            {(['ALL', 'IMAGE', 'VIDEO', 'DOCUMENT'] as FilterType[]).map((t) => (
+            {(['ALL', 'IMAGE', 'VIDEO', 'DOCUMENT', 'EXPENSE'] as FilterType[]).map((t) => (
               <button
                 key={t}
                 onClick={() => handleFilterChange(t)}
@@ -253,7 +253,7 @@ export default function ProjectUploader({
                 }}
                 className={filter === t ? 'scale-105' : 'hover:bg-white/10'}
               >
-                {t === 'ALL' ? 'Todos' : t === 'IMAGE' ? 'Fotos' : t === 'VIDEO' ? 'Videos' : 'Docs'}
+                {t === 'ALL' ? 'Todos' : t === 'IMAGE' ? 'Fotos' : t === 'VIDEO' ? 'Videos' : t === 'DOCUMENT' ? 'Docs' : 'Gastos'}
               </button>
             ))}
           </div>

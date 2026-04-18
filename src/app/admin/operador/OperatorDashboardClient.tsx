@@ -187,12 +187,12 @@ export default function OperatorDashboardClient({
              </Link>
           </div>
         </div>
-        {activeDayRecord && (
+        {/* activeDayRecord && (
           <div className="active-day-badge" style={{ marginTop: '15px' }}>
             <span className="pulse-dot"></span>
             Día Iniciado en: {activeDayRecord.project.title}
           </div>
-        )}
+        ) */}
       </div>
 
       {/* Push Notification Banner */}
@@ -257,16 +257,72 @@ export default function OperatorDashboardClient({
         </div>
       )}
 
-      <div className="tabs tabs-nowrap" style={{ marginTop: 'var(--space-lg)' }}>
-        <button className={`tab ${activeTab === 'TAREAS' ? 'active' : ''}`} onClick={() => setActiveTab('TAREAS')}>
-           <ListTodo size={16} style={{marginRight: '8px'}}/> Tareas de Hoy ({todayTasks.length})
+      <div className="tabs tabs-nowrap" style={{ 
+        marginTop: 'var(--space-lg)', 
+        display: 'flex', 
+        width: '100%', 
+        gap: '4px',
+        borderBottom: '1px solid rgba(255,255,255,0.1)'
+      }}>
+        <button 
+          className={`tab ${activeTab === 'TAREAS' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('TAREAS')}
+          style={{ 
+            flex: 1, 
+            padding: '10px 4px', 
+            fontSize: '0.75rem', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            gap: '6px'
+          }}
+        >
+           <ListTodo size={14} /> 
+           <span style={{ whiteSpace: 'nowrap' }}>
+             Tareas <span className="d-none d-md-inline">de Hoy</span> ({todayTasks.length})
+           </span>
         </button>
-        <button className={`tab ${activeTab === 'PROYECTOS' ? 'active' : ''}`} onClick={() => setActiveTab('PROYECTOS')}>
-           <Briefcase size={16} style={{marginRight: '8px'}}/> Mis Proyectos ({projects.length})
-           {totalUnread > 0 && <span className="tab-badge">{totalUnread}</span>}
+        <button 
+          className={`tab ${activeTab === 'PROYECTOS' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('PROYECTOS')}
+          style={{ 
+            flex: 1, 
+            padding: '10px 4px', 
+            fontSize: '0.75rem', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            gap: '6px',
+            position: 'relative'
+          }}
+        >
+           <Briefcase size={14} /> 
+           <span style={{ whiteSpace: 'nowrap' }}>
+             <span className="d-none d-md-inline">Mis</span> Proyectos ({projects.length})
+           </span>
+           {totalUnread > 0 && (
+             <span className="tab-badge" style={{ position: 'static', marginLeft: '4px', transform: 'none' }}>
+               {totalUnread}
+             </span>
+           )}
         </button>
-        <button className={`tab ${activeTab === 'CALENDARIO' ? 'active' : ''}`} onClick={() => setActiveTab('CALENDARIO')}>
-           <CalendarIcon size={16} style={{marginRight: '8px'}}/> Agenda Semanal
+        <button 
+          className={`tab ${activeTab === 'CALENDARIO' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('CALENDARIO')}
+          style={{ 
+            flex: 1, 
+            padding: '10px 4px', 
+            fontSize: '0.75rem', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            gap: '6px'
+          }}
+        >
+           <CalendarIcon size={14} /> 
+           <span style={{ whiteSpace: 'nowrap' }}>
+             Agenda <span className="d-none d-md-inline">Semanal</span>
+           </span>
         </button>
       </div>
 
@@ -408,10 +464,20 @@ export default function OperatorDashboardClient({
             </div>
 
             {selectedTask.project && (
-              <div style={{ marginBottom: '20px' }}>
+              <div style={{ marginBottom: '16px' }}>
                 <strong style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '1px' }}>PROYECTO ASOCIADO</strong>
-                <div style={{ marginTop: '4px', fontSize: '0.95rem' }}>
+                <div style={{ marginTop: '4px', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
                   <Briefcase size={16} /> {selectedTask.project.title}
+                </div>
+              </div>
+            )}
+
+            {selectedTask.location && (
+              <div style={{ marginBottom: '20px' }}>
+                <strong style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '1px' }}>UBICACIÓN</strong>
+                <div style={{ marginTop: '4px', fontSize: '0.95rem', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
+                  <span style={{ fontSize: '1.1rem' }}>📍</span> 
+                  <span>{selectedTask.location}</span>
                 </div>
               </div>
             )}

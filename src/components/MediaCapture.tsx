@@ -46,6 +46,7 @@ export default function MediaCapture({
   const videoRef = useRef<HTMLVideoElement>(null)
   const streamRef = useRef<MediaStream | null>(null)
   const [isStreamActive, setIsStreamActive] = useState(false)
+  const [deviceError, setDeviceError] = useState<string | null>(null)
   const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment')
   const [cameraSubMode, setCameraSubMode] = useState<'photo' | 'video'>('photo')
   const chunksRef = useRef<Blob[]>([])
@@ -75,24 +76,7 @@ export default function MediaCapture({
   }
 
   const initCamera = async () => {
-    try {
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach(track => track.stop())
-      }
-      const newStream = await navigator.mediaDevices.getUserMedia({
-        audio: true,
-        video: (mode === 'video' || mode === 'photo') ? { facingMode } : false
-      })
-      streamRef.current = newStream
-      setIsStreamActive(true)
-      if (videoRef.current) {
-        videoRef.current.srcObject = newStream
-        videoRef.current.play().catch(() => {})
-      }
-    } catch (err) {
-      console.error('Error starting camera stream:', err)
-      setIsStreamActive(false)
-    }
+    // No longer needed for native capture
   }
 
   // Auto-init camera for video/photo mode
@@ -182,32 +166,22 @@ export default function MediaCapture({
     }
   }
 
-  const takePhoto = async () => {
-    if (!videoRef.current || !streamRef.current) return
-    
-    setIsProcessing(true)
-    try {
-      const video = videoRef.current
-      const canvas = document.createElement('canvas')
-      canvas.width = video.videoWidth
-      canvas.height = video.videoHeight
-      
-      const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.drawImage(video, 0, 0, canvas.width, canvas.height)
-        canvas.toBlob((blob) => {
-          if (blob) {
-            setMediaBlob(blob)
-            setPreviewUrl(URL.createObjectURL(blob))
-            onCapture(blob, 'photo', '')
-          }
-          setIsProcessing(false)
-        }, 'image/jpeg', 0.85)
+  const triggerNativeCamera = () => {
+    const input = document.createElement('input')
+    input.type = 'file'
+    input.accept = 'image/*,video/*'
+    input.capture = 'environment'
+    input.onchange = (e: any) => {
+      const file = e.target.files?.[0]
+      if (file) {
+        const url = URL.createObjectURL(file)
+        setMediaBlob(file)
+        setPreviewUrl(url)
+        const type = file.type.startsWith('video/') ? 'video' : 'photo'
+        onCapture(file, type, '')
       }
-    } catch (err) {
-      console.error('Error taking photo:', err)
-      setIsProcessing(false)
     }
+    input.click()
   }
 
   const handleTranscription = async (audioBlob: Blob, originalBlob: Blob) => {
@@ -331,149 +305,20 @@ export default function MediaCapture({
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '15px' }}>
-        {mode === 'video' && (
-          <div style={{ 
-            display: (streamRef.current || isRecording || previewUrl) ? 'block' : 'none', 
-            width: '100%', 
-            maxWidth: '320px', 
-            borderRadius: '12px', 
-            overflow: 'hidden', 
-            backgroundColor: 'black', 
-            position: 'relative', 
-            margin: '0 auto' 
-          }}>
-            {/* Live preview during recording or before */}
-            <video 
-              ref={videoRef} 
-              autoPlay 
-              muted 
-              playsInline 
-              style={{ 
-                display: (isRecording || isStreamActive) && !previewUrl ? 'block' : 'none', 
-                width: '100%', 
-                height: 'auto',
-                maxHeight: '220px',
-                objectFit: 'cover',
-                backgroundColor: '#000'
-              }} 
-            />
-            {/* Playback after recording - with duration info */}
-            {!isRecording && previewUrl && (
-              <div>
-                <video 
-                  src={previewUrl} 
-                  controls 
-                  playsInline
-                  style={{ width: '100%', height: 'auto', maxHeight: '200px', objectFit: 'cover' }} 
-                />
-                <div style={{ 
-                  padding: '6px 10px', 
-                  backgroundColor: 'rgba(0,0,0,0.7)', 
-                  color: '#fff',
-                  fontSize: '0.75rem',
-                  display: 'flex',
-                  justifyContent: 'space-between',
-                  alignItems: 'center'
-                }}>
-                  <span>⏱ Duración: {formatTime(recordedDuration)}</span>
-                  <span style={{ opacity: 0.7 }}>
-                    {mediaBlob ? `${(mediaBlob.size / (1024 * 1024)).toFixed(1)} MB` : ''}
-                  </span>
-                </div>
-              </div>
-            )}
+        {deviceError && (
+          <div style={{ color: 'var(--danger)', fontSize: '0.85rem', textAlign: 'center', padding: '10px', backgroundColor: 'rgba(239, 68, 68, 0.05)', borderRadius: '8px', border: '1px solid rgba(239, 68, 68, 0.2)' }}>
+            ⚠️ {deviceError}
           </div>
         )}
 
-        {mode === 'audio' && isRecording && (
-          <div style={{ display: 'flex', gap: '4px', height: '40px', alignItems: 'center' }}>
-            {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
-              <div key={i} style={{
-                width: '4px',
-                height: `${(i % 5) * 6 + 10}px`,
-                backgroundColor: 'var(--primary)',
-                borderRadius: '2px',
-                animation: 'pulse-bar 0.5s infinite alternate',
-                animationDelay: `${i * 0.1}s`
-              }} />
-            ))}
-          </div>
-        )}
-
-        {/* Camera toggle button */}
-        {mode === 'video' && !isRecording && !transcription && (
-          <button
-            type="button"
-            onClick={() => setFacingMode(prev => prev === 'user' ? 'environment' : 'user')}
-            style={{ 
-              fontSize: '0.75rem', 
-              padding: '6px 14px', 
-              borderRadius: '20px',
-              display: 'flex',
-              alignItems: 'center',
-              gap: '6px',
-              backgroundColor: 'var(--bg-surface)',
-              border: '1px solid var(--border)',
-              color: 'var(--text-muted)',
-              cursor: 'pointer',
-              transition: 'all 0.2s'
-            }}
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
-              <circle cx="12" cy="13" r="4"/>
-            </svg>
-            {facingMode === 'user' ? '📷 Frontal' : '📷 Trasera'}
-          </button>
-        )}
-
-        {/* Mode Selector (Photo / Video) */}
-        {mode === 'video' && !isRecording && !previewUrl && (
-          <div style={{
-            display: 'flex',
-            backgroundColor: 'var(--bg-card)',
-            padding: '4px',
-            borderRadius: '20px',
-            gap: '5px',
-            marginBottom: '5px'
-          }}>
-            <button
-              onClick={() => setCameraSubMode('photo')}
-              style={{
-                padding: '6px 15px',
-                borderRadius: '16px',
-                border: 'none',
-                fontSize: '0.75rem',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                backgroundColor: cameraSubMode === 'photo' ? 'var(--primary)' : 'transparent',
-                color: cameraSubMode === 'photo' ? 'white' : 'var(--text-muted)',
-                transition: 'all 0.2s'
-              }}
-            >FOTO</button>
-            <button
-              onClick={() => setCameraSubMode('video')}
-              style={{
-                padding: '6px 15px',
-                borderRadius: '16px',
-                border: 'none',
-                fontSize: '0.75rem',
-                fontWeight: 'bold',
-                cursor: 'pointer',
-                backgroundColor: cameraSubMode === 'video' ? 'var(--primary)' : 'transparent',
-                color: cameraSubMode === 'video' ? 'white' : 'var(--text-muted)',
-                transition: 'all 0.2s'
-              }}
-            >VIDEO</button>
-          </div>
-        )}
+        {/* Native camera replaces all this logic */}
 
         {/* Record / Stop / Photo buttons */}
         {!isRecording && !transcription && !previewUrl && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <button 
               type="button"
-              onClick={mode === 'video' && cameraSubMode === 'photo' ? takePhoto : startRecording}
+              onClick={mode === 'video' ? triggerNativeCamera : startRecording}
               style={{
                 width: compact ? '40px' : '60px',
                 height: compact ? '40px' : '60px',
@@ -490,10 +335,10 @@ export default function MediaCapture({
               }}
               onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
               onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-              title={mode === 'video' ? (cameraSubMode === 'photo' ? 'Tomar Foto' : 'Grabar Video') : 'Grabar Audio'}
+              title={mode === 'video' ? 'Abrir Cámara' : 'Grabar Audio'}
             >
               {mode === 'video' 
-                ? (cameraSubMode === 'photo' ? <Camera size={compact ? 18 : 24} /> : <Video size={compact ? 18 : 24} />) 
+                ? <Camera size={compact ? 18 : 24} />
                 : <Mic size={compact ? 18 : 24} />
               }
             </button>
