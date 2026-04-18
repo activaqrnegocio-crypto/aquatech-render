@@ -277,9 +277,11 @@ export default function AppointmentModal({
     const linkFiles: any[] = []
     
     for (const file of files) {
-      const isVideo = file.type.startsWith('video/')
-      const isImage = file.type.startsWith('image/')
-      const isAudio = file.type.startsWith('audio/')
+      // Detección mejorada basada en extensión si el mime es genérico
+      const ext = file.name.split('.').pop()?.toLowerCase() || '';
+      const isVideo = file.type.startsWith('video/') || ['mp4', 'mov', 'webm'].includes(ext);
+      const isImage = file.type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext);
+      const isAudio = file.type.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a'].includes(ext);
       
       try {
         // Comprimir imagen si es necesario

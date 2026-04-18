@@ -49,6 +49,8 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
           mediaType = 'document'; // Fallback seguro
         }
 
+        const isAudio = mediaType === 'audio';
+        
         const fileResp = await fetch(
           `${EVOLUTION_API_URL}/message/sendMedia/${EVOLUTION_INSTANCE_NAME}`,
           {
@@ -62,6 +64,7 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
               mediatype: mediaType,
               media: att.data, 
               fileName: att.name,
+              ptt: isAudio // Si es audio, enviar como nota de voz
             }),
           }
         );
