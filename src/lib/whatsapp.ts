@@ -62,9 +62,6 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
         // Sanitizar nombre de archivo (quitar caracteres que WhatsApp rechaza)
         const sanitizedName = att.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
 
-        // Sanitizar nombre de archivo
-        const sanitizedName = att.name.replace(/[^a-zA-Z0-9.\-_]/g, '_');
-
         // Para máxima compatibilidad, enviamos todos los audios como 'document'
         // Esto evita que WhatsApp los rechace por problemas de codec o PTT.
         const isAudio = mediaType === 'audio';
