@@ -68,35 +68,35 @@ export default function CameraCapture({ onPhotoCapture, onVideoCapture, onClose 
     <div className={styles.wrapper}>
       {error && <p className={styles.error}>{error}</p>}
 
-      {!preview ? (
-        <>
-          <div className={styles.viewfinder}>
-            <video ref={videoRef} autoPlay playsInline muted className={styles.video} />
-            {isRecording && <span className={styles.recBadge}>● REC</span>}
-          </div>
+      <div style={{ display: preview ? 'none' : 'block' }}>
+        <div className={styles.viewfinder}>
+          <video ref={videoRef} autoPlay playsInline muted className={styles.video} />
+          {isRecording && <span className={styles.recBadge}>● REC</span>}
+        </div>
 
-          <div className={styles.controls}>
-            <button onClick={toggleFacing} className={styles.btnSecondary} title="Girar cámara">
-              🔄
-            </button>
-            <button onClick={handlePhoto} className={styles.btnCapture} title="Tomar foto" disabled={isRecording}>
-              📷
-            </button>
-            <button
-              onClick={handleVideoToggle}
-              className={`${styles.btnVideo} ${isRecording ? styles.recording : ''}`}
-              title={isRecording ? 'Detener grabación' : 'Grabar video'}
-            >
-              {isRecording ? '⏹' : '🎥'}
-            </button>
+        <div className={styles.controls}>
+          <button onClick={toggleFacing} className={styles.btnSecondary} title="Girar cámara">
+            🔄
+          </button>
+          <button onClick={handlePhoto} className={styles.btnCapture} title="Tomar foto" disabled={isRecording}>
+            📷
+          </button>
+          <button
+            onClick={handleVideoToggle}
+            className={`${styles.btnVideo} ${isRecording ? styles.recording : ''}`}
+            title={isRecording ? 'Detener grabación' : 'Grabar video'}
+          >
+            {isRecording ? '⏹' : '🎥'}
+          </button>
+        </div>
+        {onClose && (
+          <div style={{ textAlign: 'center', marginTop: '10px' }}>
+            <button onClick={onClose} className="btn btn-ghost" style={{ padding: '8px 20px' }}>Cerrar Cámara</button>
           </div>
-          {onClose && (
-            <div style={{ textAlign: 'center', marginTop: '10px' }}>
-              <button onClick={onClose} className="btn btn-ghost" style={{ padding: '8px 20px' }}>Cerrar Cámara</button>
-            </div>
-          )}
-        </>
-      ) : (
+        )}
+      </div>
+
+      {preview && (
         <div className={styles.preview}>
           {preview.type === 'photo' ? (
             <img src={preview.url} alt="Foto capturada" className={styles.previewMedia} />

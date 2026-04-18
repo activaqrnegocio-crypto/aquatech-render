@@ -10,6 +10,7 @@ export default function FeaturedProduct() {
           src="https://cesarweb.b-cdn.net/home/pro-product.webp" 
           alt="Aquatech Pro Banner" 
           fill
+          unoptimized
           className="object-cover object-center"
           priority
         />

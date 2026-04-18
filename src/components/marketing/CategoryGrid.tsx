@@ -61,6 +61,7 @@ export default function CategoryGrid() {
                     src={cat.image} 
                     alt={cat.title} 
                     fill
+                    unoptimized
                     className="object-cover object-center transition-transform duration-1000 group-hover:scale-105"
                 />
                 

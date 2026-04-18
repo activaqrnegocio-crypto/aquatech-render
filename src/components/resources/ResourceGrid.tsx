@@ -16,6 +16,7 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
   const [newResource, setNewResource] = useState({ title: '', description: '', imageUrl: '', type: 'General' })
   const [isUploading, setIsUploading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
+  const [searchQuery, setSearchQuery] = useState('')
 
   const getImagesArray = (urlStr: string | null) => {
     if (!urlStr) return [];
@@ -31,7 +32,13 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
   const isVideo = (url: string) => {
     if (!url) return false;
     const lowerUrl = url.toLowerCase();
-    return /\\.(mp4|webm|ogg|mov|m4v|avi|mkv|3gp)(\\?.*)?$/.test(lowerUrl) || lowerUrl.includes('video') || lowerUrl.includes('type=video');
+    return /\.(mp4|webm|ogg|mov|m4v|avi|mkv|3gp)(\?.*)?$/.test(lowerUrl) || lowerUrl.includes('video') || lowerUrl.includes('type=video');
+  };
+
+  const isAudio = (url: string) => {
+    if (!url) return false;
+    const lowerUrl = url.toLowerCase();
+    return /\.(mp3|wav|ogg|m4a|aac)(\?.*)?$/.test(lowerUrl) || lowerUrl.includes('audio') || lowerUrl.includes('type=audio');
   };
 
   const resetForm = () => {
@@ -144,17 +151,64 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-      {isSuperAdmin && (
-        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+      <div style={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        gap: '20px', 
+        flexWrap: 'wrap',
+        marginBottom: '10px'
+      }}>
+        {/* BUSCADOR INTELIGENTE */}
+        <div style={{ 
+          flex: 1, 
+          minWidth: '280px', 
+          position: 'relative',
+          maxWidth: '500px'
+        }}>
+          <input 
+            type="text" 
+            placeholder="Buscar por título, descripción o etiqueta..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{ 
+              width: '100%', 
+              padding: '14px 20px 14px 50px', 
+              borderRadius: '16px', 
+              border: '1px solid rgba(255,255,255,0.1)', 
+              background: 'rgba(255,255,255,0.05)', 
+              color: 'white',
+              fontSize: '1rem',
+              outline: 'none',
+              transition: 'all 0.3s ease',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+            }}
+            className="search-input-hover"
+          />
+          <svg 
+            width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" 
+            style={{ position: 'absolute', left: '18px', top: '50%', transform: 'translateY(-50%)', color: 'var(--primary)', opacity: 0.8 }}
+          >
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          {searchQuery && (
+            <button 
+              onClick={() => setSearchQuery('')}
+              style={{ position: 'absolute', right: '15px', top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', padding: '5px' }}
+            >✕</button>
+          )}
+        </div>
+
+        {isSuperAdmin && (
           <button 
             onClick={() => setIsAdding(!isAdding)} 
             className="btn btn-primary"
-            style={{ borderRadius: '12px', padding: '10px 24px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}
+            style={{ borderRadius: '12px', padding: '12px 28px', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px', height: '52px' }}
           >
             {isAdding ? '✕ Cerrar' : '+ Agregar Recurso'}
           </button>
-        </div>
-      )}
+        )}
+      </div>
 
       {isAdding && (
         <div className="card animate-fade-in resource-form-container" style={{ 
@@ -227,6 +281,10 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
                           <div key={idx} style={{ position: 'relative', width: '80px', height: '80px', borderRadius: '8px', overflow: 'hidden', background: '#000' }}>
                             {isVideo(url) ? (
                               <video src={url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline preload="metadata" />
+                            ) : isAudio(url) ? (
+                              <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#1a1a1a' }}>
+                                <span style={{ fontSize: '1.5rem' }}>🎵</span>
+                              </div>
                             ) : (
                               <img 
                                 src={url} 
@@ -284,63 +342,74 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
       )}
 
       <div className="resource-grid-uniform">
-        {resources.map((res: any) => (
-          <div key={res.id} className="resource-card-uniform card animate-fade-in">
-            <div className="resource-image-container" onClick={() => setSelectedGallery({ images: getImagesArray(res.imageUrl), index: 0 })}>
-              {isVideo(getImagesArray(res.imageUrl)[0] || '') ? (
-                <video src={getImagesArray(res.imageUrl)[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline preload="metadata" />
-              ) : (
-                <img 
-                  src={getImagesArray(res.imageUrl)[0] || '/Logo.jpg'} 
-                  alt={res.title} 
-                  loading="lazy" 
-                  onError={(e) => { e.currentTarget.src = '/Logo.jpg'; }}
-                />
-              )}
-              {getImagesArray(res.imageUrl).length > 1 && (
-                 <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '4px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', zIndex: 2 }}>
-                   1/{getImagesArray(res.imageUrl).length}
-                 </div>
-              )}
-              <div className="resource-overlay">
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
-              </div>
-            </div>
-            <div className="resource-content">
-              <h4 className="resource-title">{res.title}</h4>
-              <p className="resource-desc">{res.description || 'Sin descripción disponible.'}</p>
-              <div style={{ display: 'flex', gap: '10px', marginTop: 'auto' }}>
-                <button 
-                  onClick={() => setSelectedGallery({ images: getImagesArray(res.imageUrl), index: 0 })} 
-                  className="btn btn-primary btn-sm" 
-                  style={{ flex: 1, height: '36px', borderRadius: '10px', fontWeight: 'bold' }}
-                >
-                  Ver Recurso
-                </button>
-                {isSuperAdmin && (
-                  <div style={{ display: 'flex', gap: '6px' }}>
-                    <button 
-                      onClick={() => startEdit(res)} 
-                      className="btn btn-secondary btn-sm" 
-                      style={{ width: '36px', height: '36px', borderRadius: '10px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      title="Editar"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                    </button>
-                    <button 
-                      onClick={() => handleDelete(res.id)} 
-                      className="btn btn-danger btn-sm" 
-                      style={{ width: '36px', height: '36px', borderRadius: '10px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                      title="Eliminar"
-                    >
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
-                    </button>
+        {resources
+          .filter(res => 
+            res.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+            (res.description && res.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
+            (res.type && res.type.toLowerCase().includes(searchQuery.toLowerCase()))
+          )
+          .map((res: any) => (
+            <div key={res.id} className="resource-card-uniform card animate-fade-in">
+              <div className="resource-image-container" onClick={() => setSelectedGallery({ images: getImagesArray(res.imageUrl), index: 0 })}>
+                {isVideo(getImagesArray(res.imageUrl)[0] || '') ? (
+                  <video src={getImagesArray(res.imageUrl)[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline preload="metadata" />
+                ) : isAudio(getImagesArray(res.imageUrl)[0] || '') ? (
+                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0d1117' }}>
+                    <span style={{ fontSize: '2.5rem' }}>🎵</span>
+                    <span style={{ fontSize: '0.7rem', opacity: 0.5, marginTop: '5px' }}>Audio / Podcast</span>
                   </div>
+                ) : (
+                  <img 
+                    src={getImagesArray(res.imageUrl)[0] || '/Logo.jpg'} 
+                    alt={res.title} 
+                    loading="lazy" 
+                    onError={(e) => { e.currentTarget.src = '/Logo.jpg'; }}
+                  />
                 )}
+                {getImagesArray(res.imageUrl).length > 1 && (
+                   <div style={{ position: 'absolute', top: '10px', right: '10px', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '4px 8px', borderRadius: '12px', fontSize: '0.75rem', fontWeight: 'bold', zIndex: 2 }}>
+                     1/{getImagesArray(res.imageUrl).length}
+                   </div>
+                )}
+                <div className="resource-overlay">
+                  <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"/></svg>
+                </div>
+              </div>
+              <div className="resource-content">
+                <h4 className="resource-title">{res.title}</h4>
+                <p className="resource-desc">{res.description || 'Sin descripción disponible.'}</p>
+                <div style={{ display: 'flex', gap: '10px', marginTop: 'auto' }}>
+                  <button 
+                    onClick={() => setSelectedGallery({ images: getImagesArray(res.imageUrl), index: 0 })} 
+                    className="btn btn-primary btn-sm" 
+                    style={{ flex: 1, height: '36px', borderRadius: '10px', fontWeight: 'bold' }}
+                  >
+                    Ver Recurso
+                  </button>
+                  {isSuperAdmin && (
+                    <div style={{ display: 'flex', gap: '6px' }}>
+                      <button 
+                        onClick={() => startEdit(res)} 
+                        className="btn btn-secondary btn-sm" 
+                        style={{ width: '36px', height: '36px', borderRadius: '10px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        title="Editar"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                      </button>
+                      <button 
+                        onClick={() => handleDelete(res.id)} 
+                        className="btn btn-danger btn-sm" 
+                        style={{ width: '36px', height: '36px', borderRadius: '10px', padding: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        title="Eliminar"
+                      >
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
-          </div>
-        ))}
+          ))}
       </div>
 
       {resources.length === 0 && !isAdding && (
@@ -358,6 +427,14 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
             <div key={selectedGallery.index} style={{ animation: 'fadeIn 0.3s ease-out', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               {isVideo(selectedGallery.images[selectedGallery.index]) ? (
                 <video src={selectedGallery.images[selectedGallery.index]} controls autoPlay playsInline style={{ maxHeight: '90vh', maxWidth: '90vw' }} />
+              ) : isAudio(selectedGallery.images[selectedGallery.index]) ? (
+                <div style={{ backgroundColor: 'var(--bg-card)', padding: '50px', borderRadius: '30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '450px', boxShadow: '0 25px 60px rgba(0,0,0,0.6)' }}>
+                   <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                     <svg width="50" height="50" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                   </div>
+                   <h3 style={{ margin: 0, color: 'white' }}>Reproduciendo Audio</h3>
+                   <audio src={selectedGallery.images[selectedGallery.index]} controls autoPlay style={{ width: '100%' }} />
+                </div>
               ) : (
                 <img 
                   src={selectedGallery.images[selectedGallery.index]} 

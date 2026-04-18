@@ -60,19 +60,17 @@ export default function ProjectExecutionClient({
   }, [])
 
 
-  // --- FULL-SYNC FETCH: always gets ALL messages from server ---
-  const fetchAllMessages = async (): Promise<any[]> => {
+  // --- INCREMENTAL FETCH: only gets NEW messages since last one ---
+  const fetchMessages = async (since?: string): Promise<any[]> => {
     try {
-      const resp = await fetch(`/api/projects/${project.id}/messages?_t=${Date.now()}`, {
+      const url = `/api/projects/${project.id}/messages?_t=${Date.now()}${since ? `&since=${since}` : ''}`
+      const resp = await fetch(url, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       })
-      if (!resp.ok) {
-        console.error('[CHAT SYNC] API error:', resp.status, resp.statusText)
-        return []
-      }
-      const allMsgs = await resp.json()
-      return (allMsgs || []).map((m: any) => ({
+      if (!resp.ok) return []
+      const newMsgs = await resp.json()
+      return (newMsgs || []).map((m: any) => ({
         ...m,
         isMe: Number(m.userId) === Number(userId),
         userName: m.user?.name || 'Usuario',
@@ -100,7 +98,7 @@ export default function ProjectExecutionClient({
     // On first mount, do an immediate full fetch to ensure freshness
     if (!liveChatInitialized.current) {
       liveChatInitialized.current = true
-      fetchAllMessages().then(msgs => {
+      fetchMessages().then(msgs => {
         if (msgs.length > 0) {
           setLiveChat(msgs)
           markAsSeen()
@@ -109,22 +107,26 @@ export default function ProjectExecutionClient({
     }
 
     const pollInterval = setInterval(async () => {
-      if (!navigator.onLine) return
-      const freshMsgs = await fetchAllMessages()
+      if (!navigator.onLine || document.hidden) return
+      
+      // Use the last message date to fetch only new ones
+      const lastMsg = liveChat[liveChat.length - 1]
+      const since = lastMsg?.createdAt
+      
+      const freshMsgs = await fetchMessages(since)
       if (freshMsgs.length > 0) {
         setLiveChat(prev => {
-          // Only update if there's actually a difference
-          if (prev.length !== freshMsgs.length || 
-              (prev.length > 0 && freshMsgs.length > 0 && prev[prev.length - 1]?.id !== freshMsgs[freshMsgs.length - 1]?.id)) {
-            return freshMsgs
-          }
-          return prev
+          // Merge only new messages avoiding duplicates
+          const existingIds = new Set(prev.map(m => m.id))
+          const uniqueNew = freshMsgs.filter(m => !existingIds.has(m.id))
+          if (uniqueNew.length === 0) return prev
+          return [...prev, ...uniqueNew]
         })
       }
-    }, 5000)
+    }, 8000) // Increased to 8s to save bandwidth
 
     return () => clearInterval(pollInterval)
-  }, [project.id])
+  }, [project.id, liveChat])
 
   // Sync initialChat when server props update (RSC refresh)
   useEffect(() => {
@@ -695,7 +697,7 @@ export default function ProjectExecutionClient({
     setIsSyncing(true)
     try {
       // 1. Full fetch of ALL messages — no incremental, no since
-      const freshMsgs = await fetchAllMessages()
+      const freshMsgs = await fetchMessages()
       if (freshMsgs.length > 0) {
         setLiveChat(freshMsgs) // Complete replacement
       }
@@ -1694,6 +1696,32 @@ export default function ProjectExecutionClient({
                 style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }}
                 onClick={(e) => e.stopPropagation()}
               />
+            ) : selectedPreviewImage.mimeType.startsWith('video/') ? (
+              <video 
+                src={selectedPreviewImage.url} 
+                controls 
+                autoPlay 
+                playsInline
+                style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', outline: 'none' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : selectedPreviewImage.mimeType.startsWith('audio/') ? (
+              <div 
+                style={{ backgroundColor: 'var(--bg-card)', padding: '40px', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <h3 style={{ margin: '0 0 5px 0', fontSize: '1.2rem' }}>{selectedPreviewImage.filename}</h3>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nota de Voz / Audio</p>
+                </div>
+                <audio src={selectedPreviewImage.url} controls autoPlay style={{ width: '100%' }} />
+                <button onClick={() => handleDownload(selectedPreviewImage.url, selectedPreviewImage.filename)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)', marginTop: '10px' }}>
+                  {handleDownloadLoading === selectedPreviewImage.url ? 'Descargando...' : 'Descargar'}
+                </button>
+              </div>
             ) : (
               <div 
                 style={{ backgroundColor: 'var(--bg-card)', padding: '30px', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', maxWidth: '400px', width: '100%' }}

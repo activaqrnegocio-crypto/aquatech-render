@@ -632,7 +632,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                                   type: 'DOCUMENT', // Using DOCUMENT as fallback for generic gallery support
                                   url: result.url,
                                   size: blob.size,
-                                  category: 'PLANOS',
+                                  category: 'MASTER',
                                   mimeType: 'audio/webm'
                                 }
                                 setUploadedFiles(prev => [...prev, fileObj]);
@@ -686,7 +686,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                                      type: 'IMAGE',
                                      url: result.url,
                                      size: blob.size,
-                                     category: 'PLANOS'
+                                     category: 'MASTER'
                                   }
                                   setUploadedFiles(prev => [...prev, fileObj])
                                } catch (err) {
@@ -706,7 +706,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                                      type: 'VIDEO',
                                      url: result.url,
                                      size: blob.size,
-                                     category: 'PLANOS'
+                                     category: 'MASTER'
                                   }
                                   setUploadedFiles(prev => [...prev, fileObj])
                                } catch (err) {

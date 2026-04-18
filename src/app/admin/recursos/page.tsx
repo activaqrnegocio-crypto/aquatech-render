@@ -68,62 +68,6 @@ export default async function RecursosPage({ searchParams }: RecursosPageProps) 
         />
       </section>
 
-      {/* SECCIÓN DE TRABAJOS REALIZADOS (BLOG) */}
-      <hr style={{ border: 'none', borderTop: '1px solid rgba(255,255,255,0.05)', margin: '60px 0' }} />
-      
-      <section style={{ marginTop: '40px' }}>
-        <div style={{ textAlign: 'center', marginBottom: '2.5rem' }}>
-          <h3 style={{ fontSize: '1.8rem', fontWeight: 800, color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '12px', justifyContent: 'center', marginBottom: '0.8rem' }}>
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ width: '28px', height: '28px', color: 'var(--primary)' }}>
-              <path d="M22 12h-4l-3 9L9 3l-3 9H2" />
-            </svg>
-            Trabajos Realizados
-          </h3>
-          <p style={{ color: 'var(--text-secondary)', maxWidth: '600px', margin: '0 auto 1.5rem auto' }}>
-            Historial de proyectos ejecutados, artículos técnicos y casos de éxito.
-          </p>
-          <div style={{ maxWidth: '600px', margin: '0 auto' }}>
-            <BlogSearch 
-              categories={deepSerialize(categories)} 
-              placeholder="Buscar trabajos o artículos..." 
-            />
-          </div>
-        </div>
-        
-        {blogPosts.length === 0 ? (
-          <div className="card" style={{ textAlign: 'center', padding: '4rem', color: 'var(--text-muted)', border: '1px dashed rgba(255,255,255,0.1)' }}>
-            <p style={{ fontSize: '1.1rem', marginBottom: '1rem' }}>
-              {query || categoryId ? 'No se encontraron resultados para su búsqueda.' : 'No hay artículos registrados.'}
-            </p>
-            {(query || categoryId) && (
-              <Link href="/admin/recursos" className="btn btn-ghost btn-sm">Limpiar búsqueda</Link>
-            )}
-          </div>
-        ) : (
-          <div className="grid-responsive" style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '24px' }}>
-            {blogPosts.map((post: any) => (
-              <div key={post.id} className="card animate-fade-in" style={{ padding: 0, overflow: 'hidden', display: 'flex', flexDirection: 'column', height: '100%', border: '1px solid rgba(255,255,255,0.05)' }}>
-                <div style={{ position: 'relative', height: '200px', overflow: 'hidden', background: 'var(--bg-deep)' }}>
-                  <img src={post.imageUrl || '/Logo.jpg'} alt={post.title} className="hover-scale" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  <div style={{ position: 'absolute', top: '12px', left: '12px', background: 'var(--primary)', padding: '4px 12px', borderRadius: '20px', fontSize: '0.65rem', fontWeight: '800', color: '#000', zIndex: 2 }}>
-                    {post.category?.name || 'Artículo'}
-                  </div>
-                </div>
-                <div style={{ padding: '20px', flex: 1, display: 'flex', flexDirection: 'column' }}>
-                  <h4 style={{ fontSize: '1.1rem', marginBottom: '8px', color: 'var(--text)', fontWeight: '700', lineHeight: '1.4' }}>{post.title}</h4>
-                  <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', marginBottom: '20px', flex: 1, display: '-webkit-box', WebkitLineClamp: 3, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                    {post.excerpt || "Consulte los detalles de este trabajo realizado."}
-                  </p>
-                  <Link href={`/blog/${post.slug}`} className="btn btn-secondary btn-sm" style={{ width: '100%', fontWeight: 'bold' }} target="_blank">
-                    Leer Detalles
-                  </Link>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </section>
-
       <div className="card help-card" style={{ marginTop: '80px', background: 'linear-gradient(135deg, rgba(54, 162, 235, 0.05), rgba(0,0,0,0.2))', border: '1px solid var(--primary-glow)', padding: '30px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '25px', flexWrap: 'wrap' }}>
           <div style={{ width: '60px', height: '60px', borderRadius: '16px', background: 'var(--primary-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'var(--primary)' }}>

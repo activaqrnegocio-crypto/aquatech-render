@@ -53,7 +53,8 @@ export async function GET(request: Request) {
         }
       });
 
-      for (const op of operatorsWithTasks) {
+      for (let i = 0; i < operatorsWithTasks.length; i++) {
+        const op = operatorsWithTasks[i];
         if (op.phone && op.appointments.length > 0) {
           let summary = `📋 *Resumen del Día - Aquatech*\n\nHola *${op.name}*, hoy tienes *${op.appointments.length}* tareas asignadas:\n\n`;
           
@@ -69,6 +70,11 @@ export async function GET(request: Request) {
           const waResult = await sendWhatsAppMessage(op.phone, summary);
           if (waResult.success) {
             results.push(`Summary sent to ${op.name}`);
+          }
+
+          // Seguridad: Delay de 1.5s entre operadores
+          if (i < operatorsWithTasks.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
           }
         }
       }
@@ -86,7 +92,8 @@ export async function GET(request: Request) {
       include: { user: true }
     });
 
-    for (const apt of upcomingApts) {
+    for (let i = 0; i < upcomingApts.length; i++) {
+      const apt = upcomingApts[i];
       if (!apt.user?.phone) continue;
 
       const diffMs = apt.startTime.getTime() - now.getTime();
@@ -110,6 +117,11 @@ export async function GET(request: Request) {
       if (reminderMessage) {
         await sendWhatsAppMessage(apt.user.phone, reminderMessage);
         results.push(`Reminder (${diffMins}m) sent to ${apt.user.name} for ${apt.title}`);
+
+        // Seguridad: Delay de 1.5s entre recordatorios si hay más en la cola
+        if (i < upcomingApts.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
+        }
       }
     }
 

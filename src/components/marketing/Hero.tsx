@@ -54,6 +54,7 @@ export default function Hero() {
               src={slides[index].image} 
               alt="Aquatech Slide" 
               fill 
+              unoptimized
               className="object-cover object-center"
               priority
             />

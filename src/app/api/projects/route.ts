@@ -5,6 +5,7 @@ import { authOptions } from '@/lib/auth'
 import { getLocalNow, forceEcuadorTZ } from '@/lib/date-utils'
 import { isAdmin, isOperator } from '@/lib/rbac'
 import { notifyUser } from '@/lib/push'
+import { sendWhatsAppMessage } from '@/lib/whatsapp'
 
 export async function GET(request: Request) {
   try {
@@ -251,19 +252,36 @@ export async function POST(request: Request) {
       return newProject
     }, { timeout: 20000 })
 
-    // 🔔 Push Notification: Notify assigned team members
+    // 🔔 Notification: Notify assigned team members via Push and WhatsApp
     if (team && team.length > 0) {
       const creatorId = Number(userId)
-      for (const memberId of team) {
-        const mid = Number(memberId)
-        if (mid !== creatorId) {
-          notifyUser(
-            mid,
-            '📊 Nuevo Proyecto Asignado',
-            `Te asignaron al proyecto: ${title}`,
-            `/admin/operador`,
-            `project-new-${project.id}`
-          )
+      const usersToNotify = await prisma.user.findMany({
+        where: { id: { in: team.map((id: any) => Number(id)) } },
+        select: { id: true, phone: true, name: true }
+      });
+
+      for (let i = 0; i < usersToNotify.length; i++) {
+        const user = usersToNotify[i];
+        if (user.id === creatorId) continue;
+
+        // Web Push
+        await notifyUser(
+          user.id,
+          '📊 Nuevo Proyecto Asignado',
+          `Te asignaron al proyecto: ${title}`,
+          `/admin/operador`,
+          `project-new-${project.id}`
+        ).catch(e => console.error('Push error:', e));
+
+        // WhatsApp
+        if (user.phone) {
+          const message = `🚀 *Aquatech CRM*\nHola ${user.name},\nhas sido asignado al proyecto: *${title}*.\nPor favor, revisa la plataforma para más detalles.`;
+          await sendWhatsAppMessage(user.phone, message).catch((e) => console.error('WA error:', e));
+        }
+
+        // Delay 1.5s between messages to avoid collapsing Evolution API
+        if (i < usersToNotify.length - 1) {
+          await new Promise(resolve => setTimeout(resolve, 1500));
         }
       }
     }

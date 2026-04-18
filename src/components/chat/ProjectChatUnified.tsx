@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react'
 import { formatTimeEcuador, formatDateEcuador } from '@/lib/date-utils'
 import MediaCapture from '@/components/MediaCapture'
+import CameraCapture from '@/components/camera/CameraCapture'
 
 // --- SVGs for WhatsApp Icons ---
 const svgProps = (size: number) => ({
@@ -76,6 +77,8 @@ export default function ProjectChatUnified({
   const [msgCount, setMsgCount] = useState(messages.length)
   const [gpsStatus, setGpsStatus] = useState<string | null>(null)
   const [filesFilter, setFilesFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS' | 'EXPENSES'>('ALL')
+  const [showCamera, setShowCamera] = useState(false)
+  const [selectedPreviewMedia, setSelectedPreviewMedia] = useState<any>(null)
   
   const allMedia = useMemo(() => {
     const list: any[] = []
@@ -405,7 +408,7 @@ export default function ProjectChatUnified({
             {evidenceGallery.map((file: any, i: number) => (
               <div 
                 key={i} 
-                onClick={() => window.open(file.url, '_blank')}
+                onClick={() => setSelectedPreviewMedia(file)}
                 style={{ 
                   flexShrink: 0, 
                   width: '60px', 
@@ -686,39 +689,9 @@ export default function ProjectChatUnified({
           <div className="attachments-grid">
             <AttachmentItem 
               icon={<Camera size={28} />} 
-              label="FOTO" 
+              label="CÁMARA" 
               color="#d946ef" 
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'image/*';
-                input.capture = 'environment';
-                input.onchange = (e: any) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    onSendMessage('', 'IMAGE', { file });
-                  }
-                };
-                input.click();
-              }} 
-            />
-            <AttachmentItem 
-              icon={<VideoIcon size={28} />} 
-              label="VIDEO" 
-              color="#eab308" 
-              onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'video/*';
-                input.capture = 'environment';
-                input.onchange = (e: any) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    onSendMessage('', 'VIDEO', { file });
-                  }
-                };
-                input.click();
-              }} 
+              onClick={() => setShowCamera(true)} 
             />
             <AttachmentItem 
               icon={<ImageIcon size={28} />} 
@@ -807,7 +780,19 @@ export default function ProjectChatUnified({
                   {filteredMedia.map((media, i) => (
                     <div 
                       key={i} 
-                      onClick={() => window.open(media.url, '_blank')}
+                      onClick={() => {
+                        // Map the media object to match the expected preview format if necessary
+                        const previewItem = {
+                          url: media.url,
+                          filename: media.name || media.filename || 'Archivo',
+                          mimeType: media.mimeType || (
+                            media.type === 'IMAGES' ? 'image/jpeg' : 
+                            media.type === 'VIDEOS' ? 'video/mp4' : 
+                            media.type === 'AUDIOS' ? 'audio/mpeg' : 'application/octet-stream'
+                          )
+                        };
+                        setSelectedPreviewMedia(previewItem);
+                      }}
                       style={{ 
                         aspectRatio: '1/1', 
                         backgroundColor: 'rgba(255,255,255,0.03)', 
@@ -864,6 +849,123 @@ export default function ProjectChatUnified({
         </div>
       )}
 
+      {/* --- MEDIA PREVIEW LIGHTBOX --- */}
+      {selectedPreviewMedia && (
+        <div 
+          className="media-modal-overlay" 
+          style={{ zIndex: 2000, backgroundColor: 'rgba(0,0,0,0.95)' }} 
+          onClick={() => setSelectedPreviewMedia(null)}
+        >
+          <div 
+            className="media-modal-content" 
+            style={{ 
+              maxWidth: '90vw', 
+              maxHeight: '90vh', 
+              width: 'auto', 
+              background: 'transparent', 
+              padding: 0,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              position: 'relative'
+            }}
+            onClick={e => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setSelectedPreviewMedia(null)}
+              style={{ 
+                position: 'fixed', 
+                top: '20px', 
+                right: '20px', 
+                background: 'rgba(255,255,255,0.1)', 
+                border: 'none', 
+                color: 'white', 
+                width: '40px', 
+                height: '40px', 
+                borderRadius: '50%', 
+                fontSize: '1.2rem', 
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                zIndex: 2001
+              }}
+            >✕</button>
+
+            {selectedPreviewMedia.mimeType?.startsWith('image/') || selectedPreviewMedia.type === 'IMAGES' ? (
+              <img 
+                src={selectedPreviewMedia.url} 
+                alt="Preview" 
+                style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }} 
+              />
+            ) : selectedPreviewMedia.mimeType?.startsWith('video/') || selectedPreviewMedia.type === 'VIDEOS' ? (
+              <video 
+                src={selectedPreviewMedia.url} 
+                controls 
+                autoPlay 
+                playsInline
+                style={{ maxWidth: '100%', maxHeight: '85vh', borderRadius: '12px', outline: 'none', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }} 
+              />
+            ) : selectedPreviewMedia.mimeType?.startsWith('audio/') || selectedPreviewMedia.type === 'AUDIOS' ? (
+              <div style={{ 
+                backgroundColor: '#202c33', 
+                padding: '40px', 
+                borderRadius: '24px', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                gap: '20px', 
+                width: '100%', 
+                maxWidth: '400px',
+                boxShadow: '0 20px 50px rgba(0,0,0,0.5)' 
+              }}>
+                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: '#00a884', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                  <Mic size={40} />
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <h3 style={{ margin: '0 0 5px 0', fontSize: '1.1rem', color: 'white' }}>{selectedPreviewMedia.filename || 'Nota de Voz'}</h3>
+                  <p style={{ color: '#8696a0', fontSize: '0.8rem', margin: 0 }}>Audio / Mensaje de Voz</p>
+                </div>
+                <audio src={selectedPreviewMedia.url} controls autoPlay style={{ width: '100%' }} />
+              </div>
+            ) : (
+              <div style={{ 
+                backgroundColor: '#202c33', 
+                padding: '30px', 
+                borderRadius: '16px', 
+                display: 'flex', 
+                flexDirection: 'column', 
+                alignItems: 'center', 
+                gap: '20px', 
+                maxWidth: '400px', 
+                width: '100%' 
+              }}>
+                <Paperclip size={60} />
+                <div style={{ textAlign: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'white' }}>{selectedPreviewMedia.filename || 'Archivo'}</h3>
+                  <p style={{ color: '#8696a0', fontSize: '0.8rem', marginTop: '4px' }}>{selectedPreviewMedia.mimeType || 'Documento'}</p>
+                </div>
+                <button 
+                  onClick={() => window.open(selectedPreviewMedia.url, '_blank')} 
+                  style={{ 
+                    width: '100%', 
+                    padding: '14px', 
+                    borderRadius: '12px', 
+                    background: '#00a884', 
+                    border: 'none', 
+                    color: 'white', 
+                    fontWeight: 'bold', 
+                    cursor: 'pointer' 
+                  }}
+                >
+                  Abrir Documento
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {/* --- MEDIA CAPTURE MODAL --- */}
       {showMediaCapture && (
         <div className="media-modal-overlay">
@@ -901,44 +1003,21 @@ export default function ProjectChatUnified({
       <footer className="chat-footer">
         <div className="input-row">
            <button className="btn-icon"><Smile /></button>
-           <div className="input-container">
-             <textarea 
-               placeholder="Escribir un mensaje"
-               value={inputValue}
-               onChange={(e) => setInputValue(e.target.value)}
-               onKeyPress={handleKeyPress}
-               rows={1}
-             />
-             <button onClick={() => setShowAttachments(!showAttachments)} className="btn-icon">
-                <Paperclip />
-             </button>
-             <button onClick={() => cameraInputRef.current?.click()} className="btn-icon" title="Tomar Foto">
-                <Camera />
-             </button>
-             <button onClick={() => {
-                const input = document.createElement('input');
-                input.type = 'file';
-                input.accept = 'video/*';
-                input.capture = 'environment';
-                input.onchange = (e: any) => {
-                  const file = e.target.files?.[0];
-                  if (file) {
-                    onSendMessage('', 'VIDEO', { file });
-                  }
-                };
-                input.click();
-             }} className="btn-icon" title="Grabar Video">
-                <VideoIcon />
-             </button>
-             <input 
-                type="file"
-                accept="image/*"
-                capture="environment"
-                ref={cameraInputRef}
-                style={{ display: 'none' }}
-                onChange={handleCameraChange}
-             />
-           </div>
+            <div className="input-container">
+              <textarea 
+                placeholder="Escribir un mensaje"
+                value={inputValue}
+                onChange={(e) => setInputValue(e.target.value)}
+                onKeyPress={handleKeyPress}
+                rows={1}
+              />
+              <button onClick={() => setShowAttachments(!showAttachments)} className="btn-icon">
+                 <Paperclip />
+              </button>
+              <button onClick={() => setShowCamera(true)} className="btn-icon" title="Cámara (Foto/Video)">
+                 <Camera />
+              </button>
+            </div>
            
            <button 
             className={`btn-send ${inputValue.trim() ? 'active' : ''}`}
@@ -1100,6 +1179,30 @@ export default function ProjectChatUnified({
               >
                 Registrar {expenseModal.isNote ? 'Nota' : 'Gasto'}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- CAMERA MODAL --- */}
+      {showCamera && (
+        <div className="media-modal-overlay" style={{ zIndex: 1100 }}>
+          <div className="media-modal-content" style={{ maxWidth: '500px', padding: '10px' }}>
+            <button className="close-btn" onClick={() => setShowCamera(false)} style={{ top: '10px', right: '10px' }}>✕</button>
+            <div style={{ marginTop: '20px' }}>
+              <CameraCapture 
+                onPhotoCapture={(blob) => {
+                  const file = new File([blob], `camera_${Date.now()}.jpg`, { type: 'image/jpeg' });
+                  onSendMessage('', 'IMAGE', { file, phaseId: selectedPhaseId });
+                  setShowCamera(false);
+                }}
+                onVideoCapture={(blob) => {
+                  const file = new File([blob], `video_${Date.now()}.mp4`, { type: 'video/mp4' });
+                  onSendMessage('', 'VIDEO', { file, phaseId: selectedPhaseId });
+                  setShowCamera(false);
+                }}
+                onClose={() => setShowCamera(false)}
+              />
             </div>
           </div>
         </div>

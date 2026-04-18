@@ -140,11 +140,7 @@ export default function QuotesListClient({ initialQuotes, activeProjects = [] }:
 
   return (
     <>
-      <div className="tabs" style={{ marginBottom: '20px' }}>
-        <button onClick={() => setFilter('ALL')} className={`tab ${filter === 'ALL' ? 'active' : ''}`}>Todas</button>
-        <button onClick={() => setFilter('PROJECT')} className={`tab ${filter === 'PROJECT' ? 'active' : ''}`}>Vinculadas a Proyectos</button>
-        <button onClick={() => setFilter('NO_PROJECT')} className={`tab ${filter === 'NO_PROJECT' ? 'active' : ''}`}>Individuales</button>
-      </div>
+      {/* Filtros eliminados según solicitud */}
 
       <div className="card shadow-sm" style={{ padding: 0, overflowX: 'auto', borderRadius: '16px' }}>
         <table style={{ minWidth: '900px', width: '100%', borderCollapse: 'collapse' }}>
