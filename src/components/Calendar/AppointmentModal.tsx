@@ -470,7 +470,7 @@ export default function AppointmentModal({
                       onClick={() => {
                         const input = document.createElement('input')
                         input.type = 'file'
-                        input.accept = 'image/*,video/*'
+                        input.accept = 'image/*'
                         input.capture = 'environment' as any
                         input.onchange = (e: any) => {
                           const files = e.target.files ? Array.from(e.target.files) as File[] : []
@@ -488,7 +488,33 @@ export default function AppointmentModal({
                         input.click()
                       }}
                     >
-                      📷 Cámara
+                      📷 Foto
+                    </button>
+                    <button 
+                      type="button" 
+                      className="btn-attach-aquatech"
+                      onClick={() => {
+                        const input = document.createElement('input')
+                        input.type = 'file'
+                        input.accept = 'video/*'
+                        input.capture = 'environment' as any
+                        input.onchange = (e: any) => {
+                          const files = e.target.files ? Array.from(e.target.files) as File[] : []
+                          const newPreviews = files.map((file: File) => ({
+                            url: URL.createObjectURL(file),
+                            type: file.type,
+                            name: file.name
+                          }))
+                          setFormData(prev => ({
+                            ...prev,
+                            mediaFiles: [...prev.mediaFiles, ...files],
+                            previews: [...prev.previews, ...newPreviews]
+                          }))
+                        }
+                        input.click()
+                      }}
+                    >
+                      🎬 Video
                     </button>
                     <button 
                       type="button" 

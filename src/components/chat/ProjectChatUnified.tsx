@@ -18,6 +18,7 @@ const MoreVertical = ({ size = 20 }: any) => <svg {...svgProps(size)}><circle cx
 const Smile = ({ size = 20 }: any) => <svg {...svgProps(size)}><circle cx="12" cy="12" r="10"/><path d="M8 14s1.5 2 4 2 4-2 4-2"/><line x1="9" x2="9.01" y1="9" y2="9"/><line x1="15" x2="15.01" y1="9" y2="9"/></svg>
 const Play = ({ size = 16 }: any) => <svg {...svgProps(size)} fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
 const ImageIcon = ({ size = 20 }: any) => <svg {...svgProps(size)}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
+const VideoIcon = ({ size = 20 }: any) => <svg {...svgProps(size)}><rect width="14" height="14" x="2" y="5" rx="2" ry="2"/><path d="M16 14.5V9.5L22 6.5v11z"/></svg>
 const getSenderColor = (name: string) => {
   const colors = [
     '#25d366', '#34d399', '#3b82f6', '#f59e0b', '#ef4444', 
@@ -685,9 +686,39 @@ export default function ProjectChatUnified({
           <div className="attachments-grid">
             <AttachmentItem 
               icon={<Camera size={28} />} 
-              label="CÁMARA" 
+              label="FOTO" 
               color="#d946ef" 
-              onClick={() => cameraInputRef.current?.click()} 
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'image/*';
+                input.capture = 'environment';
+                input.onchange = (e: any) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    onSendMessage('', 'IMAGE', { file });
+                  }
+                };
+                input.click();
+              }} 
+            />
+            <AttachmentItem 
+              icon={<VideoIcon size={28} />} 
+              label="VIDEO" 
+              color="#eab308" 
+              onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'video/*';
+                input.capture = 'environment';
+                input.onchange = (e: any) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    onSendMessage('', 'VIDEO', { file });
+                  }
+                };
+                input.click();
+              }} 
             />
             <AttachmentItem 
               icon={<ImageIcon size={28} />} 
@@ -881,12 +912,27 @@ export default function ProjectChatUnified({
              <button onClick={() => setShowAttachments(!showAttachments)} className="btn-icon">
                 <Paperclip />
              </button>
-             <button onClick={() => cameraInputRef.current?.click()} className="btn-icon">
+             <button onClick={() => cameraInputRef.current?.click()} className="btn-icon" title="Tomar Foto">
                 <Camera />
+             </button>
+             <button onClick={() => {
+                const input = document.createElement('input');
+                input.type = 'file';
+                input.accept = 'video/*';
+                input.capture = 'environment';
+                input.onchange = (e: any) => {
+                  const file = e.target.files?.[0];
+                  if (file) {
+                    onSendMessage('', 'VIDEO', { file });
+                  }
+                };
+                input.click();
+             }} className="btn-icon" title="Grabar Video">
+                <VideoIcon />
              </button>
              <input 
                 type="file"
-                accept="image/*,video/*"
+                accept="image/*"
                 capture="environment"
                 ref={cameraInputRef}
                 style={{ display: 'none' }}
