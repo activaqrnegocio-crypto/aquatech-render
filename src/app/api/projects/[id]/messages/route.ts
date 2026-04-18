@@ -149,6 +149,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           description: content || 'Gasto registrado desde chat',
           category: extraData.category || 'OTRO',
           date: extraData.date ? new Date(extraData.date) : new Date(),
+          receiptUrl: mediaUrl || (media && media.url), // Fix: attach the photo to the expense record too
           lat: lat ? Number(lat) : null,
           lng: lng ? Number(lng) : null,
         }

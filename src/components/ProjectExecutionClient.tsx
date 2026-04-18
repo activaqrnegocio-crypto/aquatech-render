@@ -775,6 +775,10 @@ export default function ProjectExecutionClient({
         }
       }
 
+      // Clean extraData from File objects before sending
+      const cleanExtraData = extraData ? { ...extraData } : undefined;
+      if (cleanExtraData && cleanExtraData.file) delete cleanExtraData.file;
+
       const payload = { 
         phaseId: phaseIdToSend, 
         content: msgToSend, 
@@ -786,7 +790,7 @@ export default function ProjectExecutionClient({
           ) : 'TEXT'
         )),
         media: mediaData,
-        extraData: extraData
+        extraData: cleanExtraData
       }
 
       if (!navigator.onLine) {
@@ -1361,15 +1365,19 @@ export default function ProjectExecutionClient({
                         ))}
                      </div>
 
-                    <div style={{ 
+                    <div className="custom-scrollbar" style={{ 
                       display: 'grid', 
-                      gridTemplateColumns: 'repeat(auto-fill, minmax(130px, 1fr))', 
-                      gap: '12px'
+                      gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
+                      gap: '12px',
+                      maxHeight: '450px',
+                      overflowY: 'auto',
+                      padding: '4px'
                     }}>
                       {masterGallery.map((item: any) => (
                         <div 
                           key={item.id} 
                           className="group"
+                          onClick={() => setSelectedPreviewImage(item)}
                           style={{ 
                             position: 'relative', 
                             aspectRatio: '1/1', 
@@ -1377,7 +1385,8 @@ export default function ProjectExecutionClient({
                             overflow: 'hidden', 
                             border: '1px solid var(--border-color)',
                             backgroundColor: 'var(--bg-surface)',
-                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)'
+                            boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                            cursor: 'pointer'
                           }}
                         >
                           {item.mimeType.startsWith('image/') ? (
@@ -1461,7 +1470,14 @@ export default function ProjectExecutionClient({
                     <p style={{ fontSize: '0.85rem', margin: 0 }}>No hay fotos o videos finales aún.</p>
                   </div>
                 ) : (
-                  <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))', gap: '10px' }}>
+                  <div className="custom-scrollbar" style={{ 
+                    display: 'grid', 
+                    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
+                    gap: '12px',
+                    maxHeight: '400px',
+                    overflowY: 'auto',
+                    padding: '4px'
+                  }}>
                     {evidenceGallery.map((item: any, idx: number) => (
                       <div 
                         key={idx}

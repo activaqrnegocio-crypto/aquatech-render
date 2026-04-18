@@ -287,15 +287,12 @@ export default function ProjectChatUnified({
   }
 
   const submitExpenseForm = () => {
-    if (!expenseForm.amount || !expenseForm.description) {
-      alert("Monto y descripción son obligatorios.");
-      return;
-    }
+    const isNote = expenseModal.isNote;
     setExpenseModal({ isOpen: false, isNote: false });
 
     handleSendWithPhase(expenseForm.description, 'EXPENSE_LOG', { 
-      amount: Number(expenseForm.amount), 
-      isNote: expenseModal.isNote,
+      amount: Number(expenseForm.amount) || 0, 
+      isNote: isNote,
       file: expenseForm.file 
     });
   }
@@ -453,10 +450,13 @@ export default function ProjectChatUnified({
           const isMe = Number(msg.userId) === Number(userId) || msg.isMe;
           const showPointer = idx === 0 || filteredArray[idx-1]?.userId !== msg.userId;
 
-          // Robust media detection & Sender derivation
           const userName = msg.userName || msg.user?.name || 'Usuario';
-          let mediaArray = Array.isArray(msg.media) ? [...msg.media] : (msg.media ? [msg.media] : []);
+          const parsedExtraData = typeof msg.extraData === 'string' ? JSON.parse(msg.extraData) : (msg.extraData || {});
+          const isExpense = msg.type === 'EXPENSE_LOG' || msg.type === 'EXPENSE';
+          const isNote = parsedExtraData.isNote || msg.isNote;
+          const amount = parsedExtraData.amount || msg.amount;
           
+          let mediaArray = Array.isArray(msg.media) ? [...msg.media] : (msg.media ? [msg.media] : []);
           const mediaObj = mediaArray[0];
           const mime = mediaObj?.mimeType || '';
 
@@ -481,16 +481,60 @@ export default function ProjectChatUnified({
                  )}
                  
                  {/* Text Content */}
-                 {msg.content && (msg.type === 'TEXT' || msg.type === 'MESSAGE' || msg.type === 'DOCUMENT' || msg.type === 'FILE' || !msg.type) && <p>{msg.content}</p>}
+                    {msg.content && (msg.type === 'TEXT' || msg.type === 'MESSAGE' || msg.type === 'DOCUMENT' || msg.type === 'FILE' || !msg.type) && (
+                      msg.content.includes('COTIZACIÓN COMPARTIDA') ? (
+                        <div className="quote-bubble" style={{ 
+                          backgroundColor: 'rgba(59, 130, 246, 0.05)', 
+                          borderRadius: '10px', 
+                          padding: '12px',
+                          border: '1px solid rgba(59, 130, 246, 0.3)',
+                          marginTop: '5px',
+                          marginBottom: '10px',
+                          maxWidth: 'calc(100% - 4px)',
+                          marginRight: '2px',
+                          marginLeft: '2px',
+                          boxSizing: 'border-box'
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
+                            <span style={{ fontSize: '1.5rem' }}>📄</span>
+                            <div style={{ flex: 1, minWidth: 0 }}>
+                               <div style={{ fontWeight: '800', fontSize: '0.85rem', color: '#3b82f6', textTransform: 'uppercase' }}>Cotización Compartida</div>
+                               <div style={{ fontSize: '0.75rem', opacity: 0.8, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                 {msg.content.split('Para:')[1]?.split('Total:')[0]?.trim() || 'Cliente'}
+                               </div>
+                            </div>
+                          </div>
+                          
+                          <div style={{ background: 'rgba(0,0,0,0.2)', padding: '10px', borderRadius: '8px', marginBottom: '10px' }}>
+                            <div style={{ fontSize: '0.7rem', opacity: 0.6, marginBottom: '2px' }}>Total Cotizado</div>
+                            <div style={{ fontSize: '1.2rem', fontWeight: '900', color: 'white' }}>
+                              {msg.content.split('Total:')[1]?.split('📄')[0]?.trim() || '$0.00'}
+                            </div>
+                          </div>
+
+                          <p style={{ fontSize: '0.8rem', opacity: 0.9, margin: '0 0 10px 0', lineHeight: '1.4' }}>
+                            {msg.content.includes('Ver cotización completa') ? 'Se ha compartido una cotización formal. Puede revisarla y descargar el PDF adjunto.' : msg.content}
+                          </p>
+                        </div>
+                      ) : (
+                        <p>{msg.content}</p>
+                      )
+                    )}
+
                                   {(msg.type === 'LOCATION' || (msg.content && msg.content.includes('google.com/maps'))) && (
-                    <div className="location-bubble" style={{ 
-                      backgroundColor: 'rgba(255,255,255,0.05)', 
-                      borderRadius: '8px', 
-                      padding: '12px',
-                      border: '1px solid var(--primary)',
-                      marginTop: '5px',
-                      marginBottom: '10px'
-                    }}>
+                      <div className="location-bubble" style={{ 
+                        backgroundColor: 'rgba(255,255,255,0.05)', 
+                        borderRadius: '8px', 
+                        padding: '12px',
+                        border: '1px solid var(--primary)',
+                        marginTop: '5px',
+                        marginBottom: '10px',
+                        maxWidth: 'calc(100% - 4px)',
+                        marginLeft: '2px',
+                        marginRight: '2px',
+                        overflow: 'hidden',
+                        boxSizing: 'border-box'
+                      }}>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '8px' }}>
                         <span style={{ fontSize: '1.5rem' }}>📍</span>
                         <div>
@@ -522,8 +566,8 @@ export default function ProjectChatUnified({
                   )}
 
                   {/* Media Rendering */}
-                 {mediaArray.length > 0 && mediaArray.map((m: any, mIdx: number) => (
-                   <div key={m.id || mIdx} className="media-attachment-container">
+                  {mediaArray.length > 0 && !isExpense && mediaArray.map((m: any, mIdx: number) => (
+                    <div key={m.id || mIdx} className="media-attachment-container">
                      {(m.mimeType?.startsWith('image/') || m.type === 'IMAGE' || (!m.mimeType && m.url?.match(/\.(jpg|jpeg|png|gif|webp)$/i))) && (
                        <div className="media-preview">
                          <img src={m.url} alt="Media" onClick={() => window.open(m.url, '_blank')} />
@@ -561,27 +605,28 @@ export default function ProjectChatUnified({
                     </div>
                   )}
 
-                  {(msg.type === 'EXPENSE_LOG' || msg.type === 'EXPENSE') && (
-                    <div className="expense-box" style={{ 
-                      backgroundColor: (msg.extraData?.isNote || msg.isNote) ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
-                      borderLeft: `4px solid ${(msg.extraData?.isNote || msg.isNote) ? '#3b82f6' : '#10b981'}`,
-                      padding: '12px',
-                      borderRadius: '8px',
-                      marginTop: '8px',
-                      boxShadow: '0 2px 4px rgba(0,0,0,0.1)'
-                    }}>
+                    {(msg.type === 'EXPENSE_LOG' || msg.type === 'EXPENSE') && (
+                      <div className="expense-box" style={{ 
+                        backgroundColor: isNote ? 'rgba(59, 130, 246, 0.12)' : 'rgba(16, 185, 129, 0.12)',
+                        borderLeft: `4px solid ${isNote ? '#3b82f6' : '#10b981'}`,
+                        padding: '12px',
+                        borderRadius: '8px',
+                        marginTop: '8px',
+                        boxShadow: '0 2px 4px rgba(0,0,0,0.1)',
+                        maxWidth: 'calc(100% - 4px)',
+                        marginLeft: '2px',
+                        marginRight: '2px',
+                        boxSizing: 'border-box'
+                      }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: '800', color: (msg.extraData?.isNote || msg.isNote) ? '#3b82f6' : '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-                          {(msg.extraData?.isNote || msg.isNote) ? '🏷️ Nota de Gasto' : '💰 Gasto Real'}
+                        <div style={{ fontSize: '0.7rem', fontWeight: '800', color: isNote ? '#3b82f6' : '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                          {isNote ? '🏷️ Nota de Gasto' : '💰 Gasto Real'}
                         </div>
                         {msg.userName && <div style={{ fontSize: '0.65rem', opacity: 0.6 }}>{msg.userName}</div>}
                       </div>
 
                       <div style={{ fontSize: '1.4rem', fontWeight: '900', color: '#e9edef', marginBottom: '4px' }}>
-                        $ {(() => {
-                          const val = msg.extraData?.amount ?? msg.amount;
-                          return val !== undefined && val !== null ? Number(val).toFixed(2) : '0.00';
-                        })()}
+                        $ {amount !== undefined && amount !== null ? Number(amount).toFixed(2) : '0.00'}
                       </div>
 
                       <div style={{ fontSize: '0.9rem', lineHeight: '1.4', opacity: 0.95, color: '#e9edef', marginBottom: '8px' }}>
@@ -639,6 +684,12 @@ export default function ProjectChatUnified({
         <div className="attachments-menu">
           <div className="attachments-grid">
             <AttachmentItem 
+              icon={<Camera size={28} />} 
+              label="CÁMARA" 
+              color="#d946ef" 
+              onClick={() => cameraInputRef.current?.click()} 
+            />
+            <AttachmentItem 
               icon={<ImageIcon size={28} />} 
               label="GALERÍA" 
               color="#00a884" 
@@ -648,7 +699,10 @@ export default function ProjectChatUnified({
                 input.accept = 'image/*,video/*';
                 input.onchange = (e: any) => {
                   const file = e.target.files?.[0];
-                  if (file) onSendMessage('', 'FILE', { file });
+                  if (file) {
+                    const type = file.type.startsWith('video/') ? 'VIDEO' : 'IMAGE';
+                    onSendMessage('', type, { file });
+                  }
                 };
                 input.click();
               }} 
@@ -792,9 +846,19 @@ export default function ProjectChatUnified({
                 skipTranscription={true}
                 onCapture={(blob, type, transcription) => {
                   const fileStr = type === 'audio' ? 'AUDIO' : type === 'photo' ? 'IMAGE' : 'VIDEO';
-                  const ext = type === 'audio' ? 'webm' : type === 'photo' ? 'jpg' : 'webm';
+                  
+                  // Use actual mime type for extension fallback
+                  let ext = 'webm';
+                  if (blob.type.includes('mp4')) ext = 'mp4';
+                  else if (blob.type.includes('mpeg')) ext = 'mp3';
+                  else if (blob.type.includes('ogg')) ext = 'ogg';
+                  else if (blob.type.includes('jpeg') || type === 'photo') ext = 'jpg';
+                  else if (blob.type.includes('png')) ext = 'png';
+
                   const mediaFile = new File([blob], `capture_${Date.now()}.${ext}`, { type: blob.type });
-                  onSendMessage(transcription, fileStr, { file: mediaFile });
+                  
+                  // For audio without transcription, we can pass a small placeholder or just empty
+                  onSendMessage(transcription || (type === 'audio' ? 'Nota de voz' : ''), fileStr, { file: mediaFile });
                   setShowMediaCapture(null);
                 }}
               />
@@ -883,6 +947,7 @@ export default function ProjectChatUnified({
                     const input = document.createElement('input');
                     input.type = 'file';
                     input.accept = 'image/*';
+                    input.capture = 'environment';
                     input.onchange = (e: any) => {
                       const file = e.target.files?.[0];
                       if (file) setExpenseForm({ ...expenseForm, file });
@@ -1075,10 +1140,10 @@ export default function ProjectChatUnified({
           flex: 1;
           min-height: 0;
           overflow-y: auto;
-          padding: 20px 5% 100px 5%;
+          padding: 20px 16px 100px 16px;
           display: flex;
           flex-direction: column;
-          gap: 4px;
+          gap: 6px;
         }
         .date-badge {
           align-self: center;
@@ -1092,8 +1157,9 @@ export default function ProjectChatUnified({
         .message-row {
           display: flex;
           flex-direction: column;
-          max-width: 85%;
-          margin-bottom: 2px;
+          max-width: 82%;
+          margin-bottom: 4px;
+          position: relative;
         }
         .message-row.me {
           align-self: flex-end;
@@ -1111,11 +1177,11 @@ export default function ProjectChatUnified({
           margin-left: 8px;
         }
         .message-bubble {
-          padding: 6px 10px 8px 10px;
-          border-radius: 12px;
+          padding: 8px 12px 10px 12px;
+          border-radius: 16px;
           position: relative;
-          min-width: 60px;
-          box-shadow: 0 1px 1px rgba(0,0,0,0.2);
+          min-width: 80px;
+          box-shadow: 0 1px 2px rgba(0,0,0,0.15);
         }
         .me .message-bubble {
           background-color: #005c4b; /* WA Me Color */
@@ -1128,9 +1194,12 @@ export default function ProjectChatUnified({
 
         .message-bubble p {
           margin: 0;
+          line-height: 1.5;
           font-size: 0.95rem;
-          line-height: 1.4;
-          white-space: pre-wrap;
+          word-break: break-word;
+          overflow-wrap: break-word;
+          max-width: 100%;
+          overflow: hidden;
         }
 
         .message-footer {
@@ -1138,11 +1207,12 @@ export default function ProjectChatUnified({
           align-items: center;
           justify-content: flex-end;
           gap: 4px;
-          margin-top: 2px;
+          margin-top: 4px;
           height: 15px;
+          opacity: 0.8;
         }
         .time {
-          font-size: 0.65rem;
+          font-size: 0.68rem;
           color: #8696a0;
         }
         .check {
@@ -1150,16 +1220,28 @@ export default function ProjectChatUnified({
           color: #53bdeb;
         }
 
+        .expense-box {
+          max-width: 100%;
+          overflow: hidden;
+        }
+        .expense-box div {
+          word-break: break-word;
+        }
+
         .document-box {
           display: flex;
           align-items: center;
           gap: 12px;
-          background: rgba(0,0,0,0.2);
+          background-color: rgba(0,0,0,0.2);
           padding: 10px;
           border-radius: 8px;
           cursor: pointer;
-          margin-bottom: 5px;
           border: 1px solid rgba(255,255,255,0.05);
+          margin-top: 5px;
+          width: 100%;
+          max-width: 100%;
+          overflow: hidden;
+          box-sizing: border-box;
         }
         .document-box:hover {
           background: rgba(0,0,0,0.3);
@@ -1167,14 +1249,18 @@ export default function ProjectChatUnified({
         .doc-info {
           display: flex;
           flex-direction: column;
-          overflow: hidden;
+          min-width: 0;
+          flex: 1;
         }
         .doc-name {
           font-size: 0.85rem;
-          font-weight: 500;
-          white-space: nowrap;
+          font-weight: 600;
+          word-break: break-all;
           overflow: hidden;
           text-overflow: ellipsis;
+          display: -webkit-box;
+          -webkit-line-clamp: 2;
+          -webkit-box-orient: vertical;
         }
         .doc-type {
           font-size: 0.65rem;
@@ -1190,15 +1276,15 @@ export default function ProjectChatUnified({
           margin-bottom: 5px;
         }
 
-        .media-preview {
-          margin: 4px -6px;
-          border-radius: 8px;
-          overflow: hidden;
-          background-color: #0d1418;
-          display: flex;
-          justify-content: center;
-          border: 1px solid rgba(255,255,255,0.05);
-        }
+          .media-preview {
+            margin: 4px -2px;
+            border-radius: 8px;
+            overflow: hidden;
+            background-color: #0d1418;
+            display: flex;
+            justify-content: center;
+            border: 1px solid rgba(255,255,255,0.05);
+          }
         .media-preview img, .media-preview video {
           max-width: 100%;
           max-height: 280px; 
@@ -1346,63 +1432,100 @@ export default function ProjectChatUnified({
           cursor: pointer;
         }
 
-        @keyframes slideUp {
-          from { transform: translateY(20px); opacity: 0; }
-          to { transform: translateY(0); opacity: 1; }
-        }
-
         /* Responsive Fixes */
         @media (max-width: 480px) {
           .chat-header {
-            padding: 8px 10px;
+            padding: 8px 12px;
           }
           .project-avatar {
-            width: 32px;
-            height: 32px;
-            font-size: 0.8rem;
+            width: 36px;
+            height: 36px;
+            font-size: 0.9rem;
           }
           .project-info h1 {
-            font-size: 0.9rem;
-            max-width: 150px;
+            font-size: 0.95rem;
+            max-width: 140px;
             white-space: nowrap;
             overflow: hidden;
             text-overflow: ellipsis;
           }
           .project-info p {
-            font-size: 0.7rem;
+            font-size: 0.65rem;
             gap: 4px !important;
           }
           .chat-body {
-            padding: 15px 3% 80px 3%;
+            padding: 12px 14px 80px 14px;
           }
           .message-row {
-            max-width: 92%;
+            max-width: 84%;
+          }
+          .message-bubble {
+            padding: 6px 8px;
+          }
+          .message-bubble p {
+            font-size: 0.85rem;
+            line-height: 1.4;
+          }
+          .media-preview img, .media-preview video {
+            max-height: 180px;
+            min-width: 140px;
+          }
+          .document-box {
+            padding: 6px;
+            gap: 8px;
+          }
+          .doc-name {
+            font-size: 0.75rem;
+          }
+          .quote-bubble, .location-bubble, .expense-box {
+            padding: 8px !important;
+          }
+          .quote-bubble h2, .quote-bubble div {
+            font-size: 0.8rem !important;
+          }
+          .expense-box div {
+            font-size: 0.8rem !important;
           }
           .header-actions {
-            gap: 4px;
-          }
-          .btn-jornada {
-            padding: 4px 8px;
-            font-size: 0.7rem;
-          }
-          .input-container {
-            padding: 4px 6px 4px 12px;
-            min-height: 44px;
-          }
-          .input-container textarea {
-            font-size: 0.95rem;
-            padding: 8px 4px;
-          }
-          .btn-send {
-            width: 42px;
-            height: 42px;
-          }
-          .input-row {
             gap: 6px;
           }
+          .btn-jornada {
+            padding: 4px 10px;
+            font-size: 0.7rem;
+            border-radius: 12px;
+          }
+          .input-container {
+            padding: 2px 4px 2px 12px;
+            min-height: 40px;
+          }
+          .input-container textarea {
+            font-size: 0.9rem;
+            padding: 8px 2px;
+          }
+          .btn-send {
+            width: 40px;
+            height: 40px;
+          }
+          .input-row {
+            gap: 4px;
+          }
           .chat-footer {
-            padding: 6px 8px;
+            padding: 4px 6px;
             padding-bottom: calc(6px + env(safe-area-inset-bottom, 0px));
+          }
+          .attachments-menu {
+            bottom: 60px;
+            padding: 15px;
+          }
+          .attachments-grid {
+             gap: 15px;
+          }
+          .location-bubble {
+            padding: 8px;
+          }
+          .location-bubble button {
+            padding: 8px;
+            font-size: 0.8rem;
           }
         }
       `}</style>

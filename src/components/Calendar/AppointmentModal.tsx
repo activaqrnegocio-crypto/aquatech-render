@@ -680,6 +680,8 @@ export default function AppointmentModal({
           padding: 10px;
           border-radius: 10px;
           border: 1px solid rgba(255,255,255,0.05);
+          width: 100%;
+          box-sizing: border-box;
         }
 
         .btn-gps-aquatech {
@@ -836,41 +838,70 @@ export default function AppointmentModal({
             border-radius: 0; border: none;
             background: #010816;
             overflow: hidden;
-          }
-          .modal-header { padding: 16px; border-bottom: 1px solid rgba(255,255,255,0.05); }
-          .modal-scroll { 
-            padding: 16px; 
-            overflow-y: auto; /* Permitir scroll si es muy necesario, pero compactado */
             display: flex;
             flex-direction: column;
-            gap: 12px;
+          }
+          .modal-header { 
+            padding: 12px 16px; 
+            border-bottom: 1px solid rgba(255,255,255,0.05); 
+          }
+          .modal-scroll { 
+            padding: 12px 16px; 
+            overflow-y: auto;
+            flex: 1;
           }
           .modal-content-layout { 
             display: flex;
             flex-direction: column;
-            gap: 12px; 
+            gap: 16px; 
+            width: 100%;
           }
           .modal-column { 
             display: flex;
             flex-direction: column;
-            gap: 12px;
+            gap: 16px;
+            width: 100%;
           }
-          .form-group-compact { gap: 4px; }
+          .form-group-compact { gap: 4px; width: 100%; }
           .form-label-aquatech { font-size: 0.7rem; }
-          .form-input-aquatech, .form-select-aquatech, .operator-dropdown-trigger { padding: 10px 14px; font-size: 0.85rem; }
-          .location-row-aquatech { grid-template-columns: 1fr 1fr; gap: 8px; padding: 8px; }
-          .btn-gps-aquatech { min-height: 40px; padding: 8px; font-size: 0.8rem; }
-          .time-row-aquatech { 
-            grid-template-columns: 1fr; /* Cambiamos a una sola columna en móvil para evitar cortes */
-            gap: 10px; 
+          .form-input-aquatech, .form-select-aquatech, .operator-dropdown-trigger { 
+            padding: 10px 12px; 
+            font-size: 0.9rem; 
+            width: 100%;
           }
-          .upload-zone-aquatech { padding: 12px; }
-          .form-textarea-aquatech { min-height: 60px; }
+          .location-row-aquatech { 
+            grid-template-columns: 1fr; /* Una sola columna para evitar cortes horizontales */
+            gap: 12px; 
+            padding: 12px; 
+          }
+          .btn-gps-aquatech { 
+            width: 100%;
+            min-height: 44px; 
+            padding: 10px; 
+            font-size: 0.9rem; 
+          }
+          .time-row-aquatech { 
+            grid-template-columns: 1fr; 
+            gap: 12px; 
+          }
+          .upload-zone-aquatech { 
+            padding: 12px; 
+            min-height: 100px;
+          }
+          .form-textarea-aquatech { min-height: 80px; }
           .modal-footer { 
             position: relative; 
             padding: 16px;
             background: #010816;
             border-top: 1px solid rgba(255,255,255,0.1);
+            flex-direction: column-reverse; /* Botones apilados, Cancelar abajo */
+            gap: 10px;
+            flex-shrink: 0;
+          }
+          .modal-btn {
+            width: 100%;
+            margin: 0 !important;
+            padding: 12px !important;
           }
         }
       `}</style>

@@ -175,31 +175,59 @@ export default function ProjectUploader({
           justifyContent: 'space-between'
         }}>
           {!readOnly && (
-            <button 
-              onClick={() => fileInputRef.current?.click()}
-              disabled={isUploading}
-              className="btn btn-primary btn-sm"
-              style={{ 
-                padding: '8px 16px', 
-                borderRadius: '8px', 
-                display: 'flex', 
-                alignItems: 'center', 
-                gap: '8px',
-                flexShrink: 0
-              }}
-            >
-              {isUploading ? (
-                <>
-                  <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                  <span>Subiendo...</span>
-                </>
-              ) : (
-                <>
-                  <UploadCloud size={16} />
-                  <span>Subir Archivos</span>
-                </>
-              )}
-            </button>
+            <div style={{ display: 'flex', gap: '8px' }}>
+              <button 
+                onClick={() => fileInputRef.current?.click()}
+                disabled={isUploading}
+                className="btn btn-primary btn-sm"
+                style={{ 
+                  padding: '8px 16px', 
+                  borderRadius: '8px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  flexShrink: 0
+                }}
+              >
+                {isUploading ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                    <span>Subiendo...</span>
+                  </>
+                ) : (
+                  <>
+                    <UploadCloud size={16} />
+                    <span>Subir Archivos</span>
+                  </>
+                )}
+              </button>
+
+              <button 
+                onClick={() => {
+                  const camInput = document.createElement('input');
+                  camInput.type = 'file';
+                  camInput.accept = 'image/*,video/*';
+                  camInput.capture = 'environment';
+                  camInput.onchange = (e: any) => handleFileChange(e);
+                  camInput.click();
+                }}
+                disabled={isUploading}
+                className="btn btn-secondary btn-sm"
+                style={{ 
+                  padding: '8px 16px', 
+                  borderRadius: '8px', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  gap: '8px',
+                  flexShrink: 0,
+                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                  border: '1px solid rgba(255, 255, 255, 0.1)'
+                }}
+              >
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                <span>Cámara</span>
+              </button>
+            </div>
           )}
 
           {/* Filters - Professional Scrolling on Mobile */}

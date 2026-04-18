@@ -344,9 +344,13 @@ export default function CalendarView({
         @media (max-width: 768px) {
           .calendar-container {
             gap: var(--space-xs) !important;
+            width: 100%;
+            overflow-x: hidden;
+            box-sizing: border-box;
           }
           .cal-toolbar {
             gap: 0.5rem;
+            padding: 0 4px;
           }
           .cal-toolbar-left {
             gap: 0.4rem;
@@ -359,12 +363,17 @@ export default function CalendarView({
           .cal-toolbar-right {
             width: 100%;
             justify-content: space-between;
+            gap: 5px;
           }
           .calendar-grid-wrapper {
-            overflow-x: visible;
+            overflow-x: hidden; /* Evitar scroll horizontal forzado */
+            width: 100%;
+            box-sizing: border-box;
           }
           .calendar-grid {
             border-radius: var(--radius-md);
+            width: 100%;
+            grid-template-columns: repeat(7, 1fr); /* Por defecto 7, pero la semana lo pisa */
           }
           .full-day { display: none; }
           .short-day { display: inline; }
@@ -374,6 +383,8 @@ export default function CalendarView({
           }
           .calendar-day-cell {
             padding: 3px;
+            box-sizing: border-box;
+            min-width: 0;
           }
           .month-cell {
             min-height: 60px;
@@ -385,24 +396,27 @@ export default function CalendarView({
             margin-bottom: 4px;
           }
           .day-number {
-            width: 22px;
-            height: 22px;
-            font-size: 0.75rem;
+            width: 20px;
+            height: 20px;
+            font-size: 0.7rem;
           }
           .event-pill {
-            padding: 4px 5px;
-            font-size: 0.65rem;
+            padding: 3px 4px;
+            font-size: 0.6rem;
+            width: 100%;
+            box-sizing: border-box;
           }
           .event-time {
             display: block;
-            font-size: 0.55rem;
-            margin-top: 2px;
+            font-size: 0.5rem;
+            margin-top: 1px;
           }
           .event-title {
-            font-size: 0.65rem;
+            font-size: 0.6rem;
           }
           .day-events-container {
-            gap: 4px;
+            gap: 3px;
+            width: 100%;
           }
           
           /* Week View Mobile Overrides (4 top, 3 bottom) */
@@ -416,7 +430,7 @@ export default function CalendarView({
             display: block;
             text-transform: uppercase;
             margin-bottom: 2px;
-            font-size: 0.75rem;
+            font-size: 0.7rem;
           }
           .is-week-view .day-header {
             flex-direction: column;

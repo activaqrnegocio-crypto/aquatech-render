@@ -176,9 +176,15 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
         }
 
         @media (max-width: 768px) {
+          .admin-calendar-page {
+            overflow-x: hidden;
+            width: 100%;
+            max-width: 100vw;
+          }
           .calendar-header-mobile {
             flex-direction: column;
             align-items: flex-start;
+            padding: 0 10px;
           }
           .add-task-btn {
             width: 100%;
@@ -187,15 +193,25 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
             flex-direction: column;
             align-items: flex-start;
             gap: 10px;
+            padding: 10px;
+            width: 100%;
           }
           .operator-select {
             width: 100%;
           }
           .calendar-card {
-            padding: var(--space-md) !important;
+            padding: 12px !important;
+            margin: 10px 0 !important;
+            border-radius: 0;
+            border-left: none;
+            border-right: none;
+            width: 100%;
+            box-sizing: border-box;
           }
           .calendar-wrapper {
             min-height: 400px;
+            width: 100%;
+            overflow-x: hidden;
           }
         }
       `}</style>

@@ -140,6 +140,7 @@ export async function POST(req: Request) {
 
     // ========== RESULTADO ==========
     if (!transcribedText) {
+      console.error('Transcription: ALL SERVICES FAILED for audio size:', buffer.byteLength)
       return NextResponse.json({ error: 'Todos los servicios de transcripción fallaron. Intenta de nuevo.' }, { status: 503 })
     }
 

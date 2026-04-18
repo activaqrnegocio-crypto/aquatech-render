@@ -15,6 +15,8 @@ const Trash2 = ({ size = 24 }: any) => <svg {...svgProps(size)}><path d="M3 6h18
 const Loader2 = ({ size = 24, className }: any) => <svg {...svgProps(size)} className={className}><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
 const CheckCircle2 = ({ size = 24 }: any) => <svg {...svgProps(size)}><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
 const Camera = ({ size = 24 }: any) => <svg {...svgProps(size)}><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+const AlertCircle = ({ size = 24 }: any) => <svg {...svgProps(size)}><circle cx="12" cy="12" r="10"/><line x1="12" x2="12" y1="8" y2="12"/><line x1="12" x2="12.01" y1="16" y2="16"/></svg>
+const RefreshCw = ({ size = 24 }: any) => <svg {...svgProps(size)}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
 
 interface MediaCaptureProps {
   onCapture: (blob: Blob, type: 'audio' | 'video' | 'photo', transcription: string) => void
@@ -75,28 +77,55 @@ export default function MediaCapture({
     return '' // Let browser choose default
   }
 
-  const initCamera = async () => {
-    // No longer needed for native capture
-  }
+  const initStream = async () => {
+    try {
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach(track => track.stop())
+      }
 
-  // Auto-init camera for video/photo mode
-  useEffect(() => {
-    if ((mode === 'video' || mode === 'photo') && !previewUrl) {
-      initCamera()
+      const constraints: MediaStreamConstraints = {
+        audio: true,
+        video: mode === 'video' || mode === 'photo' ? { 
+          facingMode: facingMode,
+          width: { ideal: 1280 },
+          height: { ideal: 720 }
+        } : false
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia(constraints)
+      streamRef.current = stream
+      setIsStreamActive(true)
+      setDeviceError(null)
+      
+      if (videoRef.current && (mode === 'video' || mode === 'photo')) {
+        videoRef.current.srcObject = stream
+      }
+      return stream
+    } catch (err: any) {
+      console.error('Error accessing media devices:', err)
+      setDeviceError('No se pudo acceder al micrófono o cámara. Verifica los permisos.')
+      return null
     }
-  }, [mode, facingMode, previewUrl])
+  }
 
   const startRecording = async () => {
     try {
-      if (!streamRef.current) {
-        await initCamera()
-      }
-      if (!streamRef.current) return
+      const stream = await initStream()
+      if (!stream) return
 
       // --- Main recorder (video+audio or audio-only) ---
       const supportedMime = getSupportedMimeType(mode)
       const options: MediaRecorderOptions = supportedMime ? { mimeType: supportedMime } : {}
-      const recorder = new MediaRecorder(streamRef.current, options)
+      
+      // Safety check for browsers that don't support specified mime
+      let recorder: MediaRecorder
+      try {
+        recorder = new MediaRecorder(stream, options)
+      } catch (e) {
+        console.warn('MediaRecorder with options failed, trying default...', e)
+        recorder = new MediaRecorder(stream)
+      }
+
       const actualMime = recorder.mimeType || (mode === 'video' ? 'video/webm' : 'audio/webm')
       
       chunksRef.current = []
@@ -107,12 +136,16 @@ export default function MediaCapture({
       // --- Separate AUDIO-ONLY recorder for video transcription ---
       let audioRecorder: MediaRecorder | null = null
       if (mode === 'video') {
-        const audioTracks = streamRef.current.getAudioTracks()
+        const audioTracks = stream.getAudioTracks()
         if (audioTracks.length > 0) {
           const audioOnlyStream = new MediaStream(audioTracks)
           const audioMime = getSupportedMimeType('audio')
           const audioOpts: MediaRecorderOptions = audioMime ? { mimeType: audioMime } : {}
-          audioRecorder = new MediaRecorder(audioOnlyStream, audioOpts)
+          try {
+            audioRecorder = new MediaRecorder(audioOnlyStream, audioOpts)
+          } catch (e) {
+            audioRecorder = new MediaRecorder(audioOnlyStream)
+          }
           audioChunksRef.current = []
           audioRecorder.ondataavailable = (e) => {
             if (e.data.size > 0) audioChunksRef.current.push(e.data)
@@ -125,7 +158,13 @@ export default function MediaCapture({
         const videoBlob = new Blob(chunksRef.current, { type: actualMime })
         setMediaBlob(videoBlob)
         setPreviewUrl(URL.createObjectURL(videoBlob))
-        setRecordedDuration(timer)
+        
+        // Stop all tracks to release camera/mic
+        if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop())
+          streamRef.current = null
+          setIsStreamActive(false)
+        }
 
         if (skipTranscription) {
           onCapture(videoBlob, mode, '')
@@ -148,21 +187,18 @@ export default function MediaCapture({
       startTimer()
     } catch (err) {
       console.error('Error starting recording:', err)
-      alert('Error al grabar. Verifica los permisos.')
+      setDeviceError('Error al iniciar la grabación.')
     }
   }
 
   const stopRecording = () => {
-    if (mediaRecorderRef.current && isRecording) {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
       if (audioRecorderRef.current && audioRecorderRef.current.state !== 'inactive') {
         audioRecorderRef.current.stop()
       }
       mediaRecorderRef.current.stop()
       setIsRecording(false)
-      setRecordedDuration(timer)
       stopTimer()
-      // Note: We don't stop the stream yet if we want to keep the preview, 
-      // but here we are moving to result view, so let it be.
     }
   }
 
@@ -376,20 +412,32 @@ export default function MediaCapture({
         )}
 
         {transcription && !isProcessing && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: 'var(--success)', width: '100%' }}>
-            <CheckCircle2 size={18} />
-            <div style={{ 
-              fontSize: '0.85rem', 
-              fontStyle: 'italic',
-              color: 'var(--text)',
-              backgroundColor: 'rgba(255, 255, 255, 0.05)',
-              padding: '10px',
-              borderRadius: '8px',
-              width: '100%',
-              border: '1px solid var(--success-bg)'
-            }}>
-              "{transcription}"
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', color: transcription.includes('Error') ? 'var(--danger)' : 'var(--success)', width: '100%' }}>
+              {transcription.includes('Error') ? <AlertCircle size={18} /> : <CheckCircle2 size={18} />}
+              <div style={{ 
+                fontSize: '0.85rem', 
+                fontStyle: 'italic',
+                color: 'var(--text)',
+                backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                padding: '10px',
+                borderRadius: '8px',
+                width: '100%',
+                border: `1px solid ${transcription.includes('Error') ? 'rgba(239, 68, 68, 0.2)' : 'var(--success-bg)'}`
+              }}>
+                "{transcription}"
+              </div>
             </div>
+            {transcription.includes('Error') && mediaBlob && (
+              <button 
+                type="button"
+                onClick={() => handleTranscription(mediaBlob, mediaBlob)}
+                className="btn btn-ghost btn-sm"
+                style={{ alignSelf: 'flex-start', color: 'var(--primary)', padding: '2px 8px' }}
+              >
+                <RefreshCw size={14} style={{ marginRight: '5px' }} /> Reintentar transcripción
+              </button>
+            )}
           </div>
         )}
       </div>

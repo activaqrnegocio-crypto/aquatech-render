@@ -17,7 +17,16 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const { data: session } = useSession()
   const searchParams = useSearchParams()
   const pathname = usePathname()
-  const [activeTab, setActiveTab] = useState<'BITACORA' | 'GALLERY' | 'EVIDENCE'>(() => {
+
+  const [isSmallScreen, setIsSmallScreen] = useState(false)
+    useEffect(() => {
+      const check = () => setIsSmallScreen(window.innerWidth < 640)
+      check()
+      window.addEventListener('resize', check)
+      return () => window.removeEventListener('resize', check)
+    }, [])
+
+    const [activeTab, setActiveTab] = useState<'BITACORA' | 'GALLERY' | 'EVIDENCE'>(() => {
     const view = searchParams.get('view')
     if (view === 'BITACORA' || view === 'GALLERY' || view === 'EVIDENCE') return view
     // Fallback for legacy URL with 'EXPENSES'
@@ -1672,20 +1681,21 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
 
       {/* SECCIÓN DE PESTAÑAS (TABS) */}
       <div style={{ marginBottom: '30px', width: '100%' }}>
-        {/* Tab Navigation */}
         <div style={{ 
           display: 'flex', 
-          gap: '10px', 
-          marginBottom: '20px', 
+          gap: isSmallScreen ? '6px' : '10px', 
+          marginBottom: '15px', 
           paddingBottom: '10px', 
           borderBottom: '1px solid var(--border-color)',
           overflowX: 'auto',
-          scrollbarWidth: 'none'
-        }}>
+          scrollbarWidth: 'none',
+          paddingLeft: isSmallScreen ? '4px' : '0',
+          paddingRight: isSmallScreen ? '4px' : '0'
+        }} className="hide-scrollbar">
           {[
-            { id: 'BITACORA', label: 'Chat', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>, activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.1)', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)' },
-            { id: 'GALLERY', label: GALLERY_LABEL, icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.1)', gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
-            { id: 'EVIDENCE', label: 'Finales', icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>, activeColor: '#d946ef', bgColor: 'rgba(217, 70, 239, 0.1)', gradient: 'linear-gradient(135deg, #a855f7, #d946ef)' }
+            { id: 'BITACORA', label: 'Chat', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>, activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.1)', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)' },
+            { id: 'GALLERY', label: isSmallScreen ? 'Planos' : GALLERY_LABEL, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.1)', gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
+            { id: 'EVIDENCE', label: isSmallScreen ? 'Finales' : 'Archivos Finales', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>, activeColor: '#d946ef', bgColor: 'rgba(217, 70, 239, 0.1)', gradient: 'linear-gradient(135deg, #a855f7, #d946ef)' }
           ].filter(tab => session?.user?.role !== 'OPERADOR' || tab.id !== 'EVIDENCE').map(tab => (
             <button
               key={tab.id}
@@ -1693,20 +1703,20 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
               style={{
                 display: 'flex',
                 alignItems: 'center',
-                gap: '10px',
-                padding: '12px 24px',
+                gap: isSmallScreen ? '6px' : '10px',
+                padding: isSmallScreen ? '10px 14px' : '12px 24px',
                 borderRadius: '16px',
                 background: activeTab === tab.id ? tab.gradient : 'rgba(255,255,255,0.05)',
                 color: activeTab === tab.id ? '#fff' : tab.activeColor,
                 border: `1px solid ${activeTab === tab.id ? 'transparent' : 'rgba(255,255,255,0.1)'}`,
                 cursor: 'pointer',
-                fontWeight: '800',
-                fontSize: '0.95rem',
+                fontWeight: '900',
+                fontSize: isSmallScreen ? '0.75rem' : '0.95rem',
                 textTransform: 'uppercase',
-                letterSpacing: '1px',
+                letterSpacing: '0.5px',
                 transition: 'all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275)',
-                boxShadow: activeTab === tab.id ? `0 8px 25px ${tab.bgColor}` : 'none',
-                transform: activeTab === tab.id ? 'scale(1.05)' : 'scale(1)',
+                boxShadow: activeTab === tab.id ? `0 8px 20px ${tab.bgColor}` : 'none',
+                transform: activeTab === tab.id ? 'scale(1.03)' : 'scale(1)',
                 whiteSpace: 'nowrap',
                 position: 'relative',
                 overflow: 'hidden'
@@ -1738,7 +1748,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
             style={{ 
               display: activeTab === 'BITACORA' ? 'flex' : 'none', 
               flexDirection: 'column', 
-              height: 'calc(100vh - 220px)', 
+              height: isSmallScreen ? 'calc(100vh - 180px)' : 'calc(100vh - 220px)', 
               minHeight: '400px', 
               overflow: 'hidden',
               borderRadius: '0 0 16px 16px'
@@ -1781,12 +1791,32 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '20px' }}>
+              <div className="custom-scrollbar" style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', 
+                gap: '12px',
+                maxHeight: '400px',
+                overflowY: 'auto',
+                padding: '4px'
+              }}>
                 {(showAllGallery 
                   ? (galleryFilter === 'ALL' ? masterGallery : masterGallery.filter((i: any) => i.type === galleryFilter || (galleryFilter === 'IMAGE' && i.mimeType?.startsWith('image/')) || (galleryFilter === 'VIDEO' && i.mimeType?.startsWith('video/')) || (galleryFilter === 'DOCUMENT' && !i.mimeType?.startsWith('image/') && !i.mimeType?.startsWith('video/') && i.type !== 'EXPENSE')))
                   : (galleryFilter === 'ALL' ? masterGallery : masterGallery.filter((i: any) => i.type === galleryFilter || (galleryFilter === 'IMAGE' && i.mimeType?.startsWith('image/')) || (galleryFilter === 'VIDEO' && i.mimeType?.startsWith('video/')) || (galleryFilter === 'DOCUMENT' && !i.mimeType?.startsWith('image/') && !i.mimeType?.startsWith('video/') && i.type !== 'EXPENSE'))).slice(0, GALLERY_LIMIT)
                 ).map((item: any) => (
-                  <div key={item.id} className="group" style={{ position: 'relative', aspectRatio: '1/1', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)' }}>
+                  <div 
+                    key={item.id} 
+                    className="group" 
+                    onClick={() => setSelectedPreviewImage(item)}
+                    style={{ 
+                      position: 'relative', 
+                      aspectRatio: '1/1', 
+                      borderRadius: '12px', 
+                      overflow: 'hidden', 
+                      border: '1px solid var(--border-color)', 
+                      backgroundColor: 'var(--bg-surface)',
+                      cursor: 'pointer'
+                    }}
+                  >
                     {item.isExpense ? (
                       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'rgba(34, 197, 94, 0.05)', padding: '15px', position: 'relative' }}>
                         {item.url ? (
@@ -1823,7 +1853,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                     )}
                     {(item.isExpense && item.url) && (
                       <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: '0.3s' }} className="group-hover:opacity-100">
-                        <button onClick={() => window.open(item.url, '_blank')} className="btn btn-primary btn-sm">Ver Recibo</button>
+                        <button onClick={(e) => { e.stopPropagation(); setSelectedPreviewImage(item); }} className="btn btn-primary btn-sm">Ver Recibo</button>
                       </div>
                     )}
                     {(item.mimeType.startsWith('video/') || item.mimeType.startsWith('audio/')) && (
@@ -1864,12 +1894,32 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 />
               </div>
 
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '20px' }}>
+              <div className="custom-scrollbar" style={{ 
+                display: 'grid', 
+                gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))', 
+                gap: '12px',
+                maxHeight: '400px',
+                overflowY: 'auto',
+                padding: '4px'
+              }}>
                 {(showAllEvidence 
                   ? (evidenceFilter === 'ALL' ? evidenceGallery : evidenceGallery.filter((i: any) => i.type === evidenceFilter || (evidenceFilter === 'IMAGE' && i.mimeType?.startsWith('image/')) || (evidenceFilter === 'VIDEO' && i.mimeType?.startsWith('video/')) || (evidenceFilter === 'DOCUMENT' && !i.mimeType?.startsWith('image/') && !i.mimeType?.startsWith('video/'))))
                   : (evidenceFilter === 'ALL' ? evidenceGallery : evidenceGallery.filter((i: any) => i.type === evidenceFilter || (evidenceFilter === 'IMAGE' && i.mimeType?.startsWith('image/')) || (evidenceFilter === 'VIDEO' && i.mimeType?.startsWith('video/')) || (evidenceFilter === 'DOCUMENT' && !i.mimeType?.startsWith('image/') && !i.mimeType?.startsWith('video/')))).slice(0, GALLERY_LIMIT)
                 ).map((item: any) => (
-                  <div key={item.id} className="group" style={{ position: 'relative', aspectRatio: '1/1', borderRadius: '12px', overflow: 'hidden', border: '1px solid var(--border-color)', backgroundColor: 'var(--bg-surface)' }}>
+                  <div 
+                    key={item.id} 
+                    className="group" 
+                    onClick={() => setSelectedPreviewImage(item)}
+                    style={{ 
+                      position: 'relative', 
+                      aspectRatio: '1/1', 
+                      borderRadius: '12px', 
+                      overflow: 'hidden', 
+                      border: '1px solid var(--border-color)', 
+                      backgroundColor: 'var(--bg-surface)',
+                      cursor: 'pointer'
+                    }}
+                  >
                     {item.mimeType.startsWith('image/') ? (
                       <img src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     ) : item.mimeType.startsWith('video/') ? (
@@ -1886,8 +1936,8 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                       </div>
                     )}
                     <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: '0.3s' }} className="group-hover:opacity-100">
-                      <button onClick={() => window.open(item.url, '_blank')} className="btn btn-primary btn-sm">Ver</button>
-                      <button onClick={() => handleDeleteFromGallery(item.id)} className="btn btn-danger btn-sm" style={{ marginLeft: '5px' }}>✕</button>
+                      <button onClick={(e) => { e.stopPropagation(); setSelectedPreviewImage(item); }} className="btn btn-primary btn-sm">Ver</button>
+                      <button onClick={(e) => { e.stopPropagation(); handleDeleteFromGallery(item.id); }} className="btn btn-danger btn-sm" style={{ marginLeft: '5px' }}>✕</button>
                     </div>
                   </div>
                 ))}
@@ -2518,6 +2568,71 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* LIGHTBOX PREVIEW MODAL */}
+      {selectedPreviewImage && (
+        <div 
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.95)', backdropFilter: 'blur(10px)', zIndex: 11000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}
+          onClick={() => setSelectedPreviewImage(null)}
+        >
+          <div 
+            style={{ maxWidth: '900px', width: '100%', position: 'relative', display: 'flex', flexDirection: 'column', gap: '20px' }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button 
+              onClick={() => setSelectedPreviewImage(null)}
+              style={{ position: 'absolute', top: '-40px', right: '0', background: 'none', border: 'none', color: 'white', fontSize: '2rem', cursor: 'pointer', zIndex: 10 }}
+            >
+              ✕
+            </button>
+            
+            <div style={{ width: '100%', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
+              {selectedPreviewImage.mimeType.startsWith('image/') ? (
+                <img 
+                  src={selectedPreviewImage.url} 
+                  alt={selectedPreviewImage.filename} 
+                  style={{ maxWidth: '100%', maxHeight: '80vh', objectFit: 'contain' }} 
+                />
+              ) : selectedPreviewImage.mimeType.startsWith('video/') ? (
+                <video 
+                  src={selectedPreviewImage.url} 
+                  controls 
+                  autoPlay
+                  style={{ maxWidth: '100%', maxHeight: '80vh' }} 
+                />
+              ) : selectedPreviewImage.mimeType.startsWith('audio/') ? (
+                <div style={{ padding: '60px', textAlign: 'center', width: '100%' }}>
+                  <div style={{ fontSize: '4rem', marginBottom: '20px' }}>🎵</div>
+                  <audio src={selectedPreviewImage.url} controls autoPlay style={{ width: '100%' }} />
+                </div>
+              ) : (
+                <div style={{ padding: '60px', textAlign: 'center', width: '100%' }}>
+                  <svg width="80" height="80" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.5" style={{ marginBottom: '20px' }}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                  <h3 style={{ color: 'white', marginBottom: '10px' }}>{selectedPreviewImage.filename}</h3>
+                  <p style={{ color: 'var(--text-muted)' }}>Este tipo de archivo debe ser descargado para visualizarse.</p>
+                </div>
+              )}
+            </div>
+
+            <div className="card" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px' }}>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <h3 style={{ margin: 0, fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{selectedPreviewImage.filename}</h3>
+                <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: '4px 0 0 0' }}>{selectedPreviewImage.mimeType} • {selectedPreviewImage.isExpense ? 'Registro de Gasto' : 'Documento de Obra'}</p>
+              </div>
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <button onClick={() => window.open(selectedPreviewImage.url, '_blank')} className="btn btn-secondary">Abrir Original</button>
+                <a 
+                  href={selectedPreviewImage.url} 
+                  download={selectedPreviewImage.filename}
+                  className="btn btn-primary"
+                >
+                  Descargar
+                </a>
+              </div>
+            </div>
           </div>
         </div>
       )}

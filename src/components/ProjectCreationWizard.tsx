@@ -611,8 +611,26 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }} className="media-capture-row">
                        <label className="form-label" style={{ margin: 0 }}>Descripción Técnica *</label>
                        <div style={{ display: 'flex', gap: '8px' }}>
-                          <MediaCapture mode="audio" compact onCapture={(blob, type, text) => updateSpec('description', (projectData.technicalSpecs.description || '') + ' ' + text)} />
-                          <MediaCapture mode="video" compact onCapture={(blob, type, text) => updateSpec('description', (projectData.technicalSpecs.description || '') + ' ' + text)} />
+                          <MediaCapture 
+                            mode="audio" 
+                            compact 
+                            onCapture={async (blob, type, text) => {
+                              try {
+                                const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
+                                const result = await uploadToBunnyClientSide(blob, 'specs-audio.webm', 'audios');
+                                setProjectData(prev => ({ ...prev, specsAudioUrl: result.url }));
+                                updateSpec('description', (projectData.technicalSpecs.description || '') + ' ' + text);
+                              } catch (err) {
+                                console.error('Error uploading specs audio:', err);
+                                updateSpec('description', (projectData.technicalSpecs.description || '') + ' ' + text);
+                              }
+                            }} 
+                          />
+                          <MediaCapture 
+                            mode="video" 
+                            compact 
+                            onCapture={(blob, type, text) => updateSpec('description', (projectData.technicalSpecs.description || '') + ' ' + text)} 
+                          />
                        </div>
                     </div>
                     <textarea className="form-input mb-6" rows={3} placeholder="Describe el alcance técnico o usa los botones de voz/video..." value={projectData.technicalSpecs.description || ''} onChange={e => updateSpec('description', e.target.value)} />
@@ -674,37 +692,28 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                    <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '25px', padding: '15px', backgroundColor: 'rgba(56, 189, 248, 0.05)', borderRadius: '16px', border: '1px dashed var(--primary)' }}>
                        <div style={{ textAlign: 'center' }}>
                           <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Captura rápida</p>
-                          <div style={{ display: 'flex', gap: '15px' }}>
-                             <MediaCapture 
-                                mode="audio" 
-                                onCapture={(blob, type) => {
-                                   const fileObj: any = {
-                                      id: `capture-${Date.now()}`,
-                                      name: `Audio-Planos-${new Date().toLocaleTimeString()}.webm`,
-                                      type: 'DOCUMENT',
-                                      url: URL.createObjectURL(blob),
-                                      size: blob.size,
-                                      category: 'PLANOS'
+                           <div style={{ display: 'flex', gap: '15px' }}>
+                              <MediaCapture 
+                                 mode="audio" 
+                                 onCapture={async (blob, type) => {
+                                   try {
+                                     const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
+                                     const result = await uploadToBunnyClientSide(blob, `Audio-${Date.now()}.webm`, 'projects');
+                                     const fileObj: any = {
+                                        id: `capture-${Date.now()}`,
+                                        name: result.filename,
+                                        type: 'DOCUMENT',
+                                        url: result.url,
+                                        size: blob.size,
+                                        category: 'PLANOS'
+                                     }
+                                     setUploadedFiles(prev => [...prev, fileObj])
+                                   } catch (err) {
+                                     console.error('Error uploading gallery audio:', err);
                                    }
-                                   setUploadedFiles(prev => [...prev, fileObj])
-                                }} 
-                             />
-                             <MediaCapture 
-                                mode="video" 
-                                onCapture={(blob, type) => {
-                                   const isVideo = blob.type.startsWith('video/')
-                                   const fileObj: any = {
-                                      id: `capture-${Date.now()}`,
-                                      name: `${isVideo ? 'Video' : 'Foto'}-Planos-${new Date().toLocaleTimeString()}.${isVideo ? 'webm' : 'jpg'}`,
-                                      type: isVideo ? 'VIDEO' : 'IMAGE',
-                                      url: URL.createObjectURL(blob),
-                                      size: blob.size,
-                                      category: 'PLANOS'
-                                   }
-                                   setUploadedFiles(prev => [...prev, fileObj])
-                                }} 
-                             />
-                          </div>
+                                 }} 
+                              />
+                           </div>
                        </div>
                    </div>
                   <ProjectUploader 
