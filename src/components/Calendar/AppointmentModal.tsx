@@ -281,7 +281,7 @@ export default function AppointmentModal({
       const ext = file.name.split('.').pop()?.toLowerCase() || '';
       const isVideo = file.type.startsWith('video/') || ['mp4', 'mov', 'webm'].includes(ext);
       const isImage = file.type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext);
-      const isAudio = file.type.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'opus'].includes(ext);
+      const isAudio = file.type.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'opus', 'aac', 'amr', '3gp'].includes(ext);
       
       try {
         // Comprimir imagen si es necesario

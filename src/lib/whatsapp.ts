@@ -46,7 +46,17 @@ export async function sendWhatsAppMessage(phone: string, message: string, attach
         let mediaType = att.type;
         if (mediaType === 'application') mediaType = 'document';
         if (!['image', 'video', 'audio', 'document'].includes(mediaType)) {
-          mediaType = 'document'; // Fallback seguro
+          // Intento de rescate por extensión
+          const ext = att.name.split('.').pop()?.toLowerCase() || '';
+          if (['mp3', 'wav', 'ogg', 'm4a', 'opus', 'aac', 'amr', '3gp'].includes(ext)) {
+            mediaType = 'audio';
+          } else if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext)) {
+            mediaType = 'image';
+          } else if (['mp4', 'mov', 'webm'].includes(ext)) {
+            mediaType = 'video';
+          } else {
+            mediaType = 'document'; // Fallback seguro
+          }
         }
 
         // WhatsApp solo acepta PTT para formatos nativos (ogg/opus)
