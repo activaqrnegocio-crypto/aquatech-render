@@ -1415,32 +1415,61 @@ export default function ProjectExecutionClient({
                             cursor: 'pointer'
                           }}
                         >
-                          {item.mimeType.startsWith('image/') ? (
-                            <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-                              <img 
-                                src={item.url} 
-                                alt={item.filename} 
-                                style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }} 
-                                className="group-hover:scale-110"
-                              />
-                               <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(0,0,0,0.5)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem', color: 'white' }}>
-                                 {item.filename}
-                               </div>
-                            </div>
-                          ) : item.mimeType.startsWith('video/') ? (
-                            <div style={{ width: '100%', height: '100%', backgroundColor: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                               <svg width="32" height="32" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                            </div>
-                          ) : (
-                            <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-deep)', padding: '10px', position: 'relative' }}>
-                              {item.mimeType.startsWith('audio/') ? (
-                                <span style={{ fontSize: '2rem' }}>🎵</span>
-                              ) : (
-                                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" style={{ opacity: 0.7 }}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                              )}
-                              <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{item.filename}</span>
-                            </div>
-                          )}
+                          {(() => {
+                            const getCleanType = (mime: string, url: string) => {
+                              if (mime === 'application/octet-stream' || !mime) {
+                                const ext = url.split('.').pop()?.toLowerCase();
+                                if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) return 'image/jpeg';
+                                if (['mp4', 'mov', 'webm'].includes(ext || '')) return 'video/mp4';
+                                if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext || '')) return 'audio/mpeg';
+                              }
+                              return mime;
+                            };
+
+                            const cleanFilename = (name: string) => {
+                              if (!name || name === 'upload' || name.startsWith('upload-')) return 'Archivo Multimedia';
+                              return name;
+                            };
+
+                            const realMime = getCleanType(item.mimeType, item.url);
+                            const fileName = cleanFilename(item.filename);
+
+                            if (realMime.startsWith('image/')) {
+                              return (
+                                <div style={{ width: '100%', height: '100%', position: 'relative' }}>
+                                  <img 
+                                    src={item.url} 
+                                    alt={fileName} 
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }} 
+                                    className="group-hover:scale-110"
+                                  />
+                                   <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(0,0,0,0.5)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem', color: 'white' }}>
+                                     {fileName}
+                                   </div>
+                                </div>
+                              );
+                            } else if (realMime.startsWith('video/')) {
+                              return (
+                                <div style={{ width: '100%', height: '100%', backgroundColor: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                   <svg width="32" height="32" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                   <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(0,0,0,0.5)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem', color: 'white' }}>
+                                     {fileName}
+                                   </div>
+                                </div>
+                              );
+                            } else {
+                              return (
+                                <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-deep)', padding: '10px', position: 'relative' }}>
+                                  {realMime.startsWith('audio/') ? (
+                                    <span style={{ fontSize: '2rem' }}>🎵</span>
+                                  ) : (
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" style={{ opacity: 0.7 }}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                                  )}
+                                  <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)', marginTop: '8px', textAlign: 'center', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>{fileName}</span>
+                                </div>
+                              );
+                            }
+                          })()}
 
                           {/* Interaction Overlay */}
                           <div style={{ 
@@ -1510,17 +1539,47 @@ export default function ProjectExecutionClient({
                         style={{ position: 'relative', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.1)' }}
                         onClick={() => setSelectedPreviewImage(item)}
                       >
-                        {item.mimeType?.startsWith('image/') ? (
-                          <img src={item.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Final" />
-                        ) : item.mimeType?.startsWith('video/') ? (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-                            <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                          </div>
-                        ) : (
-                          <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-deep)' }}>
-                            <span style={{ fontSize: '1.5rem' }}>📄</span>
-                          </div>
-                        )}
+                      {(() => {
+                        const getCleanType = (mime: string, url: string) => {
+                          if (mime === 'application/octet-stream' || !mime) {
+                            const ext = url.split('.').pop()?.toLowerCase();
+                            if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) return 'image/jpeg';
+                            if (['mp4', 'mov', 'webm'].includes(ext || '')) return 'video/mp4';
+                            if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext || '')) return 'audio/mpeg';
+                          }
+                          return mime;
+                        };
+
+                        const cleanFilename = (name: string) => {
+                          if (!name || name === 'upload' || name.startsWith('upload-')) return 'Archivo Multimedia';
+                          return name;
+                        };
+
+                        const realMime = getCleanType(item.mimeType, item.url);
+                        const fileName = cleanFilename(item.filename);
+
+                        if (realMime.startsWith('image/')) {
+                          return <img src={item.url} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                        } else if (realMime.startsWith('video/')) {
+                          return (
+                            <div style={{ width: '100%', height: '100%', backgroundColor: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                              <div style={{ position: 'absolute', bottom: '4px', left: '4px', background: 'rgba(0,0,0,0.5)', padding: '1px 4px', borderRadius: '3px', fontSize: '0.5rem', color: 'white' }}>
+                                {fileName}
+                              </div>
+                            </div>
+                          );
+                        } else {
+                          return (
+                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-deep)' }}>
+                              <span style={{ fontSize: '1.2rem' }}>{realMime.startsWith('audio/') ? '🎵' : '📄'}</span>
+                              <div style={{ position: 'absolute', bottom: '4px', left: '4px', background: 'rgba(0,0,0,0.5)', padding: '1px 4px', borderRadius: '3px', fontSize: '0.5rem', color: 'white' }}>
+                                {fileName}
+                              </div>
+                            </div>
+                          );
+                        }
+                      })()}
                       </div>
                     ))}
                   </div>
@@ -1676,71 +1735,94 @@ export default function ProjectExecutionClient({
         </div>
       )}
       {/* Lightbox / Preview Modal */}
-      {selectedPreviewImage && (
-        <div 
-          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.95)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} 
-          onClick={() => setSelectedPreviewImage(null)}
-        >
-          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <button 
-              style={{ position: 'absolute', top: '10px', right: '10px', background: 'white', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.2rem', cursor: 'pointer', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
-              onClick={(e) => { e.stopPropagation(); setSelectedPreviewImage(null); }}
-            >
-              ✕
-            </button>
-            
-            {selectedPreviewImage.mimeType.startsWith('image/') ? (
-              <img 
-                src={selectedPreviewImage.url} 
-                alt={selectedPreviewImage.filename} 
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }}
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : selectedPreviewImage.mimeType.startsWith('video/') ? (
-              <video 
-                src={selectedPreviewImage.url} 
-                controls 
-                autoPlay 
-                playsInline
-                style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', outline: 'none' }}
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : selectedPreviewImage.mimeType.startsWith('audio/') ? (
-              <div 
-                style={{ backgroundColor: 'var(--bg-card)', padding: '40px', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
-                onClick={(e) => e.stopPropagation()}
+      {selectedPreviewImage && (() => {
+        const getCleanType = (item: any) => {
+          let mime = item.mimeType || 'application/octet-stream';
+          if (mime === 'application/octet-stream') {
+            const ext = item.url.split('.').pop()?.toLowerCase();
+            if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) return 'image/jpeg';
+            if (['mp4', 'mov', 'webm'].includes(ext || '')) return 'video/mp4';
+            if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext || '')) return 'audio/mpeg';
+          }
+          return mime;
+        };
+
+        const cleanFilename = (name: string) => {
+          if (!name || name === 'upload' || name.startsWith('upload-')) return 'Archivo Multimedia';
+          return name;
+        };
+
+        const previewMime = getCleanType(selectedPreviewImage);
+        const isImage = previewMime.startsWith('image/');
+        const isVideo = previewMime.startsWith('video/');
+        const isAudio = previewMime.startsWith('audio/');
+
+        return (
+          <div 
+            style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.95)', zIndex: 2000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} 
+            onClick={() => setSelectedPreviewImage(null)}
+          >
+            <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <button 
+                style={{ position: 'absolute', top: '10px', right: '10px', background: 'white', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.2rem', cursor: 'pointer', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
+                onClick={(e) => { e.stopPropagation(); setSelectedPreviewImage(null); }}
               >
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                ✕
+              </button>
+              
+              {isImage ? (
+                <img 
+                  src={selectedPreviewImage.url} 
+                  alt={selectedPreviewImage.filename} 
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : isVideo ? (
+                <video 
+                  src={selectedPreviewImage.url} 
+                  controls 
+                  autoPlay 
+                  playsInline
+                  style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', outline: 'none' }}
+                  onClick={(e) => e.stopPropagation()}
+                />
+              ) : isAudio ? (
+                <div 
+                  style={{ backgroundColor: 'var(--bg-card)', padding: '40px', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                  </div>
+                  <div style={{ textAlign: 'center' }}>
+                    <h3 style={{ margin: '0 0 5px 0', fontSize: '1.2rem' }}>{cleanFilename(selectedPreviewImage.filename)}</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Audio / Grabación</p>
+                  </div>
+                  <audio src={selectedPreviewImage.url} controls autoPlay style={{ width: '100%' }} />
+                  <button onClick={() => handleDownload(selectedPreviewImage.url, selectedPreviewImage.filename)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)', marginTop: '10px' }}>
+                    {handleDownloadLoading === selectedPreviewImage.url ? 'Descargando...' : 'Descargar'}
+                  </button>
                 </div>
-                <div style={{ textAlign: 'center' }}>
-                  <h3 style={{ margin: '0 0 5px 0', fontSize: '1.2rem' }}>{selectedPreviewImage.filename}</h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Nota de Voz / Audio</p>
+              ) : (
+                <div 
+                  style={{ backgroundColor: 'var(--bg-card)', padding: '30px', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', maxWidth: '400px', width: '100%' }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                  <div style={{ textAlign: 'center' }}>
+                    <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{cleanFilename(selectedPreviewImage.filename)}</h3>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{previewMime}</p>
+                  </div>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+                    <button onClick={() => window.open(selectedPreviewImage.url, '_blank')} className="btn btn-primary" style={{ width: '100%' }}>Abrir Documento</button>
+                    <button onClick={() => handleDownload(selectedPreviewImage.url, selectedPreviewImage.filename)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)' }}>{handleDownloadLoading === selectedPreviewImage.url ? 'Descargando...' : 'Descargar'}</button>
+                  </div>
                 </div>
-                <audio src={selectedPreviewImage.url} controls autoPlay style={{ width: '100%' }} />
-                <button onClick={() => handleDownload(selectedPreviewImage.url, selectedPreviewImage.filename)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)', marginTop: '10px' }}>
-                  {handleDownloadLoading === selectedPreviewImage.url ? 'Descargando...' : 'Descargar'}
-                </button>
-              </div>
-            ) : (
-              <div 
-                style={{ backgroundColor: 'var(--bg-card)', padding: '30px', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', maxWidth: '400px', width: '100%' }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
-                <div style={{ textAlign: 'center' }}>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{selectedPreviewImage.filename}</h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{selectedPreviewImage.mimeType}</p>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
-                  <button onClick={() => window.open(selectedPreviewImage.url, '_blank')} className="btn btn-primary" style={{ width: '100%' }}>Abrir Documento</button>
-                  <button onClick={() => handleDownload(selectedPreviewImage.url, selectedPreviewImage.filename)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)' }}>{handleDownloadLoading === selectedPreviewImage.url ? 'Descargando...' : 'Descargar'}</button>
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
 
       {/* MODAL PARA EDITAR GASTOS (OPERADOR) */}
       {isExpenseModalOpen && (

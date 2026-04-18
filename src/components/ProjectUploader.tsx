@@ -21,7 +21,7 @@ export interface ProjectFile {
   url: string
   filename: string
   mimeType: string
-  type: 'IMAGE' | 'VIDEO' | 'DOCUMENT'
+  type: 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO'
   category?: string
   size?: number
 }
@@ -39,7 +39,7 @@ interface ProjectUploaderProps {
   defaultCategory?: string
 }
 
-type FilterType = 'ALL' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'EXPENSE'
+type FilterType = 'ALL' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO' | 'EXPENSE'
 
 export default function ProjectUploader({ 
   files, 
@@ -53,6 +53,9 @@ export default function ProjectUploader({
   hideCaptureButtons = false,
   defaultCategory = 'MASTER'
 }: ProjectUploaderProps) {
+  const [isDeleting, setIsDeleting] = useState<string | null>(null)
+  const [selectedFileForPreview, setSelectedFileForPreview] = useState<ProjectFile | null>(null)
+  const [isDownloading, setIsDownloading] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [filter, setFilter] = useState<FilterType>('ALL')
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -60,6 +63,25 @@ export default function ProjectUploader({
   const handleFilterChange = (newFilter: FilterType) => {
     setFilter(newFilter)
     if (onFilterChange) onFilterChange(newFilter)
+  }
+
+  const formatFileName = (name: string) => name.length > 20 ? name.substring(0, 17) + '...' : name
+  const getCleanMimeType = (file: ProjectFile) => file.mimeType || 'application/octet-stream'
+
+  const handleDownload = async (file: ProjectFile) => {
+    setIsDownloading(file.url)
+    try {
+      const response = await fetch(file.url)
+      const blob = await response.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = file.filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    } catch (e) { console.error(e) }
+    setIsDownloading(null)
   }
 
   const filteredFiles = useMemo(() => {
@@ -75,7 +97,6 @@ export default function ProjectUploader({
     const isOnline = typeof navigator !== 'undefined' ? navigator.onLine : true
     
     try {
-      // Process files in batches to prevent memory crashes on mobile
       const batchSize = 3;
       const filesArray = Array.from(selectedFiles);
       
@@ -86,7 +107,6 @@ export default function ProjectUploader({
           const isImage = file.type.startsWith('image/')
 
           if (!isOnline) {
-            // Offline Mode: Convert to base64 locally
             let base64: string
             if (isImage) {
               base64 = await optimizedCompress(file)
@@ -100,10 +120,10 @@ export default function ProjectUploader({
             }
 
             const localFile: ProjectFile = {
-              url: base64, // Local preview/base64 for outbox
+              url: base64,
               filename: file.name,
               mimeType: file.type,
-              type: (isImage ? 'IMAGE' : (file.type.startsWith('video/') ? 'VIDEO' : 'DOCUMENT')) as 'IMAGE' | 'VIDEO' | 'DOCUMENT',
+              type: (isImage ? 'IMAGE' : (file.type.startsWith('video/') ? 'VIDEO' : (file.type.startsWith('audio/') ? 'AUDIO' : 'DOCUMENT'))) as any,
               category: defaultCategory,
               size: file.size
             }
@@ -112,13 +132,11 @@ export default function ProjectUploader({
             return
           }
 
-          // Online Mode: Normal upload
           try {
             const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
             let uploadFile: File | Blob = file
 
             if (isImage) {
-              // Compress before sending to avoid memory/bandwidth issues
               try {
                 const compressedB64 = await optimizedCompress(file)
                 const resB64 = await fetch(compressedB64)
@@ -157,6 +175,7 @@ export default function ProjectUploader({
     switch (type) {
       case 'IMAGE': return <ImageIcon size={20} className="text-blue-400" />
       case 'VIDEO': return <VideoIcon size={20} className="text-purple-400" />
+      case 'AUDIO': return <span style={{ fontSize: '20px' }}>🎙️</span>
       default: return <FileText size={20} className="text-gray-400" />
     }
   }
@@ -272,7 +291,6 @@ export default function ProjectUploader({
             </div>
           )}
 
-          {/* Filters - Professional Scrolling on Mobile */}
           <div 
             className="scrollbar-hide" 
             style={{ 
@@ -302,7 +320,7 @@ export default function ProjectUploader({
               <span>Filtrar</span>
             </div>
             
-            {(['ALL', 'IMAGE', 'VIDEO', 'DOCUMENT', 'EXPENSE'] as FilterType[]).map((t) => (
+            {(['ALL', 'IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'EXPENSE'] as FilterType[]).map((t) => (
               <button
                 key={t}
                 onClick={() => handleFilterChange(t)}
@@ -323,7 +341,7 @@ export default function ProjectUploader({
                 }}
                 className={filter === t ? 'scale-105' : 'hover:bg-white/10'}
               >
-                {t === 'ALL' ? 'Todos' : t === 'IMAGE' ? 'Fotos' : t === 'VIDEO' ? 'Videos' : t === 'DOCUMENT' ? 'Docs' : 'Gastos'}
+                {t === 'ALL' ? 'Todos' : t === 'IMAGE' ? 'Fotos' : t === 'VIDEO' ? 'Videos' : t === 'AUDIO' ? 'Audio' : t === 'DOCUMENT' ? 'Docs' : 'Gastos'}
               </button>
             ))}
           </div>
@@ -346,6 +364,7 @@ export default function ProjectUploader({
               <div 
                 key={file.url + idx} 
                 className="card-shadow-hover"
+                onClick={() => setSelectedFileForPreview(file)}
                 style={{
                    position: 'relative',
                    aspectRatio: '1/1',
@@ -353,134 +372,133 @@ export default function ProjectUploader({
                    overflow: 'hidden',
                    backgroundColor: 'var(--bg-deep)',
                    border: '1px solid var(--border)',
-                   transition: 'all 0.3s'
-                }}
-                onMouseOver={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--primary)';
-                  const overlay = e.currentTarget.querySelector('.file-overlay') as HTMLElement;
-                  if (overlay) overlay.style.opacity = '1';
-                }}
-                onMouseOut={(e) => {
-                  e.currentTarget.style.borderColor = 'var(--border)';
-                  const overlay = e.currentTarget.querySelector('.file-overlay') as HTMLElement;
-                  if (overlay) overlay.style.opacity = '0';
+                   transition: 'all 0.3s',
+                   cursor: 'pointer'
                 }}
               >
-                {file.type === 'IMAGE' ? (
-                  <img 
-                    src={file.url} 
-                    alt={file.filename} 
-                    style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.5s' }}
-                    onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-                    onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                  />
-                ) : file.type === 'VIDEO' ? (
-                  <video src={file.url} controls style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px', textAlign: 'center', gap: '5px' }}>
-                    {getIcon(file.type)}
-                    <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', fontWeight: '500', width: '100%', wordBreak: 'break-word', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden' }}>
-                      {file.filename}
-                    </span>
-                  </div>
-                )}
+                {(() => {
+                  const getCleanType = (mime: string, url: string) => {
+                    if (mime === 'application/octet-stream' || !mime) {
+                      const ext = url.split('.').pop()?.toLowerCase();
+                      if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) return 'image/jpeg';
+                      if (['mp4', 'mov', 'webm'].includes(ext || '')) return 'video/mp4';
+                      if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext || '')) return 'audio/mpeg';
+                    }
+                    return mime;
+                  };
 
-                {file.type !== 'VIDEO' && (
-                  <div 
-                    className="file-overlay"
-                    style={{ 
-                      position: 'absolute', 
-                      inset: 0, 
-                      backgroundColor: 'rgba(0,0,0,0.6)', 
-                      opacity: 0, 
-                      transition: 'opacity 0.2s', 
-                      display: 'flex', 
-                      alignItems: 'center', 
-                      justifyContent: 'center', 
-                      gap: '10px' 
-                    }}
-                  >
-                    <a 
-                      href={file.url} 
-                      target="_blank" 
-                      rel="noopener noreferrer"
-                      style={{ padding: '8px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', color: 'white', transition: 'background 0.2s' }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
-                      title="Ver archivo"
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                    </a>
-                    <button 
-                      onClick={async (e) => {
-                        e.preventDefault();
-                        try {
-                          const response = await fetch(file.url);
-                          const blob = await response.blob();
-                          const blobUrl = window.URL.createObjectURL(blob);
-                          const link = document.createElement('a');
-                          link.href = blobUrl;
-                          link.download = file.filename;
-                          document.body.appendChild(link);
-                          link.click();
-                          document.body.removeChild(link);
-                          window.URL.revokeObjectURL(blobUrl);
-                        } catch (err) {
-                          window.open(file.url, '_blank');
-                        }
-                      }}
-                      style={{ padding: '8px', backgroundColor: 'rgba(255,255,255,0.1)', borderRadius: '8px', border: 'none', cursor: 'pointer', color: 'white', transition: 'background 0.2s' }}
-                      onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.2)'}
-                      onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(255,255,255,0.1)'}
-                      title="Descargar"
-                    >
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                    </button>
-                    {!readOnly && onRemoveFile && (
-                      <button 
-                        onClick={() => onRemoveFile(file.url)}
-                        style={{ padding: '8px', backgroundColor: 'rgba(239, 68, 68, 0.2)', borderRadius: '8px', border: 'none', cursor: 'pointer', color: '#f87171', transition: 'background 0.2s' }}
-                        onMouseOver={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.4)'}
-                        onMouseOut={(e) => e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.2)'}
-                        title="Eliminar"
-                      >
-                        <Trash2 size={20} />
-                      </button>
-                    )}
-                  </div>
-                )}
-                
-                {file.type === 'VIDEO' && !readOnly && onRemoveFile && (
-                  <button 
-                    onClick={() => onRemoveFile(file.url)}
-                    style={{ position: 'absolute', top: '5px', right: '5px', padding: '4px', backgroundColor: 'rgba(239, 68, 68, 0.8)', borderRadius: '50%', border: 'none', cursor: 'pointer', color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 10, width: '24px', height: '24px' }}
-                    title="Eliminar"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </button>
-                )}
+                  const cleanFilename = (name: string) => {
+                    if (!name || name === 'upload' || name.startsWith('upload-')) return 'Archivo Multimedia';
+                    return name;
+                  };
 
-                <div style={{ position: 'absolute', top: '8px', left: '8px', padding: '2px 8px', backgroundColor: 'rgba(0,0,0,0.5)', backdropFilter: 'blur(4px)', borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold', color: 'white', border: '1px solid rgba(255,255,255,0.1)' }}>
+                  const realMime = getCleanType(file.mimeType, file.url);
+                  const fileName = cleanFilename(file.filename);
+
+                  if (realMime.startsWith('image/')) {
+                    return <img src={file.url} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                  } else if (realMime.startsWith('video/')) {
+                    return (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+                        <VideoIcon size={40} />
+                        <div style={{ position: 'absolute', bottom: '8px', left: '8px', background: 'rgba(0,0,0,0.5)', padding: '2px 6px', borderRadius: '4px', fontSize: '0.6rem', color: 'white' }}>
+                          {fileName}
+                        </div>
+                      </div>
+                    );
+                  } else if (realMime.startsWith('audio/')) {
+                    return (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px', backgroundColor: 'var(--bg-card)' }} onClick={(e) => e.stopPropagation()}>
+                        <span style={{ fontSize: '2rem' }}>🎙️</span>
+                        <audio src={file.url} controls style={{ width: '90%', marginTop: '5px', height: '30px' }} />
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '8px' }}>{fileName}</span>
+                      </div>
+                    );
+                  } else {
+                    return (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px', textAlign: 'center' }}>
+                        {getIcon(file.type)}
+                        <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '8px' }}>{fileName}</span>
+                      </div>
+                    );
+                  }
+                })()}
+                <div style={{ position: 'absolute', top: '8px', left: '8px', padding: '2px 8px', backgroundColor: 'rgba(0,0,0,0.5)', borderRadius: '4px', fontSize: '0.6rem', color: 'white' }}>
                   {file.type}
                 </div>
               </div>
             ))
           ) : (
-            <div style={{ gridColumn: '1 / -1', padding: '40px 20px', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'var(--text-muted)', border: '2px dashed var(--border)', borderRadius: '12px' }}>
-              <UploadCloud size={40} style={{ marginBottom: '12px', opacity: 0.2 }} />
-              <p style={{ fontSize: '0.9rem', margin: 0 }}>No hay archivos {filter !== 'ALL' ? 'de este tipo' : ''}</p>
-              {!readOnly && (
-                <button 
-                  onClick={() => fileInputRef.current?.click()}
-                  style={{ background: 'none', border: 'none', cursor: 'pointer', color: 'var(--primary)', fontSize: '0.8rem', fontWeight: '600', marginTop: '10px', textDecoration: 'none' }}
-                  onMouseOver={(e) => e.currentTarget.style.textDecoration = 'underline'}
-                  onMouseOut={(e) => e.currentTarget.style.textDecoration = 'none'}
-                >
-                  Subir ahora
-                </button>
-              )}
+            <div style={{ gridColumn: '1 / -1', padding: '40px 20px', textAlign: 'center', color: 'var(--text-muted)' }}>
+              No hay archivos
             </div>
           )}
+        </div>
+      )}
+
+      {selectedFileForPreview && (
+        <div 
+          style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.95)', zIndex: 10000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }} 
+          onClick={() => setSelectedFileForPreview(null)}
+        >
+          <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <button 
+              style={{ position: 'absolute', top: '10px', right: '10px', background: 'white', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.2rem', cursor: 'pointer', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
+              onClick={(e) => { e.stopPropagation(); setSelectedFileForPreview(null); }}
+            >
+              ✕
+            </button>
+            
+            {selectedFileForPreview.type === 'IMAGE' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('image/')) ? (
+              <img 
+                src={selectedFileForPreview.url} 
+                alt={selectedFileForPreview.filename} 
+                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : selectedFileForPreview.type === 'VIDEO' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('video/')) ? (
+              <video 
+                src={selectedFileForPreview.url} 
+                controls 
+                autoPlay 
+                playsInline
+                style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', outline: 'none' }}
+                onClick={(e) => e.stopPropagation()}
+              />
+            ) : selectedFileForPreview.type === 'AUDIO' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('audio/')) ? (
+              <div 
+                style={{ backgroundColor: 'var(--bg-card)', padding: '40px', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                </div>
+                <div style={{ textAlign: 'center' }}>
+                  <h3 style={{ margin: '0 0 5px 0', fontSize: '1.2rem' }}>{formatFileName(selectedFileForPreview.filename)}</h3>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Audio / Grabación</p>
+                </div>
+                <audio src={selectedFileForPreview.url} controls autoPlay style={{ width: '100%' }} />
+                <button onClick={() => handleDownload(selectedFileForPreview)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)', marginTop: '10px' }}>
+                  {isDownloading === selectedFileForPreview.url ? 'Descargando...' : 'Descargar'}
+                </button>
+              </div>
+            ) : (
+              <div 
+                style={{ backgroundColor: 'var(--bg-card)', padding: '30px', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', maxWidth: '400px', width: '100%' }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                <svg width="60" height="60" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="1.5"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                <div style={{ textAlign: 'center' }}>
+                  <h3 style={{ margin: 0, fontSize: '1.1rem' }}>{formatFileName(selectedFileForPreview.filename)}</h3>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>{getCleanMimeType(selectedFileForPreview)}</p>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', width: '100%' }}>
+                  <button onClick={() => window.open(selectedFileForPreview.url, '_blank')} className="btn btn-primary" style={{ width: '100%' }}>Abrir Documento</button>
+                  <button onClick={() => handleDownload(selectedFileForPreview)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)' }}>{isDownloading === selectedFileForPreview.url ? 'Descargando...' : 'Descargar'}</button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
       )}
 

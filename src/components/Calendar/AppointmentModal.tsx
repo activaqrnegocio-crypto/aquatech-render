@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { getLocalNow, formatForDateTimeInput, forceEcuadorTZ } from '@/lib/date-utils'
+import { uploadToBunnyClientSide } from '@/lib/storage-client'
 
 interface AppointmentModalProps {
   isOpen: boolean
@@ -270,36 +271,41 @@ export default function AppointmentModal({
     })
   }
 
-  // Helper para procesar archivos según tipo (Videos -> CDN, Otros -> Base64)
+  // Helper para procesar archivos usando subida directa (Bypass Vercel Limit)
   const processFilesMixed = async (files: File[]) => {
     const realFiles: any[] = []
     const linkFiles: any[] = []
     
     for (const file of files) {
       const isVideo = file.type.startsWith('video/')
+      const isImage = file.type.startsWith('image/')
+      const isAudio = file.type.startsWith('audio/')
       
-      if (isVideo) {
-        // Subir a Bunny.net (Video) y enviar como link
-        const resp = await fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
-          method: 'POST',
-          body: file
-        })
-        if (resp.ok) {
-          const { url } = await resp.json()
-          linkFiles.push({ type: 'video', name: file.name, url })
+      try {
+        // Comprimir imagen si es necesario
+        const fileToUpload = isImage ? await compressImage(file) : file
+        
+        // Subida directa a Bunny (Cliente -> Bunny)
+        const result = await uploadToBunnyClientSide(fileToUpload, fileToUpload.name, 'appointments')
+        
+        if (isVideo) {
+          // Los videos se envían como links para evitar que WhatsApp colapse
+          linkFiles.push({ type: 'video', name: file.name, url: result.url })
+        } else {
+          // Imágenes, Audios y Docs se envían como "realFiles" (Evolution los enviará como archivo real desde el URL)
+          let mediaType = 'document'
+          if (isImage) mediaType = 'image'
+          if (isAudio) mediaType = 'audio'
+          
+          realFiles.push({ 
+            type: mediaType, 
+            name: file.name, 
+            data: result.url 
+          })
         }
-      } else {
-        // Subir a Bunny.net (Otros) en lugar de usar Base64 para evitar el límite de 10MB
-        const processedFile = file.type.startsWith('image/') ? await compressImage(file) : file
-        const resp = await fetch(`/api/upload?filename=${encodeURIComponent(processedFile.name)}`, {
-          method: 'POST',
-          body: processedFile
-        })
-        if (resp.ok) {
-          const { url } = await resp.json()
-          // Evolution API acepta URLs directamente en el campo media, así evitamos colapsar el servidor
-          realFiles.push({ type: processedFile.type.split('/')[0], name: processedFile.name, data: url })
-        }
+      } catch (err) {
+        console.error('Error subiendo archivo:', file.name, err)
+        alert(`Error al subir ${file.name}`)
       }
     }
     return { realFiles, linkFiles }
@@ -348,7 +354,7 @@ export default function AppointmentModal({
     <div className="modal-overlay">
       <div className="modal-container card">
         <div className="modal-header card-header" style={{ flexShrink: 0 }}>
-          <h3 className="card-title">{isEditing ? 'Editar Agendamiento' : 'Nuevo Agendamiento'}</h3>
+          <h3 className="card-title">{isEditing ? 'Editar Agenda' : 'Agendar Tarea'}</h3>
           <button className="btn btn-ghost" onClick={onClose} type="button">✕</button>
         </div>
 

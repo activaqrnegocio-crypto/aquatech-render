@@ -90,7 +90,7 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
           <p className="page-subtitle">Gestión centralizada de tareas y agenda del equipo</p>
         </div>
         <button className="btn btn-primary add-task-btn" onClick={() => { setEditingEvent(null); setIsModalOpen(true); }}>
-          + Nueva Tarea
+          + Agendar
         </button>
       </div>
 
