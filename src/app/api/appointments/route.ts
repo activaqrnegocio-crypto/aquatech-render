@@ -144,6 +144,7 @@ export async function POST(request: Request) {
             
             // Los links solo para videos (según requerimiento)
             const videoLinks = attachmentLinks?.filter((a: any) => a.type === 'video') || [];
+
             let linksText = '';
             if (videoLinks.length) {
               linksText += `\n\n🎥 *Videos (Links):*\n${videoLinks.map((a: any) => `• ${a.url}`).join('\n')}`;

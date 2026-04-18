@@ -330,6 +330,40 @@ export default function ProjectExecutionClient({
     for (const item of items) {
        try {
          await db.outbox.update(item.id!, { status: 'syncing' })
+         
+         let currentPayload = { ...item.payload }
+
+         // FIX: Si hay media en Base64, subirla primero a Bunny para no saturar el API (4.5MB limit)
+         if (currentPayload.media?.base64 || currentPayload.receiptPhoto?.startsWith('data:')) {
+            try {
+              const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
+              
+              // Caso 1: Media de Chat/Galería
+              if (currentPayload.media?.base64) {
+                const resB64 = await fetch(currentPayload.media.base64)
+                const blob = await resB64.blob()
+                const uploadResult = await uploadToBunnyClientSide(blob, currentPayload.media.filename, 'projects')
+                currentPayload.media = {
+                  url: uploadResult.url,
+                  filename: currentPayload.media.filename,
+                  mimeType: currentPayload.media.mimeType
+                }
+              }
+              
+              // Caso 2: Foto de Recibo de Gasto
+              if (currentPayload.receiptPhoto?.startsWith('data:')) {
+                const resB64 = await fetch(currentPayload.receiptPhoto)
+                const blob = await resB64.blob()
+                const uploadResult = await uploadToBunnyClientSide(blob, `expense_${Date.now()}.jpg`, `projects/${project.id}/expenses`)
+                currentPayload.receiptPhoto = uploadResult.url
+              }
+            } catch (err) {
+              console.error('Error subiendo media durante sync:', err)
+              await db.outbox.update(item.id!, { status: 'failed' })
+              continue; // Reintentar en el siguiente ciclo
+            }
+         }
+
          let endpoint = ''
          let method = 'POST'
          
@@ -353,7 +387,7 @@ export default function ProjectExecutionClient({
                  method,
                  headers: { 'Content-Type': 'application/json' },
                  body: JSON.stringify({ 
-                   ...item.payload, 
+                   ...currentPayload, 
                    lat: item.lat, 
                    lng: item.lng, 
                    createdAt: new Date(item.timestamp).toISOString(),

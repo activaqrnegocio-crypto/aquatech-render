@@ -106,12 +106,15 @@ export async function GET(request: Request) {
       const descrText = apt.description ? `\n📝 *Nota:* ${apt.description}` : '';
       
       // Ventanas de tiempo para evitar duplicados si el cron corre cada 5-10 mins
-      if (diffMins >= 58 && diffMins <= 62) {
+      if (diffMins >= 58 && diffMins <= 62 && !apt.reminded60) {
         reminderMessage = `⏰ *Recordatorio (1 hora):*\nHola ${apt.user.name}, tu tarea *"${apt.title}"* comienza en 60 minutos.\n📅 ${dateLocal} a las ${timeLocal}${descrText}`;
-      } else if (diffMins >= 28 && diffMins <= 32) {
+        await prisma.appointment.update({ where: { id: apt.id }, data: { reminded60: true } });
+      } else if (diffMins >= 28 && diffMins <= 32 && !apt.reminded30) {
         reminderMessage = `⏰ *Recordatorio (30 min):*\nHola ${apt.user.name}, tu tarea *"${apt.title}"* comienza en 30 minutos.\n📅 ${dateLocal} a las ${timeLocal}${descrText}`;
-      } else if (diffMins >= 8 && diffMins <= 12) {
+        await prisma.appointment.update({ where: { id: apt.id }, data: { reminded30: true } });
+      } else if (diffMins >= 8 && diffMins <= 12 && !apt.reminded10) {
         reminderMessage = `⚠️ *Aviso (10 min):*\nHola ${apt.user.name}, tu tarea *"${apt.title}"* está por comenzar en 10 minutos.\n📅 ${dateLocal} a las ${timeLocal}${descrText}`;
+        await prisma.appointment.update({ where: { id: apt.id }, data: { reminded10: true } });
       }
 
       if (reminderMessage) {

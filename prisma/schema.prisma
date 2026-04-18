@@ -424,6 +424,12 @@ model Appointment {
   projectId   Int?     @map("project_id")
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+  
+  // Flags para evitar duplicados en recordatorios
+  reminded60  Boolean  @default(false) @map("reminded_60")
+  reminded30  Boolean  @default(false) @map("reminded_30")
+  reminded10  Boolean  @default(false) @map("reminded_10")
+
   project     Project? @relation(fields: [projectId], references: [id])
   user        User     @relation(fields: [userId], references: [id])
 
