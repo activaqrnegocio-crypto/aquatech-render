@@ -110,6 +110,11 @@ export default function MediaCapture({
 
   const startRecording = async () => {
     try {
+      setTranscription('')
+      setMediaBlob(null)
+      if (previewUrl) URL.revokeObjectURL(previewUrl)
+      setPreviewUrl(null)
+
       const stream = await initStream()
       if (!stream) return
 
@@ -350,7 +355,7 @@ export default function MediaCapture({
         {/* Native camera replaces all this logic */}
 
         {/* Record / Stop / Photo buttons */}
-        {!isRecording && !transcription && !previewUrl && (
+        {!isRecording && (
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <button 
               type="button"

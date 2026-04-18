@@ -22,6 +22,8 @@ export interface ProjectFile {
   filename: string
   mimeType: string
   type: 'IMAGE' | 'VIDEO' | 'DOCUMENT'
+  category?: string
+  size?: number
 }
 
 interface ProjectUploaderProps {
@@ -33,6 +35,8 @@ interface ProjectUploaderProps {
   minimal?: boolean
   showGrid?: boolean
   onFilterChange?: (filter: FilterType) => void
+  hideCaptureButtons?: boolean
+  defaultCategory?: string
 }
 
 type FilterType = 'ALL' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'EXPENSE'
@@ -45,7 +49,9 @@ export default function ProjectUploader({
   title = "Archivos del Proyecto",
   minimal = false,
   showGrid = true,
-  onFilterChange
+  onFilterChange,
+  hideCaptureButtons = false,
+  defaultCategory = 'MASTER'
 }: ProjectUploaderProps) {
   const [isUploading, setIsUploading] = useState(false)
   const [filter, setFilter] = useState<FilterType>('ALL')
@@ -93,11 +99,13 @@ export default function ProjectUploader({
               })
             }
 
-            const localFile = {
+            const localFile: ProjectFile = {
               url: base64, // Local preview/base64 for outbox
               filename: file.name,
               mimeType: file.type,
-              type: (isImage ? 'IMAGE' : (file.type.startsWith('video/') ? 'VIDEO' : 'DOCUMENT')) as 'IMAGE' | 'VIDEO' | 'DOCUMENT'
+              type: (isImage ? 'IMAGE' : (file.type.startsWith('video/') ? 'VIDEO' : 'DOCUMENT')) as 'IMAGE' | 'VIDEO' | 'DOCUMENT',
+              category: defaultCategory,
+              size: file.size
             }
             
             onAddFile(localFile)
@@ -121,7 +129,11 @@ export default function ProjectUploader({
             }
 
             const data = await uploadToBunnyClientSide(uploadFile, file.name, 'projects')
-            onAddFile(data)
+            onAddFile({
+              ...data,
+              category: defaultCategory,
+              size: file.size
+            })
           } catch (err) {
             console.error('Project upload failed:', err)
             throw err
@@ -202,57 +214,61 @@ export default function ProjectUploader({
                 )}
               </button>
 
-              <button 
-                onClick={() => {
-                  const camInput = document.createElement('input');
-                  camInput.type = 'file';
-                  camInput.accept = 'image/*';
-                  camInput.capture = 'environment';
-                  camInput.onchange = (e: any) => handleFileChange(e);
-                  camInput.click();
-                }}
-                disabled={isUploading}
-                className="btn btn-secondary btn-sm"
-                style={{ 
-                  padding: '8px 16px', 
-                  borderRadius: '8px', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px',
-                  flexShrink: 0,
-                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)'
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
-                <span>Foto</span>
-              </button>
+              {!hideCaptureButtons && (
+                <>
+                  <button 
+                    onClick={() => {
+                      const camInput = document.createElement('input');
+                      camInput.type = 'file';
+                      camInput.accept = 'image/*';
+                      camInput.capture = 'environment';
+                      camInput.onchange = (e: any) => handleFileChange(e);
+                      camInput.click();
+                    }}
+                    disabled={isUploading}
+                    className="btn btn-secondary btn-sm"
+                    style={{ 
+                      padding: '8px 16px', 
+                      borderRadius: '8px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      flexShrink: 0,
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)'
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+                    <span>Foto</span>
+                  </button>
 
-              <button 
-                onClick={() => {
-                  const camInput = document.createElement('input');
-                  camInput.type = 'file';
-                  camInput.accept = 'video/*';
-                  camInput.capture = 'environment';
-                  camInput.onchange = (e: any) => handleFileChange(e);
-                  camInput.click();
-                }}
-                disabled={isUploading}
-                className="btn btn-secondary btn-sm"
-                style={{ 
-                  padding: '8px 16px', 
-                  borderRadius: '8px', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px',
-                  flexShrink: 0,
-                  backgroundColor: 'rgba(255, 255, 255, 0.05)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)'
-                }}
-              >
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
-                <span>Video</span>
-              </button>
+                  <button 
+                    onClick={() => {
+                      const camInput = document.createElement('input');
+                      camInput.type = 'file';
+                      camInput.accept = 'video/*';
+                      camInput.capture = 'environment';
+                      camInput.onchange = (e: any) => handleFileChange(e);
+                      camInput.click();
+                    }}
+                    disabled={isUploading}
+                    className="btn btn-secondary btn-sm"
+                    style={{ 
+                      padding: '8px 16px', 
+                      borderRadius: '8px', 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      gap: '8px',
+                      flexShrink: 0,
+                      backgroundColor: 'rgba(255, 255, 255, 0.05)',
+                      border: '1px solid rgba(255, 255, 255, 0.1)'
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                    <span>Video</span>
+                  </button>
+                </>
+              )}
             </div>
           )}
 

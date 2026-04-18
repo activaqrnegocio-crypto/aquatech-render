@@ -11,6 +11,9 @@ import { generateProfessionalPDF } from '@/lib/pdf-generator'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { PROJECT_TYPES, translateType, PROJECT_CATEGORIES, translateCategory } from '@/lib/constants'
 import { db } from '@/lib/db'
+import dynamic from 'next/dynamic'
+
+const CameraCapture = dynamic(() => import('@/components/camera/CameraCapture'), { ssr: false })
 
 interface ProjectCreationWizardProps {
   panelBase?: string; // e.g. "/admin/proyectos" or "/admin/operador"
@@ -160,6 +163,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
   const [uploadedFiles, setUploadedFiles, removeFiles] = useLocalStorage<ProjectFile[]>('project_draft_files', [])
   const [pdfPreviewUrl, setPdfPreviewUrl] = useState<string | null>(null)
   const [showGallery, setShowGallery] = useState(false)
+  const [showCameraCapture, setShowCameraCapture] = useState(false)
 
   const fetchTeam = useCallback(() => {
     if (status !== 'authenticated') return;
@@ -212,7 +216,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
     }
     
     setError('')
-    if (step < 2) setStep(s => s + 1)
+    if (step < 3) setStep(s => s + 1)
   }
 
   const handleBack = () => {
@@ -445,6 +449,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
   const steps_config = [
     { id: 1, title: 'Datos Proyecto y Cliente', icon: '📋' },
     { id: 2, title: 'Multimedia / Levantamiento', icon: '📸' },
+    { id: 3, title: 'Equipo Asignado', icon: '👥' },
   ]
 
   return (
@@ -609,8 +614,8 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                 {s.id === 2 && (
                   <div className="animate-fade-in">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }} className="media-capture-row">
-                       <label className="form-label" style={{ margin: 0 }}>Descripción Técnica *</label>
-                       <div style={{ display: 'flex', gap: '8px' }}>
+                       <label className="form-label" style={{ margin: 0 }}>Descripción Técnica y Multimedia</label>
+                       <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
                           <MediaCapture 
                             mode="audio" 
                             compact 
@@ -619,6 +624,18 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                                 const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
                                 const result = await uploadToBunnyClientSide(blob, 'specs-audio.webm', 'audios');
                                 setProjectData(prev => ({ ...prev, specsAudioUrl: result.url }));
+                                
+                                // Also add to gallery as PLANOS
+                                const fileObj: any = {
+                                  id: `audio-${Date.now()}`,
+                                  name: result.filename,
+                                  type: 'DOCUMENT', // Using DOCUMENT as fallback for generic gallery support
+                                  url: result.url,
+                                  size: blob.size,
+                                  category: 'PLANOS',
+                                  mimeType: 'audio/webm'
+                                }
+                                setUploadedFiles(prev => [...prev, fileObj]);
                                 updateSpec('description', (projectData.technicalSpecs.description || '') + ' ' + text);
                               } catch (err) {
                                 console.error('Error uploading specs audio:', err);
@@ -626,21 +643,134 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                               }
                             }} 
                           />
+                          {/* Botón antiguo oculto
                           <MediaCapture 
                             mode="video" 
                             compact 
                             onCapture={(blob, type, text) => updateSpec('description', (projectData.technicalSpecs.description || '') + ' ' + text)} 
                           />
+                          */}
+                          <button 
+                             type="button"
+                             onClick={() => setShowCameraCapture(true)} 
+                             className="btn btn-secondary" 
+                             style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 15px', borderRadius: '16px' }}
+                          >
+                             📸 Cámara (Foto/Video)
+                          </button>
+                          <button 
+                             type="button"
+                             onClick={() => setShowGallery(true)} 
+                             className="btn btn-primary" 
+                             style={{ display: 'flex', alignItems: 'center', gap: '8px', padding: '0 15px', borderRadius: '16px' }}
+                          >
+                             🖼️ Galería
+                          </button>
                        </div>
                     </div>
                     <textarea className="form-input mb-6" rows={3} placeholder="Describe el alcance técnico o usa los botones de voz/video..." value={projectData.technicalSpecs.description || ''} onChange={e => updateSpec('description', e.target.value)} />
+                    
+                    {showCameraCapture && (
+                      <div className="animate-slide-down" style={{ marginBottom: '25px', padding: '20px', backgroundColor: 'var(--bg-deep)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                         <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '1.1rem', textAlign: 'center' }}>Cámara Integrada</h3>
+                         <CameraCapture 
+                            onClose={() => setShowCameraCapture(false)}
+                            onPhotoCapture={async (blob) => {
+                               try {
+                                  setShowCameraCapture(false)
+                                  const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
+                                  const result = await uploadToBunnyClientSide(blob, `Foto-${Date.now()}.jpg`, 'projects')
+                                  const fileObj: any = {
+                                     id: `capture-${Date.now()}`,
+                                     name: result.filename,
+                                     type: 'IMAGE',
+                                     url: result.url,
+                                     size: blob.size,
+                                     category: 'PLANOS'
+                                  }
+                                  setUploadedFiles(prev => [...prev, fileObj])
+                               } catch (err) {
+                                  console.error('Error uploading photo:', err)
+                                  alert('Error al subir foto')
+                               }
+                            }}
+                            onVideoCapture={async (blob) => {
+                               try {
+                                  setShowCameraCapture(false)
+                                  const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
+                                  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
+                                  const result = await uploadToBunnyClientSide(blob, `Video-${Date.now()}.${ext}`, 'projects')
+                                  const fileObj: any = {
+                                     id: `capture-${Date.now()}`,
+                                     name: result.filename,
+                                     type: 'VIDEO',
+                                     url: result.url,
+                                     size: blob.size,
+                                     category: 'PLANOS'
+                                  }
+                                  setUploadedFiles(prev => [...prev, fileObj])
+                               } catch (err) {
+                                  console.error('Error uploading video:', err)
+                                  alert('Error al subir video')
+                               }
+                            }}
+                         />
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {s.id === 3 && (
+                  <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                       <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--primary)' }}>Asignar Equipo</h3>
+                    </div>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '-10px' }}>Selecciona los operadores o subcontratistas para este proyecto.</p>
+                    
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px' }}>
+                       {availableTeam.map(t => (
+                         <div 
+                           key={t.id} 
+                           onClick={() => toggleTeamMember(t.id)}
+                           style={{
+                             padding: '15px',
+                             borderRadius: '12px',
+                             border: selectedTeam.includes(String(t.id)) ? '2px solid var(--primary)' : '1px solid var(--border)',
+                             backgroundColor: selectedTeam.includes(String(t.id)) ? 'rgba(56, 189, 248, 0.1)' : 'var(--bg-deep)',
+                             cursor: 'pointer',
+                             display: 'flex',
+                             alignItems: 'center',
+                             gap: '10px',
+                             transition: 'all 0.2s'
+                           }}
+                         >
+                            <div style={{
+                              width: '40px', height: '40px', borderRadius: '50%',
+                              backgroundColor: selectedTeam.includes(String(t.id)) ? 'var(--primary)' : 'var(--bg-card)',
+                              color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              fontWeight: 'bold', fontSize: '1.2rem'
+                            }}>
+                               {t.name?.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                               <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--text)' }}>{t.name}</div>
+                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.role}</div>
+                            </div>
+                         </div>
+                       ))}
+                       {availableTeam.length === 0 && (
+                          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+                             No hay operadores disponibles.
+                          </div>
+                       )}
+                    </div>
                   </div>
                 )}
 
                 {/* Navigation inside accordion */}
                  <div style={{ display: 'flex', gap: '10px', marginTop: '25px', justifyContent: 'flex-end' }}>
-                   {step === 1 ? (
-                      <button type="button" className="btn btn-primary" onClick={handleNext}>Multimedia &rarr;</button>
+                   {step === 1 || step === 2 ? (
+                      <button type="button" className="btn btn-primary" onClick={handleNext}>Siguiente &rarr;</button>
                    ) : (
                       <>
                         <button type="button" className="btn btn-ghost" onClick={handleBack}>&larr; Volver</button>
@@ -654,7 +784,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
         ))}
       </div>
 
-      {/* Floating Gallery Button */}
+      {/* Floating Gallery Button hidden by request
       <button 
         type="button"
         onClick={() => setShowGallery(true)}
@@ -680,6 +810,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
       >
         <div style={{ fontSize: '2rem' }}>🖼️</div>
       </button>
+      */}
 
       {showGallery && (
          <div style={{ position: 'fixed', inset: 0, backgroundColor: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
@@ -689,37 +820,12 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                   <button onClick={() => setShowGallery(false)} className="btn btn-ghost btn-sm">Cerrar</button>
                </div>
                 <div style={{ flex: 1, overflowY: 'auto', padding: '20px' }}>
-                   <div style={{ display: 'flex', justifyContent: 'center', gap: '20px', marginBottom: '25px', padding: '15px', backgroundColor: 'rgba(56, 189, 248, 0.05)', borderRadius: '16px', border: '1px dashed var(--primary)' }}>
-                       <div style={{ textAlign: 'center' }}>
-                          <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>Captura rápida</p>
-                           <div style={{ display: 'flex', gap: '15px' }}>
-                              <MediaCapture 
-                                 mode="audio" 
-                                 onCapture={async (blob, type) => {
-                                   try {
-                                     const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
-                                     const result = await uploadToBunnyClientSide(blob, `Audio-${Date.now()}.webm`, 'projects');
-                                     const fileObj: any = {
-                                        id: `capture-${Date.now()}`,
-                                        name: result.filename,
-                                        type: 'DOCUMENT',
-                                        url: result.url,
-                                        size: blob.size,
-                                        category: 'PLANOS'
-                                     }
-                                     setUploadedFiles(prev => [...prev, fileObj])
-                                   } catch (err) {
-                                     console.error('Error uploading gallery audio:', err);
-                                   }
-                                 }} 
-                              />
-                           </div>
-                       </div>
-                   </div>
-                  <ProjectUploader 
-                    files={uploadedFiles} 
-                    onAddFile={(newFile) => setUploadedFiles(prev => [...prev, newFile])} 
+                  <ProjectUploader
+                    hideCaptureButtons={true}
+                    files={uploadedFiles}
+                    onAddFile={(newFile) => setUploadedFiles(prev => [...prev, newFile])}
                     onRemoveFile={(url) => setUploadedFiles(prev => prev.filter(f => f.url !== url))}
+                    defaultCategory="PLANOS"
                   />
                 </div>
             </div>

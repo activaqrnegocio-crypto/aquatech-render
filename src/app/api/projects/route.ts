@@ -202,7 +202,8 @@ export async function POST(request: Request) {
               url: file.url,
               filename: file.filename || 'upload',
               mimeType: file.mimeType || 'application/octet-stream',
-              sizeBytes: file.sizeBytes || null
+              sizeBytes: file.size || file.sizeBytes || null,
+              category: file.category || 'MASTER'
             }))
           }
         }

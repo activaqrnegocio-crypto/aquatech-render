@@ -170,7 +170,7 @@ export default function TeamPage() {
   // Group and Sort
   const management = users.filter(u => {
     if (!isSuperAdmin) return false;
-    return u.role === 'SUPERADMIN' || u.role === 'ADMIN' || u.role === 'ADMINISTRADORA' || u.role === 'ADMINISTRADOR'
+    return u.role === 'SUPERADMIN' || u.role === 'ADMIN' || u.role === 'ADMINISTRADORA'
   }).sort((a, b) => {
     if (a.role === 'SUPERADMIN' && b.role !== 'SUPERADMIN') return -1
     if (a.role !== 'SUPERADMIN' && b.role === 'SUPERADMIN') return 1

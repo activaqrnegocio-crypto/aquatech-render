@@ -3,6 +3,9 @@ import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { isAdmin as checkIsAdmin } from '@/lib/rbac'
+import { sendWhatsAppMessage } from '@/lib/whatsapp'
+import { formatTimeEcuador, formatDateEcuador } from '@/lib/date-utils'
+import { notifyUser } from '@/lib/push'
 
 export async function PATCH(
   request: Request,
@@ -50,9 +53,44 @@ export async function PATCH(
       where: { id: Number(id) },
       data,
       include: {
-        project: { select: { title: true } }
+        project: { select: { title: true } },
+        user: { select: { id: true, name: true, phone: true } }
       }
     })
+
+    // Enviar notificaciones de actualización
+    const sendUpdateNotifications = async () => {
+      const startLocale = formatTimeEcuador(updated.startTime)
+      
+      notifyUser(
+        updated.userId,
+        '✏️ Tarea Actualizada',
+        `${updated.title} — ${startLocale}`,
+        `/admin/operador`,
+        `task-${updated.id}`
+      )
+
+      if (updated.user?.phone) {
+        try {
+          const startTimeLocale = formatTimeEcuador(updated.startTime);
+          const startDateLocale = formatDateEcuador(updated.startTime);
+          const descrText = updated.description ? `\n📝 *Notas:*\n${updated.description}` : '';
+          
+          const message = `*Notificación Aquatech*\n\nHola ${updated.user.name}, se ha *actualizado* una tarea que tienes asignada:\n📌 *${updated.title}*\n📅 Nueva fecha: ${startDateLocale}\n⏰ Nueva hora: ${startTimeLocale}${descrText}\n\nRevisa tu perfil para ver los cambios.`;
+
+          await sendWhatsAppMessage(updated.user.phone, message);
+          console.log(`✅ WA actualización enviado a ${updated.user.name} (${updated.user.phone})`);
+        } catch (err) {
+          console.error(`❌ Error enviando WA de actualización a ${updated.user.name}:`, err);
+        }
+      }
+    }
+
+    try {
+      await sendUpdateNotifications()
+    } catch (err) {
+      console.error('Error global en notificaciones de actualización:', err)
+    }
 
     return NextResponse.json(updated)
   } catch (error) {

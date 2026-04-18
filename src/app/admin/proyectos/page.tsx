@@ -26,7 +26,6 @@ export default function ProyectosPage() {
     userRole === 'SUPERADMIN' || 
     userRole === 'ADMIN' || 
     userRole === 'ADMINISTRADORA' || 
-    userRole === 'ADMINISTRADOR' ||
     (userPermissions && userPermissions.includes('proyectos_admin'))
   )
 

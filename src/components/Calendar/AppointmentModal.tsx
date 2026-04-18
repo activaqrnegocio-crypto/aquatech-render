@@ -279,7 +279,7 @@ export default function AppointmentModal({
       const isVideo = file.type.startsWith('video/')
       
       if (isVideo) {
-        // Subir a Bunny.net
+        // Subir a Bunny.net (Video) y enviar como link
         const resp = await fetch(`/api/upload?filename=${encodeURIComponent(file.name)}`, {
           method: 'POST',
           body: file
@@ -289,14 +289,17 @@ export default function AppointmentModal({
           linkFiles.push({ type: 'video', name: file.name, url })
         }
       } else {
-        // Convertir a Base64 (comprimir si es imagen)
+        // Subir a Bunny.net (Otros) en lugar de usar Base64 para evitar el límite de 10MB
         const processedFile = file.type.startsWith('image/') ? await compressImage(file) : file
-        const data = await new Promise<string>((resolve) => {
-          const reader = new FileReader()
-          reader.onload = () => resolve((reader.result as string).split(',')[1])
-          reader.readAsDataURL(processedFile)
+        const resp = await fetch(`/api/upload?filename=${encodeURIComponent(processedFile.name)}`, {
+          method: 'POST',
+          body: processedFile
         })
-        realFiles.push({ type: processedFile.type.split('/')[0], name: processedFile.name, data })
+        if (resp.ok) {
+          const { url } = await resp.json()
+          // Evolution API acepta URLs directamente en el campo media, así evitamos colapsar el servidor
+          realFiles.push({ type: processedFile.type.split('/')[0], name: processedFile.name, data: url })
+        }
       }
     }
     return { realFiles, linkFiles }

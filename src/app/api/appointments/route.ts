@@ -165,9 +165,11 @@ export async function POST(request: Request) {
       }
     }
 
-    sendNotifications().catch(err => {
+    try {
+      await sendNotifications()
+    } catch (err) {
       console.error('Error global en notificaciones:', err);
-    })
+    }
 
     return response
   } catch (error) {
