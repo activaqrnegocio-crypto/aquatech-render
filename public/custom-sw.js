@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v36';
+const CACHE_VERSION = 'v37';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -122,7 +122,8 @@ self.addEventListener('fetch', (event) => {
   if (url.pathname.startsWith('/api/')) {
     if (request.method === 'GET') {
       // Cache GET requests (Network First) so projects and data load offline
-      event.respondWith(networkFirst(request, 'aquatech-apis-v1'));
+      // Increased timeout to 15s to prevent "0 projects" on slow connections
+      event.respondWith(networkFirst(request, 'aquatech-apis-v1', 15000));
     } else {
       // POST, PATCH, DELETE are network only (mutations)
       event.respondWith(
@@ -258,10 +259,10 @@ async function navigationHandler(request) {
 /**
  * Network First — try network, fallback to cache.
  */
-async function networkFirst(request, cacheName) {
+async function networkFirst(request, cacheName, timeout = 10000) {
   if (request.method !== 'GET') return fetch(request);
   try {
-    const response = await fetchWithTimeout(request, 5000);
+    const response = await fetchWithTimeout(request, timeout);
     if (response.ok) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
@@ -269,7 +270,17 @@ async function networkFirst(request, cacheName) {
     return response;
   } catch (e) {
     const cached = await caches.match(request, { ignoreVary: true });
-    return cached || Response.error();
+    if (cached) return cached;
+    
+    // If it's a JSON request, return a clean offline error instead of breaking
+    if (request.headers.get('Accept')?.includes('application/json') || request.url.includes('/api/')) {
+       return new Response(JSON.stringify([]), {
+         status: 200, 
+         headers: { 'Content-Type': 'application/json' }
+       });
+    }
+    
+    return Response.error();
   }
 }
 

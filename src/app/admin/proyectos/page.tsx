@@ -289,13 +289,7 @@ export default function ProyectosPage() {
                     </p>
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>Presupuesto Estimado</span>
-                            <span style={{ fontSize: '1.2rem', fontWeight: '900', color: '#FFFFFF' }}>
-                                $ {new Intl.NumberFormat('es-EC', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(Number(p.estimatedBudget))}
-                            </span>
-                        </div>
-                        
+
                         <div style={{ marginTop: '10px' }}>
                           <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.8rem', color: 'rgba(255,255,255,0.7)', marginBottom: '8px', fontWeight: '700' }}>
                             <span>Progreso de Obra</span>
@@ -322,10 +316,7 @@ export default function ProyectosPage() {
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
                           <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '700' }}>{completedPhases}/{totalPhases}</span>
                       </div>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                          <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '700' }}>{(p.phases || []).reduce((acc: number, ph: any) => acc + (ph.estimatedDays || 0), 0)}d</span>
-                      </div>
+
                   </div>
                 </div>
               </Link>
