@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v35';
+const CACHE_VERSION = 'v36';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -118,16 +118,22 @@ self.addEventListener('fetch', (event) => {
     return; // Let browser handle other auth naturally
   }
 
-  // ── API requests → Network Only (don't cache sensitive data)
+  // ── API requests
   if (url.pathname.startsWith('/api/')) {
-    event.respondWith(
-      fetch(request).catch(() => 
-        new Response(JSON.stringify({ error: 'Sin conexión', offline: true }), {
-          status: 503,
-          headers: { 'Content-Type': 'application/json' }
-        })
-      )
-    );
+    if (request.method === 'GET') {
+      // Cache GET requests (Network First) so projects and data load offline
+      event.respondWith(networkFirst(request, 'aquatech-apis-v1'));
+    } else {
+      // POST, PATCH, DELETE are network only (mutations)
+      event.respondWith(
+        fetch(request).catch(() => 
+          new Response(JSON.stringify({ error: 'Sin conexión', offline: true }), {
+            status: 503,
+            headers: { 'Content-Type': 'application/json' }
+          })
+        )
+      );
+    }
     return;
   }
 

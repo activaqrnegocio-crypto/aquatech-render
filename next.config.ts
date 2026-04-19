@@ -3,10 +3,10 @@ import path from "path";
 const withPWA = require("@ducanh2912/next-pwa").default({
   dest: "public",
   sw: "sw.js", // The generated SW name
-  customWorkerDir: "public", // Where custom-sw.js is
-  disable: process.env.NODE_ENV === "development",
-  // We don't want it to cache everything automatically, as we have a custom-sw.js
-  // that handles the complex logic. next-pwa will mainly handle the manifest and build-time assets.
+  disable: false, // Temporarily enabled for local testing
+  workboxOptions: {
+    importScripts: ['/custom-sw.js']
+  }
 });
 
 const config: NextConfig = {
