@@ -27,25 +27,27 @@ export async function GET(request: Request) {
 
     const results: string[] = [];
 
-    // --- 1. RESUMEN DIARIO (Solo entre las 6:00 AM y las 6:02 AM) ---
-    // Ventana estrecha de 2 minutos para asegurar un solo envío si el cron corre cada 5 min
-    if (currentHour === 6 && currentMinute <= 2) {
-      // Calculamos el inicio y fin del día en Ecuador convertido a UTC real para Prisma
-      // 00:00 Ecuador = 05:00 UTC
-      const todayStart = new Date(localTime);
-      todayStart.setHours(0, 0, 0, 0);
-      const utcStart = new Date(todayStart.getTime() + 5 * 60 * 60 * 1000);
-
-      const todayEnd = new Date(localTime);
-      todayEnd.setHours(23, 59, 59, 999);
-      const utcEnd = new Date(todayEnd.getTime() + 5 * 60 * 60 * 1000);
-
+    // --- 1. RESUMEN DIARIO (Solo entre las 6:00 AM y las 6:30 AM) ---
+    // Aumentamos la ventana pero usamos el campo lastSummarySent para asegurar un solo envío
+    if (currentHour === 6) {
+      const todayStr = formatDateEcuador(localTime); // YYYY-MM-DD
+      
       const operatorsWithTasks = await prisma.user.findMany({
-        where: { role: 'OPERATOR', isActive: true },
+        where: { 
+          role: 'OPERATOR', 
+          isActive: true,
+          OR: [
+            { lastSummarySent: { lt: new Date(new Date().setHours(0,0,0,0)) } },
+            { lastSummarySent: null }
+          ]
+        },
         include: {
           appointments: {
             where: {
-              startTime: { gte: utcStart, lte: utcEnd },
+              startTime: { 
+                gte: new Date(new Date(localTime).setHours(0,0,0,0)), 
+                lte: new Date(new Date(localTime).setHours(23,59,59,999)) 
+              },
               status: { not: 'CANCELADO' }
             },
             orderBy: { startTime: 'asc' }
@@ -55,6 +57,13 @@ export async function GET(request: Request) {
 
       for (let i = 0; i < operatorsWithTasks.length; i++) {
         const op = operatorsWithTasks[i];
+        
+        // Verificación doble: ¿Ya se envió hoy?
+        if (op.lastSummarySent) {
+           const lastSentStr = formatDateEcuador(op.lastSummarySent);
+           if (lastSentStr === todayStr) continue;
+        }
+
         if (op.phone && op.appointments.length > 0) {
           let summary = `📋 *Resumen del Día - Aquatech*\n\nHola *${op.name}*, hoy tienes *${op.appointments.length}* tareas asignadas:\n\n`;
           
@@ -69,10 +78,14 @@ export async function GET(request: Request) {
           
           const waResult = await sendWhatsAppMessage(op.phone, summary);
           if (waResult.success) {
+            // Actualizar marca de envío para evitar duplicados
+            await prisma.user.update({
+              where: { id: op.id },
+              data: { lastSummarySent: new Date() }
+            });
             results.push(`Summary sent to ${op.name}`);
           }
 
-          // Seguridad: Delay de 1.5s entre operadores
           if (i < operatorsWithTasks.length - 1) {
             await new Promise(resolve => setTimeout(resolve, 1500));
           }
@@ -81,13 +94,18 @@ export async function GET(request: Request) {
     }
 
     // --- 2. RECORDATORIOS ESCALONADOS (60, 30 y 10 minutos antes) ---
-    // Buscamos citas que comiencen en el futuro cercano
-    const futureLimit = new Date(now.getTime() + 70 * 60000); // Max 70 mins adelante
+    const futureLimit = new Date(now.getTime() + 75 * 60000); 
     
     const upcomingApts = await prisma.appointment.findMany({
       where: {
         startTime: { gte: now, lte: futureLimit },
-        status: { not: 'CANCELADO' }
+        status: { not: 'CANCELADO' },
+        // Solo traer los que NO han sido notificados en sus respectivos rangos
+        OR: [
+          { reminded60: false },
+          { reminded30: false },
+          { reminded10: false }
+        ]
       },
       include: { user: true }
     });
@@ -100,30 +118,43 @@ export async function GET(request: Request) {
       const diffMins = Math.round(diffMs / 60000);
 
       let reminderMessage = '';
+      let flagToUpdate = '';
       
       const dateLocal = formatDateEcuador(apt.startTime);
       const timeLocal = formatTimeEcuador(apt.startTime);
       const descrText = apt.description ? `\n📝 *Nota:* ${apt.description}` : '';
       
-      // Ventanas de tiempo para evitar duplicados si el cron corre cada 5-10 mins
-      if (diffMins >= 58 && diffMins <= 62 && !apt.reminded60) {
+      if (diffMins >= 55 && diffMins <= 65 && !apt.reminded60) {
         reminderMessage = `⏰ *Recordatorio (1 hora):*\nHola ${apt.user.name}, tu tarea *"${apt.title}"* comienza en 60 minutos.\n📅 ${dateLocal} a las ${timeLocal}${descrText}`;
-        await prisma.appointment.update({ where: { id: apt.id }, data: { reminded60: true } });
-      } else if (diffMins >= 28 && diffMins <= 32 && !apt.reminded30) {
+        flagToUpdate = 'reminded60';
+      } else if (diffMins >= 25 && diffMins <= 35 && !apt.reminded30) {
         reminderMessage = `⏰ *Recordatorio (30 min):*\nHola ${apt.user.name}, tu tarea *"${apt.title}"* comienza en 30 minutos.\n📅 ${dateLocal} a las ${timeLocal}${descrText}`;
-        await prisma.appointment.update({ where: { id: apt.id }, data: { reminded30: true } });
-      } else if (diffMins >= 8 && diffMins <= 12 && !apt.reminded10) {
+        flagToUpdate = 'reminded30';
+      } else if (diffMins >= 5 && diffMins <= 15 && !apt.reminded10) {
         reminderMessage = `⚠️ *Aviso (10 min):*\nHola ${apt.user.name}, tu tarea *"${apt.title}"* está por comenzar en 10 minutos.\n📅 ${dateLocal} a las ${timeLocal}${descrText}`;
-        await prisma.appointment.update({ where: { id: apt.id }, data: { reminded10: true } });
+        flagToUpdate = 'reminded10';
       }
 
-      if (reminderMessage) {
-        await sendWhatsAppMessage(apt.user.phone, reminderMessage);
-        results.push(`Reminder (${diffMins}m) sent to ${apt.user.name} for ${apt.title}`);
+      if (reminderMessage && flagToUpdate) {
+        // LOCK ATÓMICO: Intentamos marcar como enviado. Si ya lo estaba, count será 0.
+        const updateData: any = {};
+        updateData[flagToUpdate] = true;
 
-        // Seguridad: Delay de 1.5s entre recordatorios si hay más en la cola
-        if (i < upcomingApts.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1500));
+        const alreadySent = await prisma.appointment.updateMany({
+          where: { 
+            id: apt.id, 
+            [flagToUpdate]: false // Solo si sigue en false
+          },
+          data: updateData
+        });
+
+        if (alreadySent.count > 0) {
+          await sendWhatsAppMessage(apt.user.phone, reminderMessage);
+          results.push(`Reminder (${diffMins}m) sent to ${apt.user.name} for ${apt.title}`);
+          
+          if (i < upcomingApts.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 1500));
+          }
         }
       }
     }

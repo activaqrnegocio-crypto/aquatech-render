@@ -43,12 +43,36 @@ export default function GlobalSyncWorker() {
           else if (item.type === 'PHASE_COMPLETE') { endpoint = `/api/projects/${item.projectId}/phases/${item.payload.phaseId}`; method = 'PATCH' }
           else if (item.type === 'PROJECT') { endpoint = '/api/projects' }
           
+          let finalPayload = { ...item.payload }
+          
+          // Handle media upload if there is a raw file in the outbox item
+          if (item.payload.file && (item.type === 'MESSAGE' || item.type === 'EXPENSE' || item.type === 'MEDIA_UPLOAD')) {
+            try {
+              const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
+              const uploadFile = item.payload.file
+              const finalFilename = uploadFile.name || `sync_upload_${Date.now()}`
+              
+              const uploadResult = await uploadToBunnyClientSide(uploadFile, finalFilename, `projects/${item.projectId}/chat`)
+              finalPayload.media = {
+                url: uploadResult.url,
+                filename: uploadResult.filename,
+                mimeType: uploadResult.mimeType
+              }
+              // Remove file from payload before sending to API
+              delete finalPayload.file
+            } catch (uploadError) {
+              console.error('Failed to upload media during sync:', uploadError)
+              await db.outbox.update(item.id!, { status: 'pending' })
+              continue // Try next item
+            }
+          }
+          
           if (endpoint) {
              const res = await fetch(endpoint, {
                  method,
                  headers: { 'Content-Type': 'application/json' },
                  body: JSON.stringify({ 
-                   ...item.payload, 
+                   ...finalPayload, 
                    lat: item.lat, 
                    lng: item.lng, 
                    createdAt: item.timestamp ? new Date(item.timestamp).toISOString() : undefined,

@@ -34,7 +34,7 @@ export default function ProjectExecutionClient({
   const router = useRouter()
   const { data: session } = useSession()
   const userRole = session?.user?.role
-  const isFieldStaff = userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA'
+  const isFieldStaff = userRole === 'OPERATOR' || userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA'
   
   const hasActiveRecordInThisProject = activeRecord && Number(activeRecord.projectId) === Number(project.id);
   const hasActiveRecordInOtherProject = activeRecord && !hasActiveRecordInThisProject;
@@ -812,7 +812,7 @@ export default function ProjectExecutionClient({
         isMe: true,
         userName: session?.user?.name || 'Yo',
         userBranch: (session?.user as any)?.branch || null,
-        status: 'sending'
+        status: 'pending'
       }
     ])
 
@@ -846,7 +846,8 @@ export default function ProjectExecutionClient({
         }
 
       let mediaData = null
-      if (mediaFile) {
+      let uploadErrorOccurred = false;
+      if (mediaFile && navigator.onLine) {
         try {
           const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
           let uploadFile: File | Blob = mediaFile
@@ -867,9 +868,10 @@ export default function ProjectExecutionClient({
           }
         } catch (uploadError) {
           console.error('Failed to upload media directly:', uploadError)
-          // Fallback to legacy base64 if direct upload fails and we are online?
-          // Actually better to throw or let it fail gracefully.
+          uploadErrorOccurred = true;
         }
+      } else if (mediaFile && !navigator.onLine) {
+        uploadErrorOccurred = true; // Force outbox
       }
 
       // Clean extraData from File objects before sending
@@ -884,19 +886,19 @@ export default function ProjectExecutionClient({
         extraData: cleanExtraData
       }
 
-      if (!navigator.onLine) {
+      if (!navigator.onLine || uploadErrorOccurred) {
          await db.outbox.add({
             type: 'MESSAGE',
             projectId: project.id,
-            payload,
+            payload: { ...payload, file: mediaFile }, // Store raw file for later upload
             timestamp: Date.now(),
             lat: location?.lat,
             lng: location?.lng,
             status: 'pending'
          })
          
-         // Mark as pending in UI
-         setLiveChat(prev => prev.map(m => m.id === tempId ? { ...m, status: 'pending_sync' } : m))
+         // Remove ephemeral optimistic msg and let pendingItems (useLiveQuery) take over
+         setLiveChat(prev => prev.filter(m => m.id !== tempId))
          return
       }
 

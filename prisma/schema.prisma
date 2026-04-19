@@ -23,6 +23,7 @@ model User {
   displayPassword  String?            @map("display_password") @db.VarChar(255)
   branch           String?            @db.VarChar(100)
   permissions      String?            @db.Text
+  lastSummarySent  DateTime?          @map("last_summary_sent")
   appointments     Appointment[]
   blogPosts        BlogPost[]         @relation("BlogPostAuthor")
   chatMessages     ChatMessage[]

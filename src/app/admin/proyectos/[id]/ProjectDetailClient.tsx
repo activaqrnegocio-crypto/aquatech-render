@@ -1298,7 +1298,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           </p>
         </div>
         <div style={{ textAlign: 'right', display: 'none' }}>
-          {session?.user?.role !== 'OPERADOR' && (
+          {session?.user?.role !== 'OPERADOR' && session?.user?.role !== 'OPERATOR' && (
             <>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>Subtotal: $ {theoreticalBudget.toFixed(2)}</div>
               <div style={{ color: 'var(--text-muted)', fontSize: '0.8rem' }}>IVA 15%: $ {ivaAmount.toFixed(2)}</div>
@@ -1645,7 +1645,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           </div>
 
           {/* Resumen Financiero Rápido */}
-          {session?.user?.role !== 'OPERADOR' && (
+          {session?.user?.role !== 'OPERADOR' && session?.user?.role !== 'OPERATOR' && (
             <div style={{ marginTop: '25px', padding: '20px', background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.05), rgba(34, 197, 94, 0.05))', borderRadius: '12px', border: '1px solid var(--border-color)', display: 'none', justifyContent: 'space-around', flexWrap: 'wrap', gap: '20px' }}>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>Subtotal</div>
@@ -1686,7 +1686,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
             { id: 'BITACORA', label: 'Chat', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>, activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.1)', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)' },
             { id: 'GALLERY', label: isSmallScreen ? 'Planos' : GALLERY_LABEL, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.1)', gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
             { id: 'EVIDENCE', label: isSmallScreen ? 'Finales' : 'Archivos Finales', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>, activeColor: '#d946ef', bgColor: 'rgba(217, 70, 239, 0.1)', gradient: 'linear-gradient(135deg, #a855f7, #d946ef)' }
-          ].filter(tab => session?.user?.role !== 'OPERADOR' || tab.id !== 'EVIDENCE').map(tab => (
+          ].filter(tab => (session?.user?.role !== 'OPERADOR' && session?.user?.role !== 'OPERATOR') || tab.id !== 'EVIDENCE').map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTabWithUrl(tab.id as any)}
