@@ -145,6 +145,7 @@ export interface PDFConfig {
     title: string;
     description: string;
     imageBase64: string;
+    image2Base64?: string;
   };
 }
 
@@ -392,14 +393,24 @@ export function generateProfessionalPDF(
       optY += (splitDesc.length * 4.5);
     }
 
-    if (config.optionalSection.imageBase64) {
+    if (config.optionalSection.imageBase64 || config.optionalSection.image2Base64) {
       try {
-        const imgWidth = 92;
-        const imgHeight = 52;
-        const imgX = (210 - imgWidth) / 2; // Center horizontally on A4
-        doc.addImage(config.optionalSection.imageBase64, 'JPEG', imgX, optY + 2, imgWidth, imgHeight);
+        const hasBoth = config.optionalSection.imageBase64 && config.optionalSection.image2Base64;
+        const imgWidth = hasBoth ? 88 : 120;
+        const imgHeight = hasBoth ? 55 : 75;
+        
+        if (hasBoth) {
+           // Render side by side
+           doc.addImage(config.optionalSection.imageBase64, 'JPEG', 15, optY + 2, imgWidth, imgHeight);
+           doc.addImage(config.optionalSection.image2Base64!, 'JPEG', 107, optY + 2, imgWidth, imgHeight);
+        } else {
+           // Render single centered large
+           const imgX = (210 - imgWidth) / 2;
+           const targetImg = config.optionalSection.imageBase64 || config.optionalSection.image2Base64;
+           if (targetImg) doc.addImage(targetImg, 'JPEG', imgX, optY + 2, imgWidth, imgHeight);
+        }
       } catch (e) {
-        console.error("Error adding optional image to PDF", e);
+        console.error("Error adding optional images to PDF", e);
       }
     }
   }

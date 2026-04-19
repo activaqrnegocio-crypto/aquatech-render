@@ -135,18 +135,20 @@ export default function ProjectUploader({
           try {
             const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
             let uploadFile: File | Blob = file
+            let finalFilename = file.name
 
             if (isImage) {
               try {
                 const compressedB64 = await optimizedCompress(file)
                 const resB64 = await fetch(compressedB64)
                 uploadFile = await resB64.blob()
+                finalFilename = finalFilename.replace(/\.[^/.]+$/, "") + ".webp"
               } catch (err) {
                 console.error('Compression failed, falling back to original', err)
               }
             }
 
-            const data = await uploadToBunnyClientSide(uploadFile, file.name, 'projects')
+            const data = await uploadToBunnyClientSide(uploadFile, finalFilename, 'projects')
             onAddFile({
               ...data,
               category: defaultCategory,

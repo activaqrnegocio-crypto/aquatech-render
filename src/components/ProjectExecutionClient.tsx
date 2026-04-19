@@ -253,7 +253,19 @@ export default function ProjectExecutionClient({
       isExpense: true
     })).filter(e => e.url)
 
-    const list = [...baseFiles, ...expenseFiles]
+    // Add pending uploads
+    const pendingGallery = (pendingItems || [])
+      .filter((item: any) => item.type === 'MEDIA_UPLOAD' && (item.payload?.category === 'MASTER' || !item.payload?.category))
+      .map((item: any) => ({
+        id: `pending-${item.id}`,
+        url: item.payload?.base64 || '',
+        filename: item.payload?.filename || 'Pendiente...',
+        mimeType: item.payload?.mimeType || 'image/jpeg',
+        category: 'MASTER',
+        isPending: true
+      }))
+
+    const list = [...baseFiles, ...expenseFiles, ...pendingGallery]
     
     if (galleryFilter === 'ALL') return list
     return list.filter((item: any) => {
@@ -264,16 +276,30 @@ export default function ProjectExecutionClient({
       if (galleryFilter === 'DOCS') return !mime.startsWith('image/') && !mime.startsWith('video/') && !mime.startsWith('audio/')
       return true
     })
-  }, [project.gallery, galleryFilter])
+  }, [project.gallery, galleryFilter, localExpenses, pendingItems])
 
   const [evidenceFilter, setEvidenceFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
   const evidenceGallery = useMemo(() => {
     if (!project.gallery) return []
     // Filter by EVIDENCE category
-    const list = project.gallery.filter((item: any) => item.category === 'EVIDENCE')
+    const list = [...project.gallery.filter((item: any) => item.category === 'EVIDENCE')]
     
-    if (evidenceFilter === 'ALL') return list
-    return list.filter((item: any) => {
+    // Add pending uploads
+    const pendingEvidence = (pendingItems || [])
+      .filter((item: any) => item.type === 'MEDIA_UPLOAD' && item.payload?.category === 'EVIDENCE')
+      .map((item: any) => ({
+        id: `pending-ev-${item.id}`,
+        url: item.payload?.base64 || '',
+        filename: item.payload?.filename || 'Pendiente...',
+        mimeType: item.payload?.mimeType || 'image/jpeg',
+        category: 'EVIDENCE',
+        isPending: true
+      }))
+
+    const combinedList = [...list, ...pendingEvidence]
+
+    if (evidenceFilter === 'ALL') return combinedList
+    return combinedList.filter((item: any) => {
       const mime = (item.mimeType || '').toLowerCase()
       if (evidenceFilter === 'IMAGES') return mime.startsWith('image/')
       if (evidenceFilter === 'VIDEOS') return mime.startsWith('video/')
@@ -281,7 +307,7 @@ export default function ProjectExecutionClient({
       if (evidenceFilter === 'DOCS') return !mime.startsWith('image/') && !mime.startsWith('video/') && !mime.startsWith('audio/')
       return true
     })
-  }, [project.gallery, evidenceFilter])
+  }, [project.gallery, evidenceFilter, pendingItems])
 
   const handleDownload = async (url: string, filename: string) => {
     setHandleDownloadLoading(url)
@@ -825,13 +851,15 @@ export default function ProjectExecutionClient({
           const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
           let uploadFile: File | Blob = mediaFile
 
+          let finalFilename = mediaFile.name
           if (mediaFile.type.startsWith('image/')) {
             const compressedB64 = await optimizedCompress(mediaFile)
             const resB64 = await fetch(compressedB64)
             uploadFile = await resB64.blob()
+            finalFilename = finalFilename.replace(/\.[^/.]+$/, "") + ".webp"
           }
 
-          const uploadResult = await uploadToBunnyClientSide(uploadFile, mediaFile.name, `projects/${project.id}/chat`)
+          const uploadResult = await uploadToBunnyClientSide(uploadFile, finalFilename, `projects/${project.id}/chat`)
           mediaData = {
             url: uploadResult.url,
             filename: uploadResult.filename,
@@ -1505,6 +1533,19 @@ export default function ProjectExecutionClient({
                             }
                           })()}
 
+                          {item.isPending && (
+                            <div style={{ 
+                              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                              backgroundColor: 'rgba(0,0,0,0.5)', 
+                              display: 'flex', alignItems: 'center', justifyContent: 'center',
+                              flexDirection: 'column', gap: '4px',
+                              zIndex: 10
+                            }}>
+                              <span style={{ fontSize: '1.2rem' }}>🕒</span>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pendiente</span>
+                            </div>
+                          )}
+
                           {/* Interaction Overlay */}
                           <div style={{ 
                             position: 'absolute', 
@@ -1614,8 +1655,21 @@ export default function ProjectExecutionClient({
                           );
                         }
                       })()}
-                      </div>
-                    ))}
+
+                      {item.isPending && (
+                        <div style={{ 
+                          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                          backgroundColor: 'rgba(0,0,0,0.5)', 
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexDirection: 'column', gap: '4px',
+                          zIndex: 10
+                        }}>
+                          <span style={{ fontSize: '1.2rem' }}>🕒</span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pendiente</span>
+                        </div>
+                      )}
+                    </div>
+                  ))}
                   </div>
                 )}
               </div>
@@ -1679,7 +1733,7 @@ export default function ProjectExecutionClient({
               
               <ProjectChatUnified
                 project={project}
-                messages={liveChat} 
+                messages={combinedChat} 
                 userId={userId}
                 isOperatorView={isFieldStaff}
                 activeRecord={activeRecord}

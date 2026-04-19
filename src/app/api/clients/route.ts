@@ -30,7 +30,9 @@ export async function GET(request: Request) {
       take: 20
     })
 
-    return NextResponse.json(clients)
+    return NextResponse.json(clients, {
+      headers: { 'Cache-Control': 's-maxage=30, stale-while-revalidate=60' }
+    })
   } catch (error) {
     console.error('Error fetching clients:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

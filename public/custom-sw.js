@@ -14,6 +14,7 @@ const PRE_CACHE = [
   '/logo.jpg',
   '/cotizacion.jpg',
   '/manifest.json',
+  '/admin',
   '/admin/operador',
   '/admin/operador/nuevo',
   '/admin/proyectos/nuevo',
@@ -211,10 +212,15 @@ async function navigationHandler(request) {
     }
     return response;
   } catch (e) {
-    // ONLY search PAGES_CACHE — never global caches.match() which would 
+    // ONLY search PAGES_CACHE or STATIC_CACHE — never global caches.match() which would 
     // return RSC payloads from RSC_CACHE and display raw JSON text
     const pagesCache = await caches.open(PAGES_CACHE);
-    const cached = await pagesCache.match(request, { ignoreVary: true, ignoreSearch: true });
+    let cached = await pagesCache.match(request, { ignoreVary: true, ignoreSearch: true });
+    if (cached) return cached;
+
+    // Fallback to STATIC_CACHE (where PRE_CACHE items like /admin/operador live)
+    const staticCache = await caches.open(STATIC_CACHE);
+    cached = await staticCache.match(request, { ignoreVary: true, ignoreSearch: true });
     if (cached) return cached;
 
     // Nothing in cache → show offline page

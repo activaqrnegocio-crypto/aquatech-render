@@ -162,10 +162,14 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const [editClientCity, setEditClientCity] = useState(project.client?.city || '')
   const [editClientAddress, setEditClientAddress] = useState(project.client?.address || '')
 
-  // --- FULL-SYNC FETCH: always gets ALL messages from server ---
-  const fetchAllMessages = async (): Promise<any[]> => {
+  // --- INCREMENTAL FETCH: gets new messages from server ---
+  const fetchMessages = async (since?: string): Promise<any[]> => {
     try {
-      const resp = await fetch(`/api/projects/${project.id}/messages?_t=${Date.now()}`, {
+      const url = since 
+        ? `/api/projects/${project.id}/messages?since=${since}&_t=${Date.now()}`
+        : `/api/projects/${project.id}/messages?_t=${Date.now()}`
+        
+      const resp = await fetch(url, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
       })
@@ -229,7 +233,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     markAsSeen()
 
     // Immediate full fetch on mount
-    fetchAllMessages().then(msgs => {
+    fetchMessages().then(msgs => {
       if (msgs.length > 0) {
         setChatMessages(msgs)
         markAsSeen()
@@ -237,36 +241,29 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     })
 
     const pollInterval = setInterval(async () => {
-      if (!navigator.onLine) return
-      const freshMsgs = await fetchAllMessages()
-      if (freshMsgs.length > 0) {
-        setChatMessages((prev: any[]) => {
-          if (prev.length !== freshMsgs.length || 
-              (prev.length > 0 && freshMsgs.length > 0 && prev[prev.length - 1]?.id !== freshMsgs[freshMsgs.length - 1]?.id)) {
-            return freshMsgs
+      if (!navigator.onLine || document.hidden) return
+      
+      setChatMessages((prev: any[]) => {
+        const lastMsg = prev[prev.length - 1]
+        const since = lastMsg?.createdAt
+        
+        fetchMessages(since).then(freshMsgs => {
+          if (freshMsgs.length > 0) {
+            setChatMessages((currentPrev: any[]) => {
+              const existingIds = new Set(currentPrev.map(m => m.id))
+              const uniqueNew = freshMsgs.filter(m => !existingIds.has(m.id))
+              if (uniqueNew.length === 0) return currentPrev
+              return [...currentPrev, ...uniqueNew]
+            })
           }
-          return prev
         })
-      }
+        
+        return prev
+      })
     }, 5000)
-
-    // Secondary poll for Expenses and general project data (every 15s)
-    const projectPollInterval = setInterval(async () => {
-      if (!navigator.onLine) return
-      try {
-        const resp = await fetch(`/api/projects/${project.id}?_t=${Date.now()}`, { cache: 'no-store' })
-        if (resp.ok) {
-          const freshProject = await resp.json()
-          if (freshProject.expenses) {
-            setExpenses(freshProject.expenses)
-          }
-        }
-      } catch (e) { /* silent */ }
-    }, 15000)
 
     return () => {
       clearInterval(pollInterval)
-      clearInterval(projectPollInterval)
     }
   }, [project.id])
 
@@ -299,7 +296,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       if (resp.ok) {
         setIsUpdatingStatus(false)
         startTransition(() => {
-          router.refresh()
+          setGallery((prev: any[]) => prev.filter((item: any) => item.id !== itemId))
         })
       } else {
         alert('Error al eliminar el archivo')
@@ -342,7 +339,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       if (resp.ok) {
         setIsEditingFicha(false)
         startTransition(() => {
-          router.refresh()
+          // router.refresh() - removed to avoid full refetch
         })
       } else {
         alert('Error al guardar los cambios')
@@ -460,7 +457,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         })
         setIsExpenseModalOpen(false)
         startTransition(() => {
-          router.refresh()
+          // router.refresh() - state updated via full page refresh elsewhere, but removed here for local update
         })
       } else {
         const err = await resp.json()
@@ -483,7 +480,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       if (resp.ok) {
         setIsEditingBudget(false)
         startTransition(() => {
-          router.refresh()
+          // router.refresh() - removed
         })
       } else {
         alert('Error al actualizar el presupuesto')
@@ -576,7 +573,6 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         }
       }
       setIsEditingPhases(false)
-      router.refresh()
     } catch (e) {
       console.error('Error saving phases:', e)
     } finally {
@@ -593,7 +589,6 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         body: JSON.stringify({ operatorIds: selectedTeam })
       })
       setIsEditingTeam(false)
-      router.refresh()
     } catch (e) {
       alert('Error guardando equipo')
     } finally {
@@ -705,7 +700,6 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         })
         setMessage('')
         setShowMediaCapture(null)
-        router.refresh()
       }
     } catch (error) {
       console.error('Error sending message:', error)
@@ -789,8 +783,6 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
          }
          setExpenses((prev: any) => [newExp, ...prev])
       }
-
-      router.refresh()
     } catch (error) {
       console.error('Error sending message:', error)
       alert('Error al enviar el mensaje')
@@ -844,7 +836,6 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         setExpenseForm({ amount: '', description: '', isNote: false, date: new Date().toISOString().split('T')[0] })
         setExpenseImage(null)
         setExpenseImagePreview(null)
-        router.refresh()
       }
     } catch (error) {
       console.error('Error saving expense:', error)
@@ -861,7 +852,6 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       })
       if (res.ok) {
         setExpenses((prev: any) => prev.filter((ex: any) => ex.id !== expenseId))
-        router.refresh()
       }
     } catch (error) {
       console.error('Error deleting expense:', error)

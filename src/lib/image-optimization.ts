@@ -60,8 +60,8 @@ export async function compressImage(
       // Draw and resize
       ctx.drawImage(img, 0, 0, width, height);
 
-      // Export as compressed JPEG
-      const dataUrl = canvas.toDataURL('image/jpeg', quality);
+      // Export as compressed WebP (better compression than JPEG)
+      const dataUrl = canvas.toDataURL('image/webp', quality);
       resolve(dataUrl);
     };
 

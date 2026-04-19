@@ -79,6 +79,12 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
       setNotes(initialQuote.notes || '');
       setValidUntil(initialQuote.validUntil ? new Date(initialQuote.validUntil).toISOString().split('T')[0] : '');
       
+      // Load optional fields in edit mode
+      setOptionalTitle(initialQuote.optionalTitle || '');
+      setOptionalDescription(initialQuote.optionalDescription || '');
+      setOptionalImageBase64(initialQuote.optionalImage || '');
+      setOptionalImage2Base64(initialQuote.optionalImage2 || '');
+
       if (initialQuote.items) {
         setItems(initialQuote.items.map((item: any) => ({
           materialId: item.materialId,
@@ -134,13 +140,15 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
   const [optionalTitle, setOptionalTitle] = useState('')
   const [optionalDescription, setOptionalDescription] = useState('')
   const [optionalImageBase64, setOptionalImageBase64] = useState('')
+  const [optionalImage2Base64, setOptionalImage2Base64] = useState('')
 
-  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImageUpload = (e: React.ChangeEvent<HTMLInputElement>, imageNum: 1 | 2) => {
     const file = e.target.files?.[0]
     if (file) {
       const reader = new FileReader()
       reader.onloadend = () => {
-        setOptionalImageBase64(reader.result as string)
+        if (imageNum === 1) setOptionalImageBase64(reader.result as string)
+        else setOptionalImage2Base64(reader.result as string)
       }
       reader.readAsDataURL(file)
     }
@@ -247,7 +255,8 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
       })),
       optionalTitle,
       optionalDescription,
-      optionalImage: optionalImageBase64
+      optionalImage: optionalImageBase64,
+      optionalImage2: optionalImage2Base64
     }
 
     setLoading(true)
@@ -282,7 +291,8 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
           optionalSection: {
             title: optionalTitle,
             description: optionalDescription,
-            imageBase64: optionalImageBase64
+            imageBase64: optionalImageBase64,
+            image2Base64: optionalImage2Base64
           }
         })
         
@@ -538,14 +548,27 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
               <textarea className="form-input" style={{ height: '80px' }} value={optionalDescription} onChange={e => setOptionalDescription(e.target.value)} placeholder="Detalles extra..."></textarea>
             </div>
             <div className="form-group">
-              <label>Imagen Adjunta</label>
-              <input type="file" accept="image/*" className="form-input" onChange={handleImageUpload} />
-              {optionalImageBase64 && (
-                <div style={{ marginTop: '10px' }}>
-                  <img src={optionalImageBase64} alt="Preview" style={{ maxHeight: '100px', borderRadius: '8px' }} />
-                  <button type="button" onClick={() => setOptionalImageBase64('')} className="btn btn-ghost btn-xs" style={{ color: 'var(--danger)', marginLeft: '10px' }}>Quitar Imagen</button>
+              <label>Imágenes Adjuntas (Máx 2)</label>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '15px' }}>
+                <div>
+                  <input type="file" accept="image/*" className="form-input" onChange={e => handleImageUpload(e, 1)} />
+                  {optionalImageBase64 && (
+                    <div style={{ marginTop: '10px', position: 'relative' }}>
+                      <img src={optionalImageBase64} alt="Preview 1" style={{ width: '100%', maxHeight: '100px', objectFit: 'cover', borderRadius: '8px' }} />
+                      <button type="button" onClick={() => setOptionalImageBase64('')} style={{ position: 'absolute', top: '-5px', right: '-5px', background: 'var(--danger)', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', fontSize: '12px', cursor: 'pointer' }}>✕</button>
+                    </div>
+                  )}
                 </div>
-              )}
+                <div>
+                  <input type="file" accept="image/*" className="form-input" onChange={e => handleImageUpload(e, 2)} />
+                  {optionalImage2Base64 && (
+                    <div style={{ marginTop: '10px', position: 'relative' }}>
+                      <img src={optionalImage2Base64} alt="Preview 2" style={{ width: '100%', maxHeight: '100px', objectFit: 'cover', borderRadius: '8px' }} />
+                      <button type="button" onClick={() => setOptionalImage2Base64('')} style={{ position: 'absolute', top: '-5px', right: '-5px', background: 'var(--danger)', color: 'white', border: 'none', borderRadius: '50%', width: '20px', height: '20px', fontSize: '12px', cursor: 'pointer' }}>✕</button>
+                    </div>
+                  )}
+                </div>
+              </div>
             </div>
           </div>
         </div>

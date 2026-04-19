@@ -20,6 +20,11 @@ const Smile = ({ size = 20 }: any) => <svg {...svgProps(size)}><circle cx="12" c
 const Play = ({ size = 16 }: any) => <svg {...svgProps(size)} fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
 const ImageIcon = ({ size = 20 }: any) => <svg {...svgProps(size)}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
 const VideoIcon = ({ size = 20 }: any) => <svg {...svgProps(size)}><rect width="14" height="14" x="2" y="5" rx="2" ry="2"/><path d="M16 14.5V9.5L22 6.5v11z"/></svg>
+const Clock = ({ size = 12 }: any) => (
+  <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+  </svg>
+)
 const getSenderColor = (name: string) => {
   const colors = [
     '#25d366', '#34d399', '#3b82f6', '#f59e0b', '#ef4444', 
@@ -665,7 +670,15 @@ export default function ProjectChatUnified({
                   )}
                  <div className="message-footer">
                    <span className="time">{formatTimeEcuador(msg.createdAt)}</span>
-                   {isMe && <span className="check">✓✓</span>}
+                   {isMe && (
+                     (msg.status === 'pending' || msg.isPending) ? (
+                       <span className="pending-icon" title="Pendiente de envío" style={{ marginLeft: '4px', opacity: 0.7, color: 'var(--text-muted)' }}>
+                         <Clock size={12} />
+                       </span>
+                     ) : (
+                       <span className="check">✓✓</span>
+                     )
+                   )}
                  </div>
                </div>
             </div>

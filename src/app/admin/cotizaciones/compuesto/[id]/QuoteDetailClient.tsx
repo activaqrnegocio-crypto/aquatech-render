@@ -86,7 +86,8 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
         optionalSection: {
           title: quote.optionalTitle || '',
           description: quote.optionalDescription || '',
-          imageBase64: quote.optionalImage || ''
+          imageBase64: quote.optionalImage || '',
+          image2Base64: quote.optionalImage2 || ''
         }
       });
 
@@ -155,7 +156,8 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
       optionalSection: {
         title: quote.optionalTitle || '',
         description: quote.optionalDescription || '',
-        imageBase64: quote.optionalImage || ''
+        imageBase64: quote.optionalImage || '',
+        image2Base64: quote.optionalImage2 || ''
       }
     })
   }
@@ -241,42 +243,56 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
             </table>
 
             {/* Totals Preview */}
-            <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <div style={{ width: '60%', fontSize: '0.8rem' }}>
-                <strong>OBSERVACIONES:</strong>
-                <p>{quote.notes || 'Ninguna'}</p>
-                <div style={{ marginTop: '20px' }}><strong>SON:</strong> {numberToSpanishWords(Number(quote.totalAmount))}</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '24px' }}>
+              {/* Totals Table */}
+              <div style={{ width: '100%', border: '1px solid #e5e7eb', borderRadius: '6px', overflow: 'hidden' }}>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', fontSize: '0.8rem', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                  <span style={{ color: '#6b7280' }}>Subtotal:</span>
+                  <span style={{ fontWeight: 600, color: '#111' }}>$ {Number(quote.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', fontSize: '0.8rem', borderBottom: '1px solid #e5e7eb' }}>
+                  <span style={{ color: '#6b7280' }}>Descuentos:</span>
+                  <span style={{ fontWeight: 600, color: '#dc2626' }}>-$ {Number(quote.discountTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', fontSize: '0.8rem', backgroundColor: '#f9fafb', borderBottom: '1px solid #e5e7eb' }}>
+                  <span style={{ color: '#6b7280' }}>Subtotal TARIFA 0%:</span>
+                  <span style={{ fontWeight: 600, color: '#111' }}>$ {Number(quote.subtotal0 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', fontSize: '0.8rem', borderBottom: '1px solid #e5e7eb' }}>
+                  <span style={{ color: '#6b7280' }}>Subtotal TARIFA 15%:</span>
+                  <span style={{ fontWeight: 600, color: '#111' }}>$ {Number(quote.subtotal15 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '8px 14px', fontSize: '0.8rem', borderBottom: '1px solid #e5e7eb' }}>
+                  <span style={{ color: '#6b7280' }}>15% IVA:</span>
+                  <span style={{ fontWeight: 600, color: '#111' }}>$ {Number(quote.ivaAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '12px 14px', fontSize: '0.95rem', backgroundColor: 'var(--bg-deep)', borderTop: '2px solid var(--primary)' }}>
+                  <span style={{ fontWeight: 700, color: 'var(--primary)' }}>TOTAL A PAGAR:</span>
+                  <span style={{ fontWeight: 700, color: 'var(--primary)' }}>$ {Number(quote.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
+                </div>
               </div>
-              
-              <div style={{ width: '35%' }}>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-500">Subtotal:</span>
-                    <span className="font-semibold text-gray-900">$ {Number(quote.subtotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-500">Descuentos:</span>
-                    <span className="font-semibold text-red-600">-$ {Number(quote.discountTotal || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs border-t border-gray-100 pt-1">
-                    <span className="text-gray-500">Subtotal TARIFA 0%:</span>
-                    <span className="font-semibold text-gray-900">$ {Number(quote.subtotal0 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-500">Subtotal TARIFA 15%:</span>
-                    <span className="font-semibold text-gray-900">$ {Number(quote.subtotal15 || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-xs">
-                    <span className="text-gray-500">15% IVA:</span>
-                    <span className="font-semibold text-gray-900">$ {Number(quote.ivaAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
-                  <div className="flex justify-between items-center text-sm border-t-2 border-primary pt-2 mt-2">
-                    <span className="font-bold text-primary">TOTAL A PAGAR $:</span>
-                    <span className="font-bold text-primary">$ {Number(quote.totalAmount || 0).toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  </div>
+
+              {/* Observations */}
+              <div style={{ fontSize: '0.8rem', padding: '14px', backgroundColor: '#f9fafb', borderRadius: '6px', border: '1px solid #e5e7eb' }}>
+                <strong style={{ display: 'block', marginBottom: '6px', color: '#374151' }}>OBSERVACIONES:</strong>
+                <p style={{ margin: '0 0 12px 0', color: '#4b5563', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{quote.notes || 'Ninguna'}</p>
+                <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '10px', color: '#374151' }}>
+                  <strong>SON:</strong> {numberToSpanishWords(Number(quote.totalAmount))}
                 </div>
               </div>
             </div>
+
+            {/* Optional Section Preview */}
+            {(quote.optionalTitle || quote.optionalDescription || quote.optionalImage || quote.optionalImage2) && (
+              <div style={{ marginTop: '30px', borderTop: '2px solid var(--border)', paddingTop: '20px' }}>
+                {quote.optionalTitle && <h3 style={{ fontSize: '1rem', color: 'var(--primary)', textTransform: 'uppercase', marginBottom: '10px' }}>{quote.optionalTitle}</h3>}
+                {quote.optionalDescription && <p style={{ fontSize: '0.85rem', color: '#4b5563', marginBottom: '15px', wordBreak: 'break-word' }}>{quote.optionalDescription}</p>}
+                <div style={{ display: 'grid', gridTemplateColumns: quote.optionalImage && quote.optionalImage2 ? '1fr 1fr' : '1fr', gap: '16px' }}>
+                  {quote.optionalImage && <img src={quote.optionalImage} alt="Referencia 1" style={{ width: '100%', borderRadius: '6px', border: '1px solid #e5e7eb' }} />}
+                  {quote.optionalImage2 && <img src={quote.optionalImage2} alt="Referencia 2" style={{ width: '100%', borderRadius: '6px', border: '1px solid #e5e7eb' }} />}
+                </div>
+              </div>
+            )}
           </div>
         </div>
 

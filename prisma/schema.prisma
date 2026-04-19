@@ -223,6 +223,7 @@ model Quote {
   optionalTitle       String?     @db.VarChar(255)
   optionalDescription String?     @db.Text
   optionalImage       String?     @db.MediumText
+  optionalImage2      String?     @db.MediumText
   isBudget        Boolean     @default(false) @map("is_budget")
   items           QuoteItem[]
   client          Client      @relation(fields: [clientId], references: [id])

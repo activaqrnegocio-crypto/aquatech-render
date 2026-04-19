@@ -28,7 +28,9 @@ export async function GET(req: Request) {
       ]
     })
     
-    return NextResponse.json(materials)
+    return NextResponse.json(materials, {
+      headers: { 'Cache-Control': 's-maxage=60, stale-while-revalidate=120' }
+    })
   } catch (error) {
     console.error('Error fetching materials:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

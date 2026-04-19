@@ -74,7 +74,9 @@ export async function GET() {
       })
     }
 
-    return NextResponse.json({ totalUnread, byProject })
+    return NextResponse.json({ totalUnread, byProject }, {
+      headers: { 'Cache-Control': 's-maxage=5, stale-while-revalidate=10' }
+    })
 
   } catch (error) {
     console.error('[API Notifications GET ERROR]:', error)
