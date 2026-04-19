@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v34';
+const CACHE_VERSION = 'v35';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -29,7 +29,22 @@ self.addEventListener('install', (event) => {
   console.log(`[SW ${CACHE_VERSION}] Installing...`);
   event.waitUntil(
     caches.open(STATIC_CACHE)
-      .then(cache => cache.addAll(PRE_CACHE))
+      .then(async (cache) => {
+        // Fetch individually to prevent a single 302/404 from breaking the whole install
+        for (const url of PRE_CACHE) {
+          try {
+            const response = await fetch(new Request(url, { credentials: 'same-origin' }));
+            // Only cache 200 OK responses. Redirects (like /admin/login) will be skipped
+            if (response.ok) {
+              await cache.put(url, response);
+            } else {
+              console.warn(`[SW] Pre-cache skipped for ${url} (status: ${response.status})`);
+            }
+          } catch (err) {
+            console.warn(`[SW] Pre-cache failed for ${url}:`, err);
+          }
+        }
+      })
       .then(() => self.skipWaiting())
   );
 });
