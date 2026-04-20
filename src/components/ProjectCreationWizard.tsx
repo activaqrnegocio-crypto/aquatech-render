@@ -376,6 +376,12 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
     }
   }
 
+  const selectAllTeam = () => {
+    if (availableTeam.length > 0) {
+      setSelectedTeam(availableTeam.map(t => String(t.id)))
+    }
+  }
+
   const selectExistingClient = (id: string) => {
     if (id === 'NEW') {
       setIsNewClient(true)
@@ -448,8 +454,8 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
 
   const steps_config = [
     { id: 1, title: 'Datos Proyecto y Cliente', icon: '📋' },
-    { id: 2, title: 'Multimedia / Levantamiento', icon: '📸' },
-    { id: 3, title: 'Equipo Asignado', icon: '👥' },
+    { id: 2, title: 'Equipo Asignado', icon: '👥' },
+    { id: 3, title: 'Multimedia / Levantamiento', icon: '📸' },
   ]
 
   return (
@@ -514,7 +520,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
             {step === s.id && (
               <div className="animate-slide-down" style={{ padding: '25px' }}>
                 {s.id === 1 && (
-                  <div className="animate-fade-in" style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '30px' }}>
+                  <div className="animate-fade-in step-content">
                      {/* Seccion datos generales */}
                      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }} className="responsive-2col">
                         <div>
@@ -612,6 +618,63 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                 )}
 
                 {s.id === 2 && (
+                  <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                       <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--primary)' }}>Asignar Equipo</h3>
+                       {availableTeam.length > 0 && (
+                          <button 
+                            type="button" 
+                            onClick={selectAllTeam}
+                            className="btn btn-ghost btn-xs"
+                            style={{ 
+                              fontSize: '0.8rem', 
+                              color: 'var(--primary)',
+                              padding: '4px 10px',
+                              border: '1px solid rgba(56, 189, 248, 0.3)',
+                              borderRadius: '8px'
+                            }}
+                          >
+                            ✓ Seleccionar Todos
+                          </button>
+                       )}
+                    </div>
+                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '-10px' }}>Selecciona los operadores o subcontratistas para este proyecto.</p>
+                    
+                    <div className="team-grid">
+                       {availableTeam.map(t => (
+                         <div 
+                           key={t.id} 
+                           onClick={() => toggleTeamMember(t.id)}
+                           className={`team-card ${selectedTeam.includes(String(t.id)) ? 'selected' : ''}`}
+                           style={{
+                             border: selectedTeam.includes(String(t.id)) ? '2px solid var(--primary)' : '1px solid var(--border)',
+                             backgroundColor: selectedTeam.includes(String(t.id)) ? 'rgba(56, 189, 248, 0.1)' : 'var(--bg-deep)',
+                           }}
+                         >
+                            <div 
+                              className="team-avatar"
+                              style={{
+                                backgroundColor: selectedTeam.includes(String(t.id)) ? 'var(--primary)' : 'var(--bg-card)',
+                              }}
+                            >
+                               {t.name?.charAt(0).toUpperCase()}
+                            </div>
+                            <div>
+                               <div className="team-name" style={{ fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--text)' }}>{t.name}</div>
+                               <div className="team-role" style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.role}</div>
+                            </div>
+                         </div>
+                       ))}
+                       {availableTeam.length === 0 && (
+                          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
+                             No hay operadores disponibles.
+                          </div>
+                       )}
+                    </div>
+                  </div>
+                )}
+
+                {s.id === 3 && (
                   <div className="animate-fade-in">
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }} className="media-capture-row">
                        <label className="form-label" style={{ margin: 0 }}>Descripción Técnica y Multimedia</label>
@@ -643,13 +706,6 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                               }
                             }} 
                           />
-                          {/* Botón antiguo oculto
-                          <MediaCapture 
-                            mode="video" 
-                            compact 
-                            onCapture={(blob, type, text) => updateSpec('description', (projectData.technicalSpecs.description || '') + ' ' + text)} 
-                          />
-                          */}
                           <button 
                              type="button"
                              onClick={() => setShowCameraCapture(true)} 
@@ -717,53 +773,6 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                          />
                       </div>
                     )}
-                  </div>
-                )}
-
-                {s.id === 3 && (
-                  <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                       <h3 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--primary)' }}>Asignar Equipo</h3>
-                    </div>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '-10px' }}>Selecciona los operadores o subcontratistas para este proyecto.</p>
-                    
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px' }}>
-                       {availableTeam.map(t => (
-                         <div 
-                           key={t.id} 
-                           onClick={() => toggleTeamMember(t.id)}
-                           style={{
-                             padding: '15px',
-                             borderRadius: '12px',
-                             border: selectedTeam.includes(String(t.id)) ? '2px solid var(--primary)' : '1px solid var(--border)',
-                             backgroundColor: selectedTeam.includes(String(t.id)) ? 'rgba(56, 189, 248, 0.1)' : 'var(--bg-deep)',
-                             cursor: 'pointer',
-                             display: 'flex',
-                             alignItems: 'center',
-                             gap: '10px',
-                             transition: 'all 0.2s'
-                           }}
-                         >
-                            <div style={{
-                              width: '40px', height: '40px', borderRadius: '50%',
-                              backgroundColor: selectedTeam.includes(String(t.id)) ? 'var(--primary)' : 'var(--bg-card)',
-                              color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              fontWeight: 'bold', fontSize: '1.2rem'
-                            }}>
-                               {t.name?.charAt(0).toUpperCase()}
-                            </div>
-                            <div>
-                               <div style={{ fontWeight: 'bold', fontSize: '0.95rem', color: 'var(--text)' }}>{t.name}</div>
-                               <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{t.role}</div>
-                            </div>
-                         </div>
-                       ))}
-                       {availableTeam.length === 0 && (
-                          <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '20px', color: 'var(--text-muted)' }}>
-                             No hay operadores disponibles.
-                          </div>
-                       )}
-                    </div>
                   </div>
                 )}
 
@@ -841,12 +850,68 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
         }
         .form-label { display: block; margin-bottom: 8px; color: var(--text-muted); font-weight: 600; font-size: 0.85rem; }
         
+        .team-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+          gap: 12px;
+        }
+        .team-card {
+          padding: 12px;
+          border-radius: 12px;
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+        .team-avatar {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          font-weight: bold;
+          font-size: 1rem;
+          color: white;
+        }
+        .step-content {
+          display: grid;
+          grid-template-columns: 1fr;
+          gap: 30px;
+        }
+
         @media (max-width: 768px) {
           .new-project-page { padding: 10px 5px !important; }
+          .dashboard-header { margin-bottom: 15px !important; }
+          .dashboard-header h2 { font-size: 1.4rem !important; }
+          .accordion-container { gap: 10px !important; }
+          .step-content { gap: 15px !important; }
           .responsive-2col { grid-template-columns: 1fr !important; gap: 10px !important; }
-          .form-input { font-size: 16px !important; } /* Evita zoom en iOS */
-          .btn { width: 100%; justify-content: center; }
-          .media-capture-row { flex-direction: column; align-items: stretch !important; gap: 15px !important; }
+          .form-input { font-size: 16px !important; padding: 8px 12px !important; } /* Evita zoom en iOS */
+          .btn { width: 100%; justify-content: center; padding: 10px !important; }
+          .media-capture-row { flex-direction: column; align-items: stretch !important; gap: 10px !important; }
+          .form-label { margin-bottom: 4px; font-size: 0.8rem; }
+          
+          .team-grid {
+            grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+            gap: 8px;
+          }
+          .team-card {
+            padding: 8px;
+            gap: 8px;
+          }
+          .team-avatar {
+            width: 28px;
+            height: 28px;
+            font-size: 0.8rem;
+          }
+          .team-name {
+            font-size: 0.8rem !important;
+          }
+          .team-role {
+            font-size: 0.65rem !important;
+          }
         }
       `}</style>
     </div>
