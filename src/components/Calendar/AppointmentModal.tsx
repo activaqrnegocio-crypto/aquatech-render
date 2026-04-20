@@ -44,6 +44,8 @@ export default function AppointmentModal({
     userId: userId > 0 ? userId.toString() : '',
     clientLocation: '',
     operatorLocation: '',
+    clientName: '',
+    clientPhone: '',
     mediaFiles: [] as File[],
     previews: [] as { url: string; type: string; name: string }[]
   })
@@ -65,6 +67,8 @@ export default function AppointmentModal({
           userId: initialData.userId?.toString() || (userId > 0 ? userId.toString() : ''),
           clientLocation: initialData.clientLocation || '',
           operatorLocation: initialData.operatorLocation || '',
+          clientName: initialData.clientName || '',
+          clientPhone: initialData.clientPhone || '',
           mediaFiles: [],
           previews: []
         })
@@ -84,6 +88,8 @@ export default function AppointmentModal({
           userId: userId > 0 ? userId.toString() : '',
           clientLocation: '',
           operatorLocation: '',
+          clientName: '',
+          clientPhone: '',
           mediaFiles: [],
           previews: []
         })
@@ -418,17 +424,37 @@ export default function AppointmentModal({
 
                 <div className="location-row-aquatech">
                   <div className="form-group-compact">
-                    <label className="form-label-aquatech">📍 Cliente</label>
+                    <label className="form-label-aquatech">👤 Nombre del Cliente</label>
                     <input
                       className="form-input-aquatech"
                       type="text"
-                      placeholder="Link..."
+                      placeholder="Ej: Juan Pérez"
+                      value={formData.clientName || ''}
+                      onChange={e => setFormData({...formData, clientName: e.target.value})}
+                    />
+                  </div>
+                  <div className="form-group-compact">
+                    <label className="form-label-aquatech">📞 Número del Cliente</label>
+                    <input
+                      className="form-input-aquatech"
+                      type="text"
+                      placeholder="Ej: 099..."
+                      value={formData.clientPhone || ''}
+                      onChange={e => setFormData({...formData, clientPhone: e.target.value})}
+                    />
+                  </div>
+                  <div className="form-group-compact">
+                    <label className="form-label-aquatech">📍 Ubicación Cliente</label>
+                    <input
+                      className="form-input-aquatech"
+                      type="text"
+                      placeholder="Link Google Maps..."
                       value={formData.clientLocation || ''}
                       onChange={e => setFormData({...formData, clientLocation: e.target.value})}
                     />
                   </div>
                   <div className="form-group-compact">
-                    <label className="form-label-aquatech">👷 Operario</label>
+                    <label className="form-label-aquatech">👷 Operario (GPS)</label>
                     <button 
                       type="button" 
                       className="btn-gps-aquatech" 

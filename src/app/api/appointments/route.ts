@@ -65,7 +65,7 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json()
-    const { title, description, startTime, endTime, userId, userIds, projectId, clientLocation, operatorLocation, attachments, attachmentLinks } = body;
+    const { title, description, startTime, endTime, userId, userIds, projectId, clientLocation, operatorLocation, attachments, attachmentLinks, clientName, clientPhone } = body;
 
     const isAdmin = checkIsAdmin((session.user as any).role)
     
@@ -106,6 +106,8 @@ export async function POST(request: Request) {
           endTime: end,
           userId: targetUserId,
           projectId: projectId ? Number(projectId) : null,
+          clientName: clientName || null,
+          clientPhone: clientPhone || null,
         },
         include: {
           project: { select: { title: true } },
@@ -140,6 +142,8 @@ export async function POST(request: Request) {
             const startDateLocale = formatDateEcuador(startTime);
             const descrText = description ? `\n📝 *Notas:*\n${description}` : '';
             const locClientText = clientLocation ? `\n📍 *Ubicación Cliente:*\n${clientLocation}` : '';
+            const nameClientText = clientName ? `\n👤 *Cliente:*\n${clientName}` : '';
+            const phoneClientText = clientPhone ? `\n📞 *Teléfono Cliente:*\n${clientPhone}` : '';
             const locOpText = operatorLocation ? `\n📡 *Ubicación Operario (GPS):*\n${operatorLocation}` : '';
             
             // Listado de archivos para diagnóstico
@@ -160,7 +164,7 @@ export async function POST(request: Request) {
               linksText += `\n\n🔊 *Audios (Respaldo):*\n${audioLinks.map((a: any) => `• [Escuchar Audio](${a.url})`).join('\n')}`;
             }
 
-            const message = `*Notificación Aquatech*\n\nHola ${appointment.user.name}, tienes una *nueva tarea* asignada:\n📌 *${title}*\n📅 Fecha: ${startDateLocale}\n⏰ Hora: ${startTimeLocale}${descrText}${locClientText}${locOpText}${fileManifest}${linksText}\n\nConsulta más detalles en tu perfil.`;
+            const message = `*Notificación Aquatech*\n\nHola ${appointment.user.name}, tienes una *nueva tarea* asignada:\n📌 *${title}*\n📅 Fecha: ${startDateLocale}\n⏰ Hora: ${startTimeLocale}${descrText}${nameClientText}${phoneClientText}${locClientText}${locOpText}${fileManifest}${linksText}\n\nConsulta más detalles en tu perfil.`;
 
             // Enviar mensaje de texto + adjuntos reales (imgs, audios, docs)
             await sendWhatsAppMessage(appointment.user.phone, message, attachments);

@@ -424,6 +424,8 @@ model Appointment {
   status      String   @default("PENDIENTE") @db.VarChar(50)
   userId      Int      @map("user_id")
   projectId   Int?     @map("project_id")
+  clientName  String?  @map("client_name") @db.VarChar(255)
+  clientPhone String?  @map("client_phone") @db.VarChar(50)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
   

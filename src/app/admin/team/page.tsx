@@ -289,7 +289,7 @@ export default function TeamPage() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmit} style={{ padding: '40px' }}>
+            <form onSubmit={handleSubmit} className="modal-form-body">
               {error && (
                 <div className="error-alert-premium">
                   <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
@@ -478,20 +478,17 @@ export default function TeamPage() {
         }
         .modal-overlay-premium {
           position: fixed; top: 0; left: 0; right: 0; bottom: 0; 
-          backgroundColor: rgba(5, 10, 20, 0.75); display: flex; alignItems: center; justifyContent: center; z-index: 1000;
+          background-color: rgba(5, 10, 20, 0.95); z-index: 1000;
           backdrop-filter: blur(16px);
-          padding: 20px;
         }
         .modal-content-premium {
-          width: 850px; maxWidth: 100%; maxHeight: 90vh; overflow-y: auto;
+          width: 100%; height: 100vh; overflow-y: auto;
           background: linear-gradient(135deg, var(--bg-card) 0%, rgba(15, 23, 42, 0.95) 100%);
-          border: 1px solid rgba(56, 189, 248, 0.25);
-          border-radius: 32px;
         }
         .modal-header-premium {
-          padding: 32px 40px; border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+          padding: 30px 40px; border-bottom: 1px solid rgba(255, 255, 255, 0.05);
           display: flex; justify-content: space-between; align-items: center;
-          position: sticky; top: 0; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); z-index: 10;
+          position: sticky; top: 0; background: rgba(15, 23, 42, 0.95); backdrop-filter: blur(12px); z-index: 10;
         }
         .modal-title-gradient {
           font-size: 1.75rem; font-weight: 800; 
@@ -508,6 +505,11 @@ export default function TeamPage() {
           border-radius: 16px; margin-bottom: 30px; font-size: 0.9rem; 
           border: 1px solid rgba(239, 68, 68, 0.2); display: flex; align-items: center; gap: 12px;
         }
+        .modal-form-body {
+          padding: 40px 60px;
+          max-width: 1200px;
+          margin: 0 auto;
+        }
         .modal-form-grid { display: grid; grid-template-columns: 220px 1fr; gap: 40px; margin-bottom: 40px; }
         .avatar-drop-zone {
           width: 180px; height: 180px; border-radius: 40px; 
@@ -516,12 +518,12 @@ export default function TeamPage() {
           position: relative; transition: all 0.3s;
         }
         .avatar-preview { width: 100%; height: 100%; object-fit: cover; border-radius: 38px; }
-        .avatar-placeholder { text-align: center; color: var(--text-muted); display: flex; flexDirection: column; align-items: center; gap: 10px; }
+        .avatar-placeholder { text-align: center; color: var(--text-muted); display: flex; flex-direction: column; align-items: center; gap: 10px; }
         .avatar-placeholder span { font-size: 0.75rem; font-weight: 700; text-transform: uppercase; }
         .avatar-add-icon {
           position: absolute; bottom: 12px; right: 12px; width: 32px; height: 32px; 
           border-radius: 10px; background: var(--primary); color: white;
-          display: flex; items-center: center; justify-content: center;
+          display: flex; align-items: center; justify-content: center;
         }
         .avatar-hint { font-size: 0.7rem; color: var(--text-muted); text-align: center; margin-top: 10px; }
         .modal-basic-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
@@ -555,16 +557,18 @@ export default function TeamPage() {
           cursor: pointer; transition: all 0.2s;
         }
         .permission-chip-premium.active { background: rgba(56, 189, 248, 0.1); border-color: var(--primary); }
-        .checkbox-mini { width: 22px; height: 22px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); display: flex; items-center: center; justify-content: center; }
+        .checkbox-mini { width: 22px; height: 22px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.2); display: flex; align-items: center; justify-content: center; }
         .permission-chip-premium.active .checkbox-mini { background: var(--primary); border-color: var(--primary); }
         .chip-label { font-size: 0.8rem; font-weight: 700; color: var(--text-muted); }
         .permission-chip-premium.active .chip-label { color: #fff; }
         .chip-icon { margin-left: auto; opacity: 0.4; font-size: 0.9rem; }
-        
         @media (max-width: 768px) {
+          .modal-header-premium { padding: 20px; }
+          .modal-form-body { padding: 20px; }
           .modal-form-grid { grid-template-columns: 1fr; gap: 30px; }
           .modal-contact-fields { grid-template-columns: 1fr; }
           .grid-responsive { grid-template-columns: 1fr; }
+          .avatar-drop-zone { margin: 0 auto; }
         }
       `}</style>
     </div>
@@ -663,7 +667,7 @@ function UserCard({ user, onDelete, formatDate, currentUserRole, currentUserId }
           .user-avatar-circle img { width: 100%; height: 100%; object-fit: cover; }
           .avatar-initials { 
             width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;
-            font-size: 1.5rem; fontWeight: 900; color: rgba(255,255,255,0.1); background: var(--bg-deep);
+            font-size: 1.5rem; font-weight: 900; color: rgba(255,255,255,0.1); background: var(--bg-deep);
           }
           .user-card-bottom {
             margin-top: auto; padding: 16px 24px; border-top: 1px solid rgba(255,255,255,0.03);

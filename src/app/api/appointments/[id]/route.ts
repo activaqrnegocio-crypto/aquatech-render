@@ -19,7 +19,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { title, description, startTime, endTime, status, projectId } = body
+    const { title, description, startTime, endTime, status, projectId, clientName, clientPhone } = body
 
     const existing = await prisma.appointment.findUnique({
       where: { id: Number(id) }
@@ -48,6 +48,8 @@ export async function PATCH(
     if (endTime !== undefined) data.endTime = new Date(endTime)
     if (status !== undefined) data.status = status
     if (projectId !== undefined) data.projectId = projectId ? Number(projectId) : null
+    if (clientName !== undefined) data.clientName = clientName
+    if (clientPhone !== undefined) data.clientPhone = clientPhone
 
     const updated = await prisma.appointment.update({
       where: { id: Number(id) },
@@ -75,8 +77,10 @@ export async function PATCH(
           const startTimeLocale = formatTimeEcuador(updated.startTime);
           const startDateLocale = formatDateEcuador(updated.startTime);
           const descrText = updated.description ? `\n📝 *Notas:*\n${updated.description}` : '';
+          const nameClientText = updated.clientName ? `\n👤 *Cliente:*\n${updated.clientName}` : '';
+          const phoneClientText = updated.clientPhone ? `\n📞 *Teléfono Cliente:*\n${updated.clientPhone}` : '';
           
-          const message = `*Notificación Aquatech*\n\nHola ${updated.user.name}, se ha *actualizado* una tarea que tienes asignada:\n📌 *${updated.title}*\n📅 Nueva fecha: ${startDateLocale}\n⏰ Nueva hora: ${startTimeLocale}${descrText}\n\nRevisa tu perfil para ver los cambios.`;
+          const message = `*Notificación Aquatech*\n\nHola ${updated.user.name}, se ha *actualizado* una tarea que tienes asignada:\n📌 *${updated.title}*\n📅 Nueva fecha: ${startDateLocale}\n⏰ Nueva hora: ${startTimeLocale}${descrText}${nameClientText}${phoneClientText}\n\nRevisa tu perfil para ver los cambios.`;
 
           await sendWhatsAppMessage(updated.user.phone, message);
           console.log(`✅ WA actualización enviado a ${updated.user.name} (${updated.user.phone})`);
