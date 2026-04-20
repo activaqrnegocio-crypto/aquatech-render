@@ -27,8 +27,8 @@ export default async function ReportesPage() {
     <div className="p-6">
       <div className="dashboard-header mb-lg">
         <div>
-          <h2 className="page-title">Reportes y Bitácora</h2>
-          <p className="page-subtitle">Resumen estadístico de bitácoras, horas trabajadas y avances de proyectos.</p>
+          <h2 className="page-title">Reportes y Chat</h2>
+          <p className="page-subtitle">Resumen estadístico de chats, horas trabajadas y avances de proyectos.</p>
         </div>
       </div>
 

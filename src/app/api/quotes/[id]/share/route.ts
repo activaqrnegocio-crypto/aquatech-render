@@ -60,7 +60,7 @@ export async function POST(
 
     const chatContent = `📤 COTIZACIÓN COMPARTIDA (#${quote.id})\nPara: ${clientName}\n\n${message || 'Se ha compartido esta cotización para revisión.'}\n\nTotal: $${Number(quote.totalAmount).toFixed(2)}\n\n📄 Ver cotización completa:`
 
-    // Create bitácora message with DOCUMENT type and MediaFile
+    // Create chat message with DOCUMENT type and MediaFile
     const msg = await prisma.chatMessage.create({
       data: {
         projectId: Number(projectId),

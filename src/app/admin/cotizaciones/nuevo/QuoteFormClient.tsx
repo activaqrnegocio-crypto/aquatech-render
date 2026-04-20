@@ -261,7 +261,7 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
 
     setLoading(true)
 
-    // Prepare PDF for Bitácora if project selected
+    // Prepare PDF for Chat if project selected
     let bitacoraData = {}
     if (selectedProjectId && navigator.onLine) {
       try {
@@ -302,7 +302,7 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
           filename: `Cotizacion_Nueva_${payload.clientName.replace(/\s+/g, '_')}.pdf`
         }
       } catch (e) {
-        console.error("Error generating PDF for bitácora:", e)
+        console.error("Error generating PDF for chat:", e)
       }
     }
 
@@ -378,10 +378,10 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
         <div className="card shadow-sm" style={{ padding: '25px', borderLeft: '4px solid var(--secondary)', borderRadius: '16px' }}>
             <h3 style={{ color: 'var(--secondary)', display: 'flex', alignItems: 'center', gap: '10px', margin: '0 0 20px 0', fontSize: '1.1rem' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-              Notificar a Bitácora del Proyecto (Opcional)
+              Notificar al Chat del Proyecto (Opcional)
             </h3>
             <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', marginBottom: '15px' }}>
-              Selecciona un proyecto solo si deseas enviar una copia informativa de esta cotización a su bitácora de mensajes. No se creará un vínculo permanente.
+              Selecciona un proyecto solo si deseas enviar una copia informativa de esta cotización a su chat de mensajes. No se creará un vínculo permanente.
             </p>
            <div style={{ position: 'relative' }} ref={projectDropdownRef}>
               <div style={{ position: 'relative' }}>

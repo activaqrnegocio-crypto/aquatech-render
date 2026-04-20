@@ -51,7 +51,7 @@ export async function GET(req: Request) {
     const reports = []
 
     for (const project of projects) {
-      // 1. Get Chat Messages (Bitácora events)
+      // 1. Get Chat Messages (events)
       const messages = await prisma.chatMessage.findMany({
         where: {
           projectId: project.id,

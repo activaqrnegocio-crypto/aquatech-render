@@ -26,19 +26,19 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       return () => window.removeEventListener('resize', check)
     }, [])
 
-    const [activeTab, setActiveTab] = useState<'BITACORA' | 'GALLERY' | 'EVIDENCE'>(() => {
+    const [activeTab, setActiveTab] = useState<'CHAT' | 'GALLERY' | 'EVIDENCE'>(() => {
     const view = searchParams.get('view')
-    if (view === 'BITACORA' || view === 'GALLERY' || view === 'EVIDENCE') return view
+    if (view === 'CHAT' || view === 'GALLERY' || view === 'EVIDENCE') return view
     // Fallback for legacy URL with 'EXPENSES'
     if (view === 'EXPENSES') return 'EVIDENCE'
-    return 'BITACORA'
+    return 'CHAT'
   })
 
   // Renamed label for UI consistency
   const GALLERY_LABEL = 'Planos y Referencias'
 
   // Sync tab with URL
-  const setActiveTabWithUrl = (tab: 'BITACORA' | 'GALLERY' | 'EVIDENCE') => {
+  const setActiveTabWithUrl = (tab: 'CHAT' | 'GALLERY' | 'EVIDENCE') => {
     setActiveTab(tab)
     const params = new URLSearchParams(searchParams.toString())
     params.set('view', tab)
@@ -47,12 +47,12 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
 
   useEffect(() => {
     const view = searchParams.get('view')
-    if (view === 'BITACORA' || view === 'GALLERY' || view === 'EVIDENCE' || view === 'EXPENSES') {
+    if (view === 'CHAT' || view === 'GALLERY' || view === 'EVIDENCE' || view === 'EXPENSES') {
       setActiveTab(view === 'EXPENSES' ? 'EVIDENCE' : view as any)
     }
   }, [searchParams])
   
-  // --- BITÁCORA STATE ---
+  // --- CHAT STATE ---
   const [chatMessages, setChatMessages] = useState(project.chatMessages || [])
   const [message, setMessage] = useState('')
   const [activePhase, setActivePhase] = useState<number | null>(null)
@@ -198,7 +198,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const [hasNewMessages, setHasNewMessages] = useState(false)
 
   useEffect(() => {
-    if (activeTab === 'BITACORA' && filteredChat.length > 0) {
+    if (activeTab === 'CHAT' && filteredChat.length > 0) {
       const container = chatContainerRef.current
       if (!container) return
       
@@ -654,7 +654,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     }
   }
 
-  // --- BITACORA HANDLERS ---
+  // --- CHAT HANDLERS ---
   const handleSendMessage = async (e?: React.FormEvent, customMedia?: { blob: Blob, type: 'audio' | 'video', transcription: string }) => {
     if (e) e.preventDefault()
     if (!message.trim() && !customMedia) return
@@ -742,9 +742,28 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         payload.phaseId = extraData.phaseId;
       }
       
-      // GPS coords
-      if (extraData?.lat) payload.lat = extraData.lat
-      if (extraData?.lng) payload.lng = extraData.lng
+      // GPS coords - Automatic tracking for Admins too
+      let location: any = null
+      if (extraData?.lat && extraData?.lng) {
+        location = { lat: extraData.lat, lng: extraData.lng }
+      } else if ('geolocation' in navigator) {
+        try {
+          location = await new Promise((resolve) => {
+            navigator.geolocation.getCurrentPosition(
+              pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
+              () => resolve(null),
+              { enableHighAccuracy: true, timeout: 5000 }
+            )
+          })
+        } catch (e) {
+          console.warn('Geolocation failed for admin:', e)
+        }
+      }
+
+      if (location) {
+        payload.lat = location.lat
+        payload.lng = location.lng
+      }
 
       const res = await fetch(`/api/projects/${project.id}/messages`, {
         method: 'POST',
@@ -925,11 +944,11 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         headStyles: { fillColor: [56, 189, 248] }
       })
 
-      // 2. BITÁCORA DE AVANCES (CHAT)
+      // 2. CHAT DE AVANCES
       doc.addPage()
       doc.setFontSize(16)
       doc.setFont('helvetica', 'bold')
-      doc.text('Bitácora de Campo (Avances)', 20, 20)
+      doc.text('Chat de Campo (Avances)', 20, 20)
       
       const chatData = (fullProject.chatMessages || []).map((msg: any) => [
         formatDateTime(msg.createdAt),
@@ -1683,7 +1702,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           paddingRight: isSmallScreen ? '4px' : '0'
         }} className="hide-scrollbar">
           {[
-            { id: 'BITACORA', label: 'Chat', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>, activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.1)', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)' },
+            { id: 'CHAT', label: 'Chat', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>, activeColor: 'var(--primary)', bgColor: 'rgba(0, 112, 192, 0.1)', gradient: 'linear-gradient(135deg, #2563eb, #3b82f6)' },
             { id: 'GALLERY', label: isSmallScreen ? 'Planos' : GALLERY_LABEL, icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>, activeColor: 'var(--warning)', bgColor: 'rgba(245, 158, 11, 0.1)', gradient: 'linear-gradient(135deg, #f59e0b, #fbbf24)' },
             { id: 'EVIDENCE', label: isSmallScreen ? 'Finales' : 'Archivos Finales', icon: <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>, activeColor: '#d946ef', bgColor: 'rgba(217, 70, 239, 0.1)', gradient: 'linear-gradient(135deg, #a855f7, #d946ef)' }
           ].filter(tab => (session?.user?.role !== 'OPERADOR' && session?.user?.role !== 'OPERATOR') || tab.id !== 'EVIDENCE').map(tab => (
@@ -1723,20 +1742,20 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
 
         {/* Tab Content - Optimized with visibility display to avoid slow mounting */}
         <div className="card tab-content-card" style={{ 
-          padding: activeTab === 'BITACORA' ? '0px' : '25px', 
+          padding: activeTab === 'CHAT' ? '0px' : '25px', 
           minHeight: '400px', 
           display: 'flex', 
           flexDirection: 'column',
-          border: activeTab === 'BITACORA' ? 'none' : undefined,
-          borderRadius: activeTab === 'BITACORA' ? '0px' : undefined,
-          backgroundColor: activeTab === 'BITACORA' ? 'transparent' : undefined
+          border: activeTab === 'CHAT' ? 'none' : undefined,
+          borderRadius: activeTab === 'CHAT' ? '0px' : undefined,
+          backgroundColor: activeTab === 'CHAT' ? 'transparent' : undefined
         }}>
           
-          {/* 1. BITÁCORA - CHAT UNIFICADO WHATSAPP */}
+          {/* 1. CHAT UNIFICADO WHATSAPP */}
           <div 
-            className="bitacora-tab-content"
+            className="chat-tab-content"
             style={{ 
-              display: activeTab === 'BITACORA' ? 'flex' : 'none', 
+              display: activeTab === 'CHAT' ? 'flex' : 'none', 
               flexDirection: 'column', 
               height: isSmallScreen ? 'calc(100vh - 180px)' : 'calc(100vh - 220px)', 
               minHeight: '400px', 

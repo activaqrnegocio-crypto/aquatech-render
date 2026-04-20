@@ -107,7 +107,7 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
       })
 
       if (res.ok) {
-        alert("¡Cotización y mensaje enviados a la bitácora correctamente!")
+        alert("¡Cotización y mensaje enviados al chat correctamente!")
         setCustomMessage('')
         router.refresh()
       } else {
@@ -300,7 +300,7 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
           <div className="card" style={{ borderLeft: '4px solid var(--secondary)' }}>
             <h3 style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-              Enviar a Bitácora
+              Enviar al Chat
             </h3>
             <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', margin: '10px 0' }}>
               Selecciona un proyecto para compartir formalmente esta cotización en su reporte diario.

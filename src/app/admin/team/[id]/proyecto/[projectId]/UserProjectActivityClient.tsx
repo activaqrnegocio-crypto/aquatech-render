@@ -106,9 +106,9 @@ export default function UserProjectActivityClient() {
     })
   }, [activityData, monthFilter])
 
-  if (loading) return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--primary)' }}><strong>Sincronizando bitácora de campo...</strong></div>
+  if (loading) return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--primary)' }}><strong>Sincronizando chat de campo...</strong></div>
   if (error) return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--danger)' }}><strong>{error}</strong></div>
-  if (!activityData) return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}><strong>Bitácora vacía</strong></div>
+  if (!activityData) return <div style={{ padding: '3rem', textAlign: 'center', color: 'var(--text-muted)' }}><strong>Chat vacío</strong></div>
 
   const formatTime = (dateValue: string) => {
     return formatTimeEcuador(dateValue)

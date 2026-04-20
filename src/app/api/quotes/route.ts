@@ -111,7 +111,7 @@ export async function POST(req: Request) {
         include: { items: true }
       })
 
-      // Send to Bitácora if requested (Standalone Document + Message)
+      // Send to Chat if requested (Standalone Document + Message)
       if (data.sendToBitacoraId) {
         let fileUrl = null
         if (data.pdfBase64 && data.filename) {
@@ -150,7 +150,7 @@ export async function POST(req: Request) {
             Number(session.user.id),
             `¡Nueva Cotización!`,
             `${session.user.name} ha compartido una cotización en ${chatMsg.project.title}`,
-            `/admin/proyectos/${data.sendToBitacoraId}?tab=bitacora`
+            `/admin/proyectos/${data.sendToBitacoraId}?view=CHAT`
           )
         } catch (e) {
           console.error("Error at push notify:", e)

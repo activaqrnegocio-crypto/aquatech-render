@@ -441,7 +441,7 @@ export function generateProfessionalPDF(
 }
 
 /**
- * Generates a professional Project Report PDF (Bitácora + Expenses)
+ * Generates a professional Project Report PDF (Chat + Expenses)
  * Used by field operators for offline/online parity.
  */
 export function generateProjectReportPDF(data: {
@@ -470,11 +470,11 @@ export function generateProjectReportPDF(data: {
   doc.text(`Fecha Reporte: ${formatToEcuador(new Date(), { day: '2-digit', month: '2-digit', year: 'numeric' })}`, 130, 58);
   doc.text(`ID: #${project.id}`, 130, 64);
 
-  // 3. Bitácora de Campo Table
+  // 3. Chat de Campo Table
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(12);
   doc.setTextColor(AQUATECH_BLUE[0], AQUATECH_BLUE[1], AQUATECH_BLUE[2]);
-  doc.text('BITÁCORA DE CAMPO', 15, 82);
+  doc.text('CHAT DE CAMPO', 15, 82);
 
   const chatBody = chat.map(msg => [
     formatToEcuador(msg.createdAt, { 

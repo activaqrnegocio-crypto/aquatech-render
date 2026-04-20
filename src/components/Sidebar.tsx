@@ -272,7 +272,7 @@ export default function Sidebar() {
           ),
           subItems: [
             { label: 'Registros', href: `${panelBase}/proyecto/${projectId}?view=records` },
-            { label: 'Bitácora', href: `${panelBase}/proyecto/${projectId}?view=chat` },
+            { label: 'Chat', href: `${panelBase}/proyecto/${projectId}?view=chat` },
           ],
         }] : []),
       ],
@@ -507,7 +507,7 @@ export default function Sidebar() {
                               style={{ padding: '8px 12px', fontSize: '0.85rem' }}
                             >
                               {subItem.label}
-                              {subItem.label === 'Bitácora' && projectId && notifications.byProject[projectId] > 0 && (
+                              {subItem.label === 'Chat' && projectId && notifications.byProject[projectId] > 0 && (
                                 <span className="notification-badge small">{notifications.byProject[projectId]}</span>
                               )}
                             </Link>

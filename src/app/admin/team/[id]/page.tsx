@@ -33,7 +33,7 @@ const LogOut = ({ size = 24, style, className }: any) => <svg {...svgProps(size,
 const RefreshCw = ({ size = 24, style, className }: any) => <svg {...svgProps(size, style, className)}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M3 21v-5h5"/></svg>
 const Plus = ({ size = 24, style, className }: any) => <svg {...svgProps(size, style, className)}><path d="M12 5v14M5 12h14"/></svg>
 
-type TabType = 'RESUMEN' | 'BITACORA' | 'GASTOS' | 'ENTRADA_SALIDA' | 'PROYECTOS' | 'CALENDARIO'
+type TabType = 'RESUMEN' | 'CHAT' | 'PROYECTOS' | 'TAREAS' | 'GASTOS' | 'ENTRADA_SALIDA'
 
 export default function TeamMemberPage() {
   const params = useParams()
@@ -90,14 +90,18 @@ export default function TeamMemberPage() {
   useEffect(() => {
     if (userId) {
         fetchMemberData()
-        fetchAppointments()
         fetchAllProjects()
     }
   }, [userId])
 
-  const fetchAppointments = async () => {
+  const fetchAppointments = async (overrideRole?: string) => {
     try {
-      const res = await fetch(`/api/appointments?userId=${userId}`)
+      const roleToUse = overrideRole || member?.role;
+      let queryUserId = userId;
+      if (roleToUse && ['ADMIN', 'SUPERADMIN', 'ADMINISTRADORA'].includes(roleToUse)) {
+          queryUserId = 'all';
+      }
+      const res = await fetch(`/api/appointments?userId=${queryUserId}`)
       if (res.ok) setAppointments(await res.json())
     } catch (e) { console.error(e) }
   }
@@ -126,6 +130,7 @@ export default function TeamMemberPage() {
 
       setMember(userData)
       setActivityData(logData)
+      fetchAppointments(userData.role)
     } catch (err: any) {
       setError(err.message)
     } finally {
@@ -169,7 +174,7 @@ export default function TeamMemberPage() {
     if (!activityData?.timeline) return []
     
     let logs = activityData.timeline
-    if (activeTab === 'BITACORA') logs = logs.filter((l: any) => l.type === 'CHAT_MESSAGE' || l.type === 'PROJECT')
+    if (activeTab === 'CHAT') logs = logs.filter((l: any) => l.type === 'CHAT_MESSAGE' || l.type === 'PROJECT')
     if (activeTab === 'GASTOS') logs = logs.filter((l: any) => l.type === 'EXPENSE')
     if (activeTab === 'ENTRADA_SALIDA') logs = logs.filter((l: any) => l.type === 'ATTENDANCE')
     // RESUMEN shows everything (no type filter)
@@ -401,38 +406,26 @@ export default function TeamMemberPage() {
 
         <div 
           className="kpi-card" 
-          onClick={() => setActiveTab('BITACORA')}
-          style={{ cursor: 'pointer', border: activeTab === 'BITACORA' ? '1px solid var(--primary)' : undefined }}
+          onClick={() => setActiveTab('TAREAS')}
+          style={{ cursor: 'pointer', border: activeTab === 'TAREAS' ? '1px solid var(--primary)' : undefined }}
+        >
+          <div className="kpi-icon" style={{ backgroundColor: 'var(--success-bg)', color: 'var(--success)' }}>
+            <Calendar size={22} />
+          </div>
+          <div className="kpi-value">{appointments.length}</div>
+          <div className="kpi-label">{['ADMIN', 'SUPERADMIN', 'ADMINISTRADORA'].includes(member.role) ? 'Tareas que Asignó' : 'Tareas Asignadas'}</div>
+        </div>
+
+        <div 
+          className="kpi-card" 
+          onClick={() => setActiveTab('CHAT')}
+          style={{ cursor: 'pointer', border: activeTab === 'CHAT' ? '1px solid var(--primary)' : undefined }}
         >
           <div className="kpi-icon" style={{ backgroundColor: 'var(--info-bg)', color: 'var(--info)' }}>
             <MessageSquare size={22} />
           </div>
           <div className="kpi-value">{member.stats.totalMessages}</div>
-          <div className="kpi-label">Reportes (Bitácora)</div>
-        </div>
-
-        <div 
-          className="kpi-card" 
-          onClick={() => setActiveTab('GASTOS')}
-          style={{ cursor: 'pointer', border: activeTab === 'GASTOS' ? '1px solid var(--primary)' : undefined }}
-        >
-          <div className="kpi-icon" style={{ backgroundColor: 'var(--success-bg)', color: 'var(--success)' }}>
-            <Receipt size={22} />
-          </div>
-          <div className="kpi-value">{member.stats.totalExpenses}</div>
-          <div className="kpi-label">Gastos Registrados</div>
-        </div>
-
-        <div 
-          className="kpi-card" 
-          onClick={() => setActiveTab('ENTRADA_SALIDA')}
-          style={{ cursor: 'pointer', border: activeTab === 'ENTRADA_SALIDA' ? '1px solid var(--primary)' : undefined }}
-        >
-          <div className="kpi-icon" style={{ backgroundColor: 'var(--danger-bg)', color: 'var(--danger)' }}>
-            <Clock size={22} />
-          </div>
-          <div className="kpi-value">{member.stats.totalDayRecords}</div>
-          <div className="kpi-label">Logística (Entrada/Salida)</div>
+          <div className="kpi-label">Reportes (Chat)</div>
         </div>
 
         {isAdmin && (
@@ -599,7 +592,13 @@ export default function TeamMemberPage() {
           className={`tab ${activeTab === 'PROYECTOS' ? 'active' : ''}`} 
           onClick={() => setActiveTab('PROYECTOS')}
         >
-          Proyectos
+          Proyectos Asignados
+        </button>
+        <button 
+          className={`tab ${activeTab === 'TAREAS' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('TAREAS')}
+        >
+          {['ADMIN', 'SUPERADMIN', 'ADMINISTRADORA'].includes(member.role) ? 'Tareas que Asignó' : 'Tareas Asignadas'}
         </button>
         <button 
           className={`tab ${activeTab === 'RESUMEN' ? 'active' : ''}`} 
@@ -608,28 +607,10 @@ export default function TeamMemberPage() {
           Resumen General
         </button>
         <button 
-          className={`tab ${activeTab === 'BITACORA' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('BITACORA')}
+          className={`tab ${activeTab === 'CHAT' ? 'active' : ''}`} 
+          onClick={() => setActiveTab('CHAT')}
         >
-          Bitácora
-        </button>
-        <button 
-          className={`tab ${activeTab === 'GASTOS' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('GASTOS')}
-        >
-          Gastos
-        </button>
-        <button 
-          className={`tab ${activeTab === 'ENTRADA_SALIDA' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('ENTRADA_SALIDA')}
-        >
-          Entrada/Salida
-        </button>
-        <button 
-          className={`tab ${activeTab === 'CALENDARIO' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('CALENDARIO')}
-        >
-          Calendario / Tareas
+          Chat
         </button>
       </div>
 
@@ -637,14 +618,12 @@ export default function TeamMemberPage() {
         <div className="card-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '1rem' }}>
             <h2 className="card-title" style={{ margin: 0 }}>
                {activeTab === 'PROYECTOS' ? 'Historial de Proyectos Asignados' : 
+                activeTab === 'TAREAS' ? (['ADMIN', 'SUPERADMIN', 'ADMINISTRADORA'].includes(member.role) ? 'Historial de Tareas que Asignó' : 'Gestión de Tareas Asignadas') :
                 activeTab === 'RESUMEN' ? 'Resumen de Toda la Actividad' :
-                activeTab === 'BITACORA' ? 'Bitácora de Reportes de Campo' :
-                activeTab === 'GASTOS' ? 'Registro Detallado de Gastos' :
-                activeTab === 'CALENDARIO' ? 'Agenda y Gestión de Tareas' :
-                'Registros de Entrada y Salida'}
+                'Historial de Chat y Reportes'}
             </h2>
             
-            {['RESUMEN', 'BITACORA', 'GASTOS', 'ENTRADA_SALIDA'].includes(activeTab) && (
+            {['RESUMEN', 'CHAT'].includes(activeTab) && (
               <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
                 {/* Project Filter */}
                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -708,7 +687,7 @@ export default function TeamMemberPage() {
           </div>
         )}
 
-        {['RESUMEN', 'BITACORA', 'GASTOS', 'ENTRADA_SALIDA'].includes(activeTab) && (
+        {['RESUMEN', 'CHAT'].includes(activeTab) && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-lg)' }}>
             {filteredTimeline.length > 0 ? (
               filteredTimeline.map(([date, events]: any) => (
@@ -843,7 +822,7 @@ export default function TeamMemberPage() {
           </div>
         )}
 
-        {activeTab === 'CALENDARIO' && (
+        {activeTab === 'TAREAS' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '2rem', padding: 'var(--space-md) 0' }}>
             <CalendarView 
                 events={appointments}
@@ -855,7 +834,7 @@ export default function TeamMemberPage() {
 
             <div style={{ borderTop: '1px solid var(--border)', paddingTop: '2rem' }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 'var(--space-md)' }}>
-                 <h3 style={{ margin: 0, color: 'var(--text)' }}>Listado de Tareas Asignadas</h3>
+                 <h3 style={{ margin: 0, color: 'var(--text)' }}>{['ADMIN', 'SUPERADMIN', 'ADMINISTRADORA'].includes(member.role) ? 'Listado de Tareas que Asignó' : 'Listado de Tareas Asignadas'}</h3>
                  <button className="btn btn-ghost btn-sm" onClick={() => handleOpenAddModal(new Date())}>
                    <Plus size={16} /> Nueva Tarea
                  </button>

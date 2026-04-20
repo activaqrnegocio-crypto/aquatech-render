@@ -212,7 +212,7 @@ export default function QuotesListClient({ initialQuotes, activeProjects = [] }:
               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px' }}>
                 {modalMode === 'LINK' 
                   ? 'Esta acción hará que el proyecto seleccionado actualice su costo estimado y sus ítems de presupuesto basándose en esta cotización.'
-                  : 'Esta cotización se enviará al chat/bitácora del proyecto seleccionado únicamente como información, sin alterar el presupuesto.'}
+                  : 'Esta cotización se enviará al chat del proyecto seleccionado únicamente como información, sin alterar el presupuesto.'}
               </p>
 
               <div className="form-group mb-md">

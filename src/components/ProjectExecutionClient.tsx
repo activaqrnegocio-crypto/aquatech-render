@@ -789,7 +789,7 @@ export default function ProjectExecutionClient({
 
     const isTechnicalAction = mediaFile || customPhase !== undefined
     if (isTechnicalAction && !activeRecord) {
-      alert("⚠️ JORNADA NO INICIADA: Debes pulsar 'Iniciar Jornada' antes de registrar bitácora técnica o archivos.")
+      alert("⚠️ JORNADA NO INICIADA: Debes pulsar 'Iniciar Jornada' antes de usar el chat técnico o enviar archivos.")
       return
     }
 
@@ -1700,7 +1700,7 @@ export default function ProjectExecutionClient({
           </div>
         {/* End of REGISTROS */}
     
-    {/* 2. BITÁCORA / CHAT UNIFICADO - MODAL APPROACH */}
+    {/* 2. CHAT UNIFICADO - MODAL APPROACH */}
         {activeTab === 'chat' && (
           <div 
             style={{ 

@@ -18,7 +18,7 @@ export default async function WhatsAppPage() {
       <div className="admin-header">
         <h1 className="admin-title">Conectar Telefono</h1>
         <p className="admin-description">
-          Gestiona la vinculación de WhatsApp para el sistema de notificaciones y bitácora.
+          Gestiona la vinculación de WhatsApp para el sistema de notificaciones y chat.
         </p>
       </div>
       

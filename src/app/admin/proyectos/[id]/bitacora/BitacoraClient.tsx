@@ -54,7 +54,7 @@ export default function BitacoraClient({ project, isAdmin }: any) {
     const url = URL.createObjectURL(blob)
     const link = document.createElement('a')
     link.href = url
-    link.download = `Bitacora_Proyecto_${project.id}_${project.title.replace(/\s+/g, '_')}.csv`
+    link.download = `Chat_Proyecto_${project.id}_${project.title.replace(/\s+/g, '_')}.csv`
     document.body.appendChild(link)
     link.click()
     document.body.removeChild(link)
@@ -68,7 +68,7 @@ export default function BitacoraClient({ project, isAdmin }: any) {
             <Link href={isAdmin ? `/admin/proyectos/${project.id}` : `/admin/operador/proyecto/${project.id}`} style={{ color: 'var(--text-muted)', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: '5px' }}>
               &larr; Volver al Proyecto
             </Link>
-            <h2 style={{ fontSize: '1.8rem', margin: '10px 0 0 0' }}>Bitácora Completa</h2>
+            <h2 style={{ fontSize: '1.8rem', margin: '10px 0 0 0' }}>Chat Completo</h2>
             <p style={{ color: 'var(--text-muted)', margin: 0 }}>{project.title}</p>
           </div>
           <button 
@@ -106,7 +106,7 @@ export default function BitacoraClient({ project, isAdmin }: any) {
         {filteredMessages.length === 0 ? (
           <div style={{ padding: '40px', textAlign: 'center', color: 'var(--text-muted)' }}>
             <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5, marginBottom: '10px' }}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-            <p>No hay mensajes en la bitácora para este filtro.</p>
+            <p>No hay mensajes en el chat para este filtro.</p>
           </div>
         ) : (
           filteredMessages.map((msg: any) => (

@@ -192,7 +192,7 @@ export default function DashboardClient({ stats, recentExpenses, recentMessages,
         <div className="card-sub" style={{ padding: '15px', background: 'var(--bg-surface)', border: '1px solid var(--info)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '15px' }}>
            <div style={{ fontSize: '1.5rem' }}>📸</div>
            <div>
-             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Reportes en Bitácora</div>
+             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Reportes en Chat</div>
              <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{stats.totalMessages7d}</div>
            </div>
         </div>

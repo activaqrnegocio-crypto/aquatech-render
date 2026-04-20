@@ -47,7 +47,7 @@ export async function POST(
       }
     }
 
-    // 3. CREATE bitácora message (WITHOUT permanent link update)
+    // 3. CREATE chat message (WITHOUT permanent link update)
     const chatMsg = await prisma.chatMessage.create({
       data: {
         projectId: Number(projectId),
@@ -75,7 +75,7 @@ export async function POST(
         Number(session.user.id),
         `¡Documento Recibido!`,
         `${session.user.name} ha compartido una cotización en ${chatMsg.project.title}`,
-        `/admin/proyectos/${projectId}?tab=bitacora`
+        `/admin/proyectos/${projectId}?view=CHAT`
       )
     } catch (e) {
       console.error("Error at push notify:", e)
