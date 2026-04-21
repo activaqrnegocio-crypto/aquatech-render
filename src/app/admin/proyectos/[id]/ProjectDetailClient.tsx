@@ -339,7 +339,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       if (resp.ok) {
         setIsEditingFicha(false)
         startTransition(() => {
-          // router.refresh() - removed to avoid full refetch
+          router.refresh()
         })
       } else {
         alert('Error al guardar los cambios')
@@ -966,33 +966,13 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       })
 
 
-      // 3. REGISTRO DE ASISTENCIA
+
+
+      // 3. DETALLE DE NOTAS DE GASTOS
       doc.addPage()
       doc.setFontSize(16)
       doc.setFont('helvetica', 'bold')
-      doc.text('Registro de Asistencia (Horarios)', 20, 20)
-
-      const attendanceData = project.dayRecords.map((rec: any) => [
-        formatDate(rec.createdAt),
-        rec.user.name,
-        rec.startTime ? formatTimeEcuador(rec.startTime) : '---',
-        rec.endTime ? formatTimeEcuador(rec.endTime) : 'Aún en labor',
-        rec.endTime && rec.startTime ? 
-          `${((new Date(rec.endTime).getTime() - new Date(rec.startTime).getTime()) / (1000 * 60 * 60)).toFixed(1)} hrs` : '---'
-      ])
-
-      autoTable(doc, {
-        startY: 30,
-        head: [['Fecha', 'Operador', 'Entrada', 'Salida', 'Total Horas']],
-        body: attendanceData,
-        styles: { fontSize: 9 }
-      })
-
-      // 4. DETALLE DE GASTOS
-      doc.addPage()
-      doc.setFontSize(16)
-      doc.setFont('helvetica', 'bold')
-      doc.text('Detalle de Gastos Reportados', 20, 20)
+      doc.text('Detalle de Notas de Gastos Reportadas', 20, 20)
 
       const expenseData = project.expenses.filter((e: any) => !e.isNote).map((exp: any) => [
         formatDate(exp.date),
@@ -1006,7 +986,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         head: [['Fecha', 'Descripción', 'Categoría', 'Monto']],
         body: expenseData.length > 0 ? expenseData : [['—', 'Sin gastos', '', '']],
         styles: { fontSize: 9 },
-        foot: [['', '', 'TOTAL REAL:', `$ ${realExpenses.toFixed(2)}`]],
+        foot: [['', '', 'TOTAL NOTAS DE GASTOS:', `$ ${realExpenses.toFixed(2)}`]],
         footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
       })
 
