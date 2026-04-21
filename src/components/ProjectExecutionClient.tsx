@@ -294,11 +294,11 @@ export default function ProjectExecutionClient({
     
     // Add pending uploads
     const pendingEvidence = (pendingItems || [])
-      .filter((item: any) => item.type === 'MEDIA_UPLOAD' && item.payload?.category === 'EVIDENCE')
+      .filter((item: any) => (item.type === 'GALLERY_UPLOAD' || item.type === 'MEDIA_UPLOAD') && item.payload?.category === 'EVIDENCE')
       .map((item: any) => ({
         id: `pending-ev-${item.id}`,
-        url: item.payload?.base64 || '',
-        filename: item.payload?.filename || 'Pendiente...',
+        url: item.payload?.url || item.payload?.base64 || '',
+        filename: item.payload?.filename || 'Subiendo...',
         mimeType: item.payload?.mimeType || 'image/jpeg',
         category: 'EVIDENCE',
         isPending: true
@@ -414,6 +414,8 @@ export default function ProjectExecutionClient({
           } else if (item.type === 'PHASE_COMPLETE') {
             endpoint = `/api/projects/${project.id}/phases/${item.payload.phaseId}`
             method = 'PATCH'
+          } else if (item.type === 'GALLERY_UPLOAD') {
+            endpoint = `/api/projects/${project.id}/gallery`
           }
           
           if (endpoint) {
@@ -1024,9 +1026,14 @@ export default function ProjectExecutionClient({
       // Explicit offline check
       if (isOffline) {
         await db.outbox.add({
-          type: 'MEDIA_UPLOAD',
+          type: 'GALLERY_UPLOAD',
           projectId: project.id,
-          payload,
+          payload: {
+            url: file.url,
+            filename: file.filename,
+            mimeType: file.mimeType,
+            category: file.category || 'EVIDENCE'
+          },
           timestamp: Date.now(),
           lat: location?.lat,
           lng: location?.lng,
@@ -1037,11 +1044,14 @@ export default function ProjectExecutionClient({
       }
 
       try {
-        const res = await fetch(`/api/projects/${project.id}/messages`, {
+        const res = await fetch(`/api/projects/${project.id}/gallery`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            ...payload,
+            url: file.url,
+            filename: file.filename,
+            mimeType: file.mimeType,
+            category: file.category || 'EVIDENCE',
             lat: location?.lat,
             lng: location?.lng
           })
@@ -1576,6 +1586,7 @@ export default function ProjectExecutionClient({
                   files={evidenceGallery}
                   onAddFile={handleUploadMedia}
                   title="Subir Finales (Foto/Video)"
+                  defaultCategory="EVIDENCE"
                 />
               </div>
 
