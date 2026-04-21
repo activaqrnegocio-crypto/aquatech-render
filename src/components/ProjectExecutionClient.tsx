@@ -82,7 +82,12 @@ export default function ProjectExecutionClient({
     }
   }
 
-  // --- REAL-TIME POLLING: Full sync every 5s ---
+  const liveChatRef = useRef(liveChat)
+  useEffect(() => {
+    liveChatRef.current = liveChat
+  }, [liveChat])
+
+  // --- REAL-TIME POLLING: Aggressive polling for chat ---
   useEffect(() => {
     const markAsSeen = async () => {
       try {
@@ -95,11 +100,11 @@ export default function ProjectExecutionClient({
     }
     markAsSeen()
 
-    // On first mount, do an immediate full fetch to ensure freshness
+    // On first mount, do an immediate full fetch
     if (!liveChatInitialized.current) {
       liveChatInitialized.current = true
       fetchMessages().then(msgs => {
-        if (msgs.length > 0) {
+        if (msgs && msgs.length > 0) {
           setLiveChat(msgs)
           markAsSeen()
         }
@@ -107,34 +112,48 @@ export default function ProjectExecutionClient({
     }
 
     const pollInterval = setInterval(async () => {
-      if (!navigator.onLine || document.hidden) return
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
+      if (typeof document !== 'undefined' && document.hidden) return
       
-      // Use the last message date to fetch only new ones
-      const lastMsg = liveChat[liveChat.length - 1]
+      const currentChat = liveChatRef.current
+      const lastMsg = currentChat[currentChat.length - 1]
       const since = lastMsg?.createdAt
       
-      const freshMsgs = await fetchMessages(since)
-      if (freshMsgs.length > 0) {
+      try {
+        const freshMsgs = await fetchMessages(since)
+        if (freshMsgs && freshMsgs.length > 0) {
+          setLiveChat((prev: any[]) => {
+            const existingIds = new Set(prev.map(m => m.id))
+            const uniqueNew = freshMsgs.filter(m => !existingIds.has(m.id))
+            if (uniqueNew.length === 0) return prev
+            return [...prev, ...uniqueNew]
+          })
+        }
+      } catch (err) { console.error(err) }
+    }, 2000) 
+    
+    const handleFocus = () => fetchMessages().then(msgs => {
+      if (msgs && msgs.length > 0) {
         setLiveChat((prev: any[]) => {
-          // Merge only new messages avoiding duplicates
           const existingIds = new Set(prev.map(m => m.id))
-          const uniqueNew = freshMsgs.filter(m => !existingIds.has(m.id))
+          const uniqueNew = msgs.filter(m => !existingIds.has(m.id))
           if (uniqueNew.length === 0) return prev
           return [...prev, ...uniqueNew]
         })
       }
-    }, 2000) 
-    
-    const handleFocus = () => fetchMessages().then(msgs => {
-      if (msgs.length > 0) setLiveChat(msgs)
     })
-    window.addEventListener('focus', handleFocus)
+
+    if (typeof window !== 'undefined') {
+      window.addEventListener('focus', handleFocus)
+    }
     
     return () => {
       clearInterval(pollInterval)
-      window.removeEventListener('focus', handleFocus)
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('focus', handleFocus)
+      }
     }
-  }, [project.id, liveChat])
+  }, [project.id])
 
   // Sync initialChat when server props update (RSC refresh)
   useEffect(() => {
@@ -373,11 +392,15 @@ export default function ProjectExecutionClient({
          let currentPayload = { ...item.payload }
 
          // FIX: Si hay media en Base64, subirla primero a Bunny para no saturar el API (4.5MB limit)
-         if (currentPayload.media?.base64 || currentPayload.receiptPhoto?.startsWith('data:')) {
+         const hasBase64Media = currentPayload.media?.base64 || 
+                               (item.type === 'GALLERY_UPLOAD' && currentPayload.url?.startsWith('data:')) ||
+                               currentPayload.receiptPhoto?.startsWith('data:');
+
+         if (hasBase64Media) {
             try {
               const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
               
-              // Caso 1: Media de Chat/Galería
+              // Caso 1: Media de Chat/Mensajes
               if (currentPayload.media?.base64) {
                 const resB64 = await fetch(currentPayload.media.base64)
                 const blob = await resB64.blob()
@@ -388,8 +411,16 @@ export default function ProjectExecutionClient({
                   mimeType: currentPayload.media.mimeType
                 }
               }
+
+              // Caso 2: Media de Galería (EVIDENCE)
+              if (item.type === 'GALLERY_UPLOAD' && currentPayload.url?.startsWith('data:')) {
+                const resB64 = await fetch(currentPayload.url)
+                const blob = await resB64.blob()
+                const uploadResult = await uploadToBunnyClientSide(blob, currentPayload.filename || 'upload.jpg', 'projects')
+                currentPayload.url = uploadResult.url
+              }
               
-              // Caso 2: Foto de Recibo de Gasto
+              // Caso 3: Foto de Recibo de Gasto
               if (currentPayload.receiptPhoto?.startsWith('data:')) {
                 const resB64 = await fetch(currentPayload.receiptPhoto)
                 const blob = await resB64.blob()
@@ -830,20 +861,13 @@ export default function ProjectExecutionClient({
             navigator.geolocation.getCurrentPosition(
               pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
               () => resolve(null),
-              { enableHighAccuracy: true, timeout: 15000 }
+              { enableHighAccuracy: false, timeout: 5000 } // Faster timeout for better UX
             )
           })
         }
 
         if (!location) {
-          if (isTechnicalAction) {
-            alert("⚠️ UBICACIÓN NO DETECTADA: Para registros técnicos y fotos es obligatorio el GPS.")
-            // Remove optimistic message
-            setLiveChat(prev => prev.filter(m => m.id !== tempId))
-            return
-          } else {
-            console.warn("Ubicación no detectada, enviando mensaje sin coordenadas.")
-          }
+          console.warn("Ubicación no detectada, enviando sin coordenadas para mayor rapidez.")
         }
 
       let mediaData = null
@@ -995,7 +1019,7 @@ export default function ProjectExecutionClient({
           navigator.geolocation.getCurrentPosition(
             pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
             () => resolve(null),
-            { timeout: 25000 }
+            { timeout: 5000 } // Faster timeout
           )
         })
       }
@@ -1003,9 +1027,7 @@ export default function ProjectExecutionClient({
       /* Session validation removed */
 
       if (!location) {
-        alert("⚠️ UBICACIÓN NO DETECTADA: Para subir imágenes a la galería es obligatorio el GPS.")
-        setLoading(false)
-        return
+        console.warn("Subiendo a galería sin ubicación para no retrasar al operador.")
       }
 
       const isOffline = !navigator.onLine
@@ -1056,7 +1078,7 @@ export default function ProjectExecutionClient({
             url: file.url,
             filename: file.filename,
             mimeType: file.mimeType,
-            category: file.category || 'EVIDENCE',
+            category: 'EVIDENCE', // STICK TO EVIDENCE FOR THIS COMPONENT
             lat: location?.lat,
             lng: location?.lng
           })
@@ -1803,8 +1825,8 @@ export default function ProjectExecutionClient({
                 messages={combinedChat} 
                 userId={userId}
                 isOperatorView={isFieldStaff}
-                activeRecord={activeRecord}
-                onDayAction={handleDayRecord}
+                activeRecord={null} // FORCE NULL TO HIDE JOURNEY BUTTONS
+                onDayAction={() => {}} // Disabled as per request
                 backUrl={panelBase} 
                 onBack={() => setActiveTab('records')}
                 onSendMessage={(content, type, extraData) => {
