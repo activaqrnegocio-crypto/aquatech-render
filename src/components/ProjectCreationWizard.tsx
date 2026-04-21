@@ -573,8 +573,14 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                                  placeholder="El enlace se generará al presionar el botón 📍 GPS" 
                                  value={projectData.locationLink || ''} 
                                  onChange={e => {
-                                    setProjectData({...projectData, locationLink: e.target.value});
-                                    updateSpec('locationLink', e.target.value);
+                                    setProjectData({
+                                      ...projectData,
+                                      locationLink: e.target.value,
+                                      technicalSpecs: {
+                                        ...projectData.technicalSpecs,
+                                        locationLink: e.target.value
+                                      }
+                                    });
                                  }} 
                               />
                            </div>
