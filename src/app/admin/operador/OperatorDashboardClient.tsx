@@ -81,8 +81,8 @@ export default function OperatorDashboardClient({
       }
     }
     
-    // Polling cada 30 segundos para mantener la agenda y proyectos actualizados
-    const interval = setInterval(fetchAllData, 30000)
+    // Polling cada 5 segundos para mantener la agenda y proyectos actualizados
+    const interval = setInterval(fetchAllData, 5000)
     return () => clearInterval(interval)
   }, [user.id])
 

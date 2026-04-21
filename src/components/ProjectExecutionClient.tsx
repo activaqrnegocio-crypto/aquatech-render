@@ -115,7 +115,7 @@ export default function ProjectExecutionClient({
       
       const freshMsgs = await fetchMessages(since)
       if (freshMsgs.length > 0) {
-        setLiveChat(prev => {
+        setLiveChat((prev: any[]) => {
           // Merge only new messages avoiding duplicates
           const existingIds = new Set(prev.map(m => m.id))
           const uniqueNew = freshMsgs.filter(m => !existingIds.has(m.id))
@@ -123,9 +123,17 @@ export default function ProjectExecutionClient({
           return [...prev, ...uniqueNew]
         })
       }
-    }, 8000) // Increased to 8s to save bandwidth
-
-    return () => clearInterval(pollInterval)
+    }, 2000) 
+    
+    const handleFocus = () => fetchMessages().then(msgs => {
+      if (msgs.length > 0) setLiveChat(msgs)
+    })
+    window.addEventListener('focus', handleFocus)
+    
+    return () => {
+      clearInterval(pollInterval)
+      window.removeEventListener('focus', handleFocus)
+    }
   }, [project.id, liveChat])
 
   // Sync initialChat when server props update (RSC refresh)
@@ -627,86 +635,79 @@ export default function ProjectExecutionClient({
         return
       }
 
-      let processedPhoto = expensePhoto
-      if (processedPhoto && processedPhoto.startsWith('data:')) {
-        try {
-          const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
-          const resB64 = await fetch(processedPhoto)
-          const blob = await resB64.blob()
-          const uploadResult = await uploadToBunnyClientSide(blob, `expense_${Date.now()}.jpg`, `projects/${project.id}/expenses`)
-          processedPhoto = uploadResult.url
-        } catch (uploadError) {
-          console.error('Failed to upload expense photo directly:', uploadError)
+    const processExpense = async () => {
+      try {
+        let processedPhoto = expensePhoto
+        if (processedPhoto && processedPhoto.startsWith('data:') && navigator.onLine) {
+          try {
+            const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
+            const resB64 = await fetch(processedPhoto)
+            const blob = await resB64.blob()
+            const uploadResult = await uploadToBunnyClientSide(blob, `expense_${Date.now()}.webp`, `projects/${project.id}/expenses`)
+            processedPhoto = uploadResult.url
+          } catch (uploadError) {
+            console.error('Failed to upload expense photo directly:', uploadError)
+          }
         }
-      }
 
-      const payload = { 
-        amount: Number(amount), 
-        description, 
-        date: new Date().toISOString(),
-        isNote,
-        receiptPhoto: processedPhoto
-      }
+        const payload = { 
+          amount: Number(amount), 
+          description, 
+          date: new Date().toISOString(),
+          isNote,
+          receiptPhoto: processedPhoto
+        }
 
-      if (!navigator.onLine) {
-        // Prevent duplicate offline entries if they click very fast
-        const alreadyExists = await db.outbox
-          .where('type').equals('EXPENSE')
-          .filter(i => i.projectId === project.id && i.payload.description === description && i.payload.amount === Number(amount))
-          .first()
-        
-        if (alreadyExists && (Date.now() - alreadyExists.timestamp < 10000)) {
-          console.log('Duplicate expense preventer triggered')
-          setLoading(false)
-          setExpenseForm(false)
+        if (!navigator.onLine) {
+          await db.outbox.add({
+            type: 'EXPENSE',
+            projectId: project.id,
+            payload,
+            timestamp: Date.now(),
+            lat: location?.lat,
+            lng: location?.lng,
+            status: 'pending'
+          })
           return
         }
 
-        await db.outbox.add({
-          type: 'EXPENSE',
-          projectId: project.id,
-          payload,
-          timestamp: Date.now(),
-          lat: location?.lat,
-          lng: location?.lng,
-          status: 'pending'
-        })
-        alert("✅ Gasto guardado localmente. Se sincronizará automáticamente cuando tengas internet.")
-        setExpenseForm(false)
-        removeExpenseDraft()
-        setLoading(false)
-        return
-      }
-
-      try {
-        const res = await fetch(`/api/projects/${project.id}/expenses`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ 
-            ...payload,
-            lat: location?.lat,
-            lng: location?.lng
+        try {
+          const res = await fetch(`/api/projects/${project.id}/expenses`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+              ...payload,
+              lat: location?.lat,
+              lng: location?.lng
+            })
           })
-        })
-        if (!res.ok) throw new Error('Refetch')
-        startTransition(() => {
-          router.refresh()
-        })
-      } catch (err) {
-        await db.outbox.add({
-          type: 'EXPENSE',
-          projectId: project.id,
-          payload,
-          timestamp: Date.now(),
-          lat: location?.lat,
-          lng: location?.lng,
-          status: 'pending'
-        })
+          if (res.ok) {
+            startTransition(() => {
+              router.refresh()
+            })
+          }
+        } catch (err) {
+          await db.outbox.add({
+            type: 'EXPENSE',
+            projectId: project.id,
+            payload,
+            timestamp: Date.now(),
+            lat: location?.lat,
+            lng: location?.lng,
+            status: 'pending'
+          })
+        }
+      } catch (e) {
+        console.error("Background expense error:", e)
       }
-      setExpenseForm(false)
-      removeExpenseDraft()
+    }
+
+    setExpenseForm(false)
+    removeExpenseDraft()
+    processExpense()
+    setLoading(false)
     } catch (e) {
-      console.error(e)
+      console.error("Outer expense error:", e)
     } finally {
       setLoading(false)
     }

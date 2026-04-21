@@ -38,6 +38,18 @@ export default function ProyectosPage() {
   useEffect(() => {
     if (isAuthorized) {
       fetchProjects()
+      
+      // Auto-refresh cada 5 segundos para ver nuevos proyectos "en vivo"
+      const interval = setInterval(fetchProjects, 5000)
+      
+      // Refrescar al volver a la pestaña
+      const handleFocus = () => fetchProjects()
+      window.addEventListener('focus', handleFocus)
+      
+      return () => {
+        clearInterval(interval)
+        window.removeEventListener('focus', handleFocus)
+      }
     }
   }, [isAuthorized])
 

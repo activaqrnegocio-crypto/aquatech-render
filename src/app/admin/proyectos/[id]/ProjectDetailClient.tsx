@@ -248,31 +248,33 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     })
 
     const pollInterval = setInterval(async () => {
-      if (!navigator.onLine || document.hidden) return
+      if (document.hidden) return
       
-      setChatMessages((prev: any[]) => {
-        const lastMsg = prev[prev.length - 1]
-        const since = lastMsg?.createdAt
-        
-        fetchMessages(since).then(freshMsgs => {
-          if (freshMsgs.length > 0) {
-            setChatMessages((currentPrev: any[]) => {
-              const existingIds = new Set(currentPrev.map(m => m.id))
-              const uniqueNew = freshMsgs.filter(m => !existingIds.has(m.id))
-              if (uniqueNew.length === 0) return currentPrev
-              return [...currentPrev, ...uniqueNew]
-            })
-          }
+      const lastMsg = chatMessages[chatMessages.length - 1]
+      const since = lastMsg?.createdAt
+      const freshMsgs = await fetchMessages(since)
+      
+      if (freshMsgs.length > 0) {
+        setChatMessages((prev: any[]) => {
+          const existingIds = new Set(prev.map(m => m.id))
+          const uniqueNew = freshMsgs.filter(m => !existingIds.has(m.id))
+          if (uniqueNew.length === 0) return prev
+          return [...prev, ...uniqueNew]
         })
-        
-        return prev
-      })
-    }, 5000)
+      }
+    }, 2000)
 
+    const handleFocus = () => {
+       fetchMessages().then(msgs => { if (msgs.length > 0) setChatMessages(msgs) })
+       router.refresh() // También refresca datos del servidor como fotos y gastos
+    }
+    window.addEventListener('focus', handleFocus)
+    
     return () => {
       clearInterval(pollInterval)
+      window.removeEventListener('focus', handleFocus)
     }
-  }, [project.id])
+  }, [project.id, chatMessages])
 
   const CATEGORIES = [
     { id: 'PISCINA', label: 'Piscina' },
