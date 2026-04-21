@@ -95,7 +95,11 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const masterGallery = useMemo(() => {
-    const baseFiles = gallery.filter(i => (i.category || 'MASTER') === 'MASTER')
+    // Only MASTER, PLANOS, LEVANTAMIENTO categories
+    const baseFiles = gallery.filter((item: any) => {
+      const cat = (item.category || 'MASTER').toUpperCase()
+      return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
+    })
     const expenseFiles = (expenses || []).map((exp: any) => ({
       id: `exp-${exp.id}`,
       url: exp.receiptUrl || '',
@@ -104,11 +108,33 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       type: 'EXPENSE',
       amount: exp.amount,
       date: exp.date,
+      category: 'MASTER',
       isExpense: true
-    }))
+    })).filter((e: any) => e.url)
     return [...baseFiles, ...expenseFiles]
   }, [gallery, expenses])
-  const evidenceGallery = useMemo(() => gallery.filter(i => i.category === 'EVIDENCE'), [gallery])
+
+  const evidenceGallery = useMemo(() => {
+    // Strictly ONLY EVIDENCE category (uploaded as finals)
+    return gallery.filter((item: any) => (item.category || '').toUpperCase() === 'EVIDENCE')
+  }, [gallery])
+
+  const chatGallery = useMemo(() => {
+    // Extract media from persistent chat messages
+    const fromChat = chatMessages
+      .filter((msg: any) => msg.media && msg.media.length > 0)
+      .flatMap((msg: any) => msg.media.map((m: any) => ({
+        ...m,
+        isFromChat: true,
+        userName: msg.userName,
+        createdAt: msg.createdAt
+      })))
+
+    // Sort by date (newest first)
+    return fromChat.sort((a: any, b: any) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+  }, [chatMessages])
 
   const [isUploading, setIsUploading] = useState(false)
   const [showAllGallery, setShowAllGallery] = useState(false)

@@ -248,7 +248,7 @@ export default function ProjectExecutionClient({
         }
       })
 
-    return list.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+    return list.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [localExpenses, pendingItems, liveChat])
 
   const myTotalSpent = useMemo(() => {
@@ -270,7 +270,10 @@ export default function ProjectExecutionClient({
   const [galleryFilter, setGalleryFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
 
   const masterGallery = useMemo(() => {
-    const baseFiles = project.gallery.filter((item: any) => (item.category || 'MASTER') === 'MASTER')
+    const baseFiles = project.gallery.filter((item: any) => {
+      const cat = (item.category || 'MASTER').toUpperCase()
+      return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
+    })
     const expenseFiles = (localExpenses || []).map((exp: any) => ({
       id: `exp-${exp.id}`,
       url: exp.receiptUrl || '',
@@ -278,14 +281,18 @@ export default function ProjectExecutionClient({
       mimeType: exp.receiptUrl ? 'image/jpeg' : 'text/plain',
       category: 'MASTER',
       isExpense: true
-    })).filter(e => e.url)
+    })).filter((e: any) => e.url)
 
-    // Add pending uploads
+    // Add pending uploads for Master
     const pendingGallery = (pendingItems || [])
-      .filter((item: any) => item.type === 'MEDIA_UPLOAD' && (item.payload?.category === 'MASTER' || !item.payload?.category))
+      .filter((item: any) => {
+        if (item.type !== 'MEDIA_UPLOAD' && item.type !== 'GALLERY_UPLOAD') return false
+        const cat = (item.payload?.category || 'MASTER').toUpperCase()
+        return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
+      })
       .map((item: any) => ({
         id: `pending-${item.id}`,
-        url: item.payload?.base64 || '',
+        url: item.payload?.url || item.payload?.base64 || '',
         filename: item.payload?.filename || 'Pendiente...',
         mimeType: item.payload?.mimeType || 'image/jpeg',
         category: 'MASTER',
@@ -294,9 +301,8 @@ export default function ProjectExecutionClient({
 
     const list = [...baseFiles, ...expenseFiles, ...pendingGallery]
     
-    if (galleryFilter === 'ALL') return list.filter(i => !i.isFromChat)
+    // Filter by type
     return list.filter((item: any) => {
-      if (item.isFromChat) return false
       const mime = (item.mimeType || '').toLowerCase()
       if (galleryFilter === 'IMAGES') return mime.startsWith('image/')
       if (galleryFilter === 'VIDEOS') return mime.startsWith('video/')
@@ -307,18 +313,47 @@ export default function ProjectExecutionClient({
   }, [project.gallery, galleryFilter, localExpenses, pendingItems])
 
   const chatGallery = useMemo(() => {
-    return project.gallery.filter((item: any) => item.isFromChat)
-  }, [project.gallery])
+    // Extract media from liveChat messages (persistent)
+    const fromChat = liveChat
+      .filter((msg: any) => msg.media && msg.media.length > 0)
+      .flatMap((msg: any) => msg.media.map((m: any) => ({
+        ...m,
+        isFromChat: true,
+        userName: msg.userName,
+        createdAt: msg.createdAt
+      })))
+
+    // Extract media from pending chat messages in outbox
+    const pendingChat = (pendingItems || [])
+      .filter((item: any) => item.type === 'MESSAGE' && item.payload?.media)
+      .map((item: any) => ({
+        id: `pending-chat-${item.id}`,
+        url: item.payload.media.url || item.payload.media.base64 || '',
+        filename: item.payload.media.filename || 'Enviando...',
+        mimeType: item.payload.media.mimeType || 'image/jpeg',
+        isFromChat: true,
+        isPending: true,
+        createdAt: new Date(item.timestamp).toISOString()
+      }))
+
+    return [...fromChat, ...pendingChat].sort((a: any, b: any) => 
+      new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    )
+  }, [liveChat, pendingItems])
 
   const [evidenceFilter, setEvidenceFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
   const evidenceGallery = useMemo(() => {
     if (!project.gallery) return []
-    // Filter by EVIDENCE category
-    const list = [...project.gallery.filter((item: any) => item.category === 'EVIDENCE')]
+    // Filter ONLY by EVIDENCE category (explicitly uploaded as finals)
+    const list = [...project.gallery.filter((item: any) => (item.category || '').toUpperCase() === 'EVIDENCE')]
     
-    // Add pending uploads
+    // Add pending uploads for Evidence
     const pendingEvidence = (pendingItems || [])
-      .filter((item: any) => (item.type === 'GALLERY_UPLOAD' || item.type === 'MEDIA_UPLOAD') && item.payload?.category === 'EVIDENCE')
+      .filter((item: any) => {
+        const isGalleryType = item.type === 'GALLERY_UPLOAD' || item.type === 'MEDIA_UPLOAD'
+        const isEvidenceCat = (item.payload?.category || '').toUpperCase() === 'EVIDENCE'
+        return isGalleryType && isEvidenceCat
+      })
       .map((item: any) => ({
         id: `pending-ev-${item.id}`,
         url: item.payload?.url || item.payload?.base64 || '',
@@ -1705,63 +1740,6 @@ export default function ProjectExecutionClient({
                   </div>
                 )}
               </div>
-
-              {/* Galería de Chat */}
-              {chatGallery.length > 0 && (
-                <div className="card" style={{ minWidth: 0, marginTop: '10px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
-                    <h3 style={{ fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-                      Fotos/Videos del Chat
-                    </h3>
-                    <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>{chatGallery.length} Archivos</span>
-                  </div>
-                  
-                  <div className="custom-scrollbar" style={{ 
-                    display: 'grid', 
-                    gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))', 
-                    gap: '12px',
-                    maxHeight: '400px',
-                    overflowY: 'auto',
-                    padding: '4px'
-                  }}>
-                    {chatGallery.map((item: any, idx: number) => (
-                      <div 
-                        key={idx}
-                        style={{ position: 'relative', aspectRatio: '1/1', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', border: '1px solid rgba(255,255,255,0.1)' }}
-                        onClick={() => setSelectedPreviewImage(item)}
-                      >
-                        {(() => {
-                          const getCleanType = (mime: string, url: string) => {
-                            if (mime === 'application/octet-stream' || !mime) {
-                              const ext = url.split('.').pop()?.toLowerCase();
-                              if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) return 'image/jpeg';
-                              if (['mp4', 'mov', 'webm'].includes(ext || '')) return 'video/mp4';
-                              if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext || '')) return 'audio/mpeg';
-                            }
-                            return mime;
-                          };
-                          const realMime = getCleanType(item.mimeType, item.url);
-                          if (realMime.startsWith('image/')) {
-                            return <img src={item.url} alt="Chat" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
-                          } else if (realMime.startsWith('video/')) {
-                            return (
-                              <div style={{ width: '100%', height: '100%', backgroundColor: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                              </div>
-                            );
-                          }
-                          return (
-                            <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-deep)' }}>
-                              <span style={{ fontSize: '1.2rem' }}>{realMime.startsWith('audio/') ? '🎵' : '📄'}</span>
-                            </div>
-                          );
-                        })()}
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
 
               {/* NOTAS DE GASTO - Solo visualización */}
               {allExpenses.filter(e => e.isNote).length > 0 && (

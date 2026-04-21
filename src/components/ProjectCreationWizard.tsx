@@ -840,7 +840,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                     files={uploadedFiles}
                     onAddFile={(newFile) => setUploadedFiles(prev => [...prev, newFile])}
                     onRemoveFile={(url) => setUploadedFiles(prev => prev.filter(f => f.url !== url))}
-                    defaultCategory="PLANOS"
+                    defaultCategory="MASTER"
                   />
                 </div>
             </div>
