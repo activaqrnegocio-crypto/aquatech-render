@@ -108,6 +108,7 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
       url: g.url, 
       filename: g.filename, 
       mimeType: g.mimeType,
+      category: g.category,
       isFromChat: (g as any).isFromChat
     }))
   }

@@ -29,7 +29,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
       gallery: {
         orderBy: { createdAt: 'desc' },
         take: 50,
-        select: { id: true, url: true, filename: true, mimeType: true, createdAt: true }
+        select: { id: true, url: true, filename: true, mimeType: true, category: true, createdAt: true }
       },
       expenses: { 
         orderBy: { date: 'desc' },
