@@ -133,27 +133,29 @@ export default function ProjectChatUnified({
 
   // Scroll logic
   useEffect(() => {
-    if (messages.length > msgCount) {
-      if (!autoScroll) setShowNewMsgBtn(true)
-      setMsgCount(messages.length)
-    }
-  }, [messages.length, autoScroll, msgCount])
-
-  useEffect(() => {
     const el = chatBodyRef.current;
     if (!el) return;
     
+    // Si no han cambiado el número de mensajes, no hacemos nada (evita snap-back en re-renders)
+    if (messages.length === msgCount) return;
+
     const lastMessage = messages[messages.length - 1];
     const isMe = lastMessage && (Number(lastMessage.userId) === Number(userId) || lastMessage.isMe);
     
+    // Solo scrolleamos si autoScroll está activo o si YO acabo de enviar un mensaje (isMe + cambio en count)
     if (autoScroll || isMe) {
       el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
       if (isMe) {
         setAutoScroll(true);
         setShowNewMsgBtn(false);
       }
+    } else {
+      // Si hay mensajes nuevos y no estamos en autoScroll, mostramos el botón
+      setShowNewMsgBtn(true);
     }
-  }, [messages]);
+    
+    setMsgCount(messages.length);
+  }, [messages, userId]);
 
 
 
@@ -387,48 +389,7 @@ export default function ProjectChatUnified({
       </header>
 
       {/* --- QUICK EVIDENCE GALLERY --- */}
-      {evidenceGallery.length > 0 && (
-        <div style={{ 
-          padding: '10px 16px', 
-          backgroundColor: 'rgba(255,255,255,0.02)', 
-          borderBottom: '1px solid rgba(255,255,255,0.05)',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '8px'
-        }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: '#d946ef', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-              📸 Archivos Finales (Evidencia)
-            </span>
-            <span onClick={() => setShowFilesBrowser(true)} style={{ fontSize: '0.6rem', color: 'var(--primary)', cursor: 'pointer' }}>Ver todo</span>
-          </div>
-          <div style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '4px' }} className="hide-scrollbar">
-            {evidenceGallery.map((file: any, i: number) => (
-              <div 
-                key={i} 
-                onClick={() => setSelectedPreviewMedia(file)}
-                style={{ 
-                  flexShrink: 0, 
-                  width: '60px', 
-                  height: '60px', 
-                  borderRadius: '8px', 
-                  overflow: 'hidden', 
-                  border: '1px solid rgba(255,255,255,0.1)',
-                  position: 'relative'
-                }}
-              >
-                {file.mimeType?.startsWith('image/') ? (
-                  <img src={file.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="evidence" />
-                ) : (
-                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: '#000' }}>
-                    <Play size={20} />
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+
 
       {/* --- MESSAGE LIST --- */}
       <div 
@@ -438,7 +399,7 @@ export default function ProjectChatUnified({
         onScroll={() => {
           const el = chatBodyRef.current
           if (!el) return
-          const isAtBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 220
+          const isAtBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 50
           if (!isAtBottom) {
              if (autoScroll) setAutoScroll(false)
           } else {
