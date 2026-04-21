@@ -18,15 +18,22 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const searchParams = useSearchParams()
   const pathname = usePathname()
 
-  const [isSmallScreen, setIsSmallScreen] = useState(false)
-    useEffect(() => {
-      const check = () => setIsSmallScreen(window.innerWidth < 640)
-      check()
-      window.addEventListener('resize', check)
-      return () => window.removeEventListener('resize', check)
-    }, [])
+  const [isMounted, setIsMounted] = useState(false)
+  
+  useEffect(() => {
+    setIsMounted(true)
+  }, [])
 
-    const [activeTab, setActiveTab] = useState<'CHAT' | 'GALLERY' | 'EVIDENCE'>(() => {
+  const [isSmallScreen, setIsSmallScreen] = useState(false)
+  
+  useEffect(() => {
+    const check = () => setIsSmallScreen(window.innerWidth < 768)
+    check()
+    window.addEventListener('resize', check)
+    return () => window.removeEventListener('resize', check)
+  }, [])
+
+  const [activeTab, setActiveTab] = useState<'CHAT' | 'GALLERY' | 'EVIDENCE'>(() => {
     const view = searchParams.get('view')
     if (view === 'CHAT' || view === 'GALLERY' || view === 'EVIDENCE') return view
     // Fallback for legacy URL with 'EXPENSES'
@@ -1257,6 +1264,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     }
   }
 
+  if (!isMounted) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: 'var(--bg-deep)', color: 'white' }}>Cargando proyecto...</div>;
 
   return (
     <div className="p-6">
@@ -2660,12 +2668,39 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
             >
               <button 
                 onClick={() => setSelectedPreviewImage(null)}
-                style={{ position: 'absolute', top: '-40px', right: '0', background: 'none', border: 'none', color: 'white', fontSize: '2rem', cursor: 'pointer', zIndex: 10 }}
+                style={{ 
+                  position: 'absolute', 
+                  top: isSmallScreen ? '10px' : '-40px', 
+                  right: isSmallScreen ? '10px' : '0', 
+                  background: isSmallScreen ? 'rgba(0,0,0,0.5)' : 'none', 
+                  border: 'none', 
+                  color: 'white', 
+                  fontSize: '1.8rem', 
+                  cursor: 'pointer', 
+                  zIndex: 20,
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
               >
                 ✕
               </button>
               
-              <div style={{ width: '100%', borderRadius: '12px', overflow: 'hidden', backgroundColor: '#000', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '300px' }}>
+              <div style={{ 
+                width: '100%', 
+                borderRadius: '12px', 
+                overflow: 'hidden', 
+                backgroundColor: '#000', 
+                border: '1px solid rgba(255,255,255,0.1)', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center', 
+                minHeight: isSmallScreen ? '200px' : '300px',
+                maxHeight: isSmallScreen ? '50vh' : '80vh'
+              }}>
                 {isImage ? (
                   <img 
                     src={selectedPreviewImage.url} 
@@ -2693,17 +2728,25 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                 )}
               </div>
 
-              <div className="card" style={{ padding: '20px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '20px' }}>
+              <div className="card" style={{ 
+                padding: '15px 20px', 
+                display: 'flex', 
+                flexDirection: isSmallScreen ? 'column' : 'row',
+                justifyContent: 'space-between', 
+                alignItems: isSmallScreen ? 'stretch' : 'center', 
+                gap: '15px' 
+              }}>
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <h3 style={{ margin: 0, fontSize: '1.1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fileName}</h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.8rem', margin: '4px 0 0 0' }}>{previewMime} • {selectedPreviewImage.isExpense ? 'Registro de Gasto' : 'Documento de Obra'}</p>
+                  <h3 style={{ margin: 0, fontSize: '1rem', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{fileName}</h3>
+                  <p style={{ color: 'var(--text-muted)', fontSize: '0.75rem', margin: '4px 0 0 0' }}>{previewMime} • {selectedPreviewImage.isExpense ? 'Registro de Gasto' : 'Documento de Obra'}</p>
                 </div>
                 <div style={{ display: 'flex', gap: '10px' }}>
-                  <button onClick={() => window.open(selectedPreviewImage.url, '_blank')} className="btn btn-secondary">Abrir Original</button>
+                  <button onClick={() => window.open(selectedPreviewImage.url, '_blank')} className="btn btn-secondary" style={{ flex: 1, fontSize: '0.85rem' }}>Abrir Original</button>
                   <a 
                     href={selectedPreviewImage.url} 
                     download={fileName}
                     className="btn btn-primary"
+                    style={{ flex: 1, fontSize: '0.85rem', textAlign: 'center' }}
                   >
                     Descargar
                   </a>

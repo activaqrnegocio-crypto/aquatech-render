@@ -208,7 +208,7 @@ export default function ProjectUploader({
           justifyContent: 'space-between'
         }}>
           {!readOnly && (
-            <div style={{ display: 'flex', gap: '8px' }}>
+            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
               <button 
                 onClick={() => fileInputRef.current?.click()}
                 disabled={isUploading}
