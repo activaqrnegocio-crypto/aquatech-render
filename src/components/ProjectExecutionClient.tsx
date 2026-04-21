@@ -619,11 +619,7 @@ export default function ProjectExecutionClient({
         })
       }
 
-      if (!activeRecord && !pendingDayAction) {
-        alert("⚠️ JORNADA NO INICIADA: Debes pulsar 'Iniciar Jornada' antes de registrar gastos.")
-        setLoading(false)
-        return
-      }
+      /* Session validation removed */
 
       if (!location) {
         alert("⚠️ UBICACIÓN REQUERIDA: No podemos registrar el gasto sin coordenadas de GPS. Por favor activa la ubicación.")
@@ -788,10 +784,7 @@ export default function ProjectExecutionClient({
     ))
 
     const isTechnicalAction = mediaFile || customPhase !== undefined
-    if (isTechnicalAction && !activeRecord) {
-      alert("⚠️ JORNADA NO INICIADA: Debes pulsar 'Iniciar Jornada' antes de usar el chat técnico o enviar archivos.")
-      return
-    }
+    /* Session validation removed */
 
     // --- OPTIMISTIC UI UPDATE ---
     const tempId = `temp-${Date.now()}-${Math.random()}`
@@ -999,11 +992,7 @@ export default function ProjectExecutionClient({
         })
       }
       
-      if (isFieldStaff && !activeRecord) {
-        alert("⚠️ JORNADA NO INICIADA: Debes pulsar 'Iniciar Jornada' antes de subir archivos.")
-        setLoading(false)
-        return
-      }
+      /* Session validation removed */
 
       if (!location) {
         alert("⚠️ UBICACIÓN NO DETECTADA: Para subir imágenes a la galería es obligatorio el GPS.")
@@ -1297,6 +1286,8 @@ export default function ProjectExecutionClient({
       setIsSavingExpense(false)
     }
   }
+
+  if (!mounted) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#0b141a', color: 'white' }}>Cargando...</div>;
 
   return (
     <div className="project-execution-container" style={{ 
@@ -1744,10 +1735,7 @@ export default function ProjectExecutionClient({
                 onBack={() => setActiveTab('records')}
                 onSendMessage={(content, type, extraData) => {
                   const isTechnicalAction = type === 'EXPENSE_LOG' || type === 'FILE' || type === 'IMAGE' || type === 'VIDEO' || type === 'AUDIO'
-                  if (isFieldStaff && !activeRecord && isTechnicalAction) {
-                    alert('⚠️ DEBES INICIAR JORNADA antes de realizar esta acción técnica.')
-                    return
-                  }
+                  /* Session validation removed */
 
                   if (type === 'EXPENSE_LOG') {
                      handleSendMessage(null as any, content, activePhase || undefined, extraData?.file, extraData, 'EXPENSE_LOG');
@@ -1854,8 +1842,24 @@ export default function ProjectExecutionClient({
           >
             <div style={{ position: 'relative', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
               <button 
-                style={{ position: 'absolute', top: '10px', right: '10px', background: 'white', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '1.2rem', cursor: 'pointer', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 4px 12px rgba(0,0,0,0.5)' }}
                 onClick={(e) => { e.stopPropagation(); setSelectedPreviewImage(null); }}
+                style={{ 
+                  position: 'absolute', 
+                  top: isSmallScreen ? '10px' : '-40px', 
+                  right: isSmallScreen ? '10px' : '0', 
+                  background: isSmallScreen ? 'rgba(0,0,0,0.5)' : 'none', 
+                  border: 'none', 
+                  color: 'white', 
+                  fontSize: '1.8rem', 
+                  cursor: 'pointer', 
+                  zIndex: 20,
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}
               >
                 ✕
               </button>

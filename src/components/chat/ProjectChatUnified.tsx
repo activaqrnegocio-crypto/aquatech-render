@@ -350,7 +350,7 @@ export default function ProjectChatUnified({
            <div className="project-info">
              <h1>{project.title}</h1>
              <p style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                <span style={{ whiteSpace: 'nowrap' }}>{activeRecord ? '🟢 Jornada Activa' : '⚪ Jornada cerrada'}</span>
+                 {/* Status hidden */}
              </p>
            </div>
 
@@ -371,14 +371,7 @@ export default function ProjectChatUnified({
            )}
            {!showSearch && (
              <>
-               {isOperatorView && (
-                 <button 
-                    onClick={toggleDayRecord}
-                    className={`btn-jornada ${activeRecord ? 'active' : ''}`}
-                 >
-                   {activeRecord ? 'Cerrar Jornada' : 'Iniciar Jornada'}
-                 </button>
-               )}
+               {/* Button hidden as per request */}
                <button onClick={() => setShowMenu(!showMenu)} className="btn-icon">
                  <MoreVertical />
                </button>
