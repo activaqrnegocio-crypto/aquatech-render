@@ -611,12 +611,19 @@ function UserCard({ user, onDelete, formatDate, currentUserRole, currentUserId }
           </div>
 
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <div className="user-avatar-circle" style={{ border: `2px solid ${statusColor}20` }}>
-              {user.image ? (
-                <img src={user.image} alt={user.name} />
-              ) : (
-                <div className="avatar-initials">{user.name.charAt(0)}</div>
-              )}
+            <div className="user-avatar-circle" style={{ border: `2px solid ${statusColor}20`, position: 'relative' }}>
+              <div className="avatar-initials" style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                {user.name.charAt(0)}
+              </div>
+              <img 
+                src={`/api/users/${user.id}/avatar`} 
+                alt={user.name} 
+                loading="lazy"
+                onError={(e) => {
+                   e.currentTarget.style.display = 'none';
+                }}
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 2, objectFit: 'cover' }}
+              />
             </div>
             <div style={{ minWidth: 0 }}>
               <h4 style={{ margin: '0 0 2px 0', fontSize: '1.05rem', fontWeight: '800', color: '#fff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{user.name}</h4>

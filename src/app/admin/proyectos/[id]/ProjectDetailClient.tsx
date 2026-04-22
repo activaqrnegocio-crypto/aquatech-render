@@ -1905,23 +1905,20 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                         );
                       }
                     })()}
-                    {/* Hover Overlay */}
+                    {/* Persistent Action Buttons Overlay */}
                     <div 
-                      className="group-hover:opacity-100" 
                       style={{ 
                         position: 'absolute', 
                         inset: 0, 
-                        background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%)', 
                         display: 'flex', 
                         flexDirection: 'column', 
                         justifyContent: 'space-between', 
-                        opacity: 0, 
-                        transition: 'opacity 0.3s ease', 
                         padding: '8px',
-                        zIndex: 20
+                        zIndex: 20,
+                        pointerEvents: 'none'
                       }}
                     >
-                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                      <div style={{ display: 'flex', justifyContent: 'flex-end', pointerEvents: 'auto' }}>
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleDeleteGalleryItem(item.id); }} 
                           style={{ 
@@ -1945,24 +1942,26 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                         </button>
                       </div>
                       
-                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
-                        <div style={{ 
-                          backgroundColor: 'rgba(56, 189, 248, 0.95)', 
-                          color: 'white', 
-                          padding: '4px 10px', 
-                          borderRadius: '20px', 
-                          fontSize: '0.65rem', 
-                          fontWeight: '700',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          backdropFilter: 'blur(8px)',
-                          boxShadow: '0 4px 12px rgba(56, 189, 248, 0.4)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px'
-                        }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                          {item.isExpense ? 'Ver Recibo' : 'Previsualizar'}
+                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px', pointerEvents: 'auto' }}>
+                        <div 
+                          onClick={(e) => { e.stopPropagation(); window.open(item.url, '_blank'); }}
+                          style={{ 
+                            backgroundColor: 'rgba(56, 189, 248, 0.95)', 
+                            color: 'white', 
+                            padding: '4px 8px', 
+                            borderRadius: '12px', 
+                            fontSize: '0.7rem', 
+                            fontWeight: 'bold', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            gap: '4px',
+                            cursor: 'pointer',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
+                            border: '1px solid rgba(255,255,255,0.2)'
+                          }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                          {item.isExpense ? 'Ver Recibo' : 'Ver'}
                         </div>
                       </div>
                     </div>

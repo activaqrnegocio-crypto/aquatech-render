@@ -18,7 +18,7 @@ export default async function AdminCalendarPage() {
       role: { in: ['OPERATOR', 'SUBCONTRATISTA'] },
       isActive: true
     },
-    select: { id: true, name: true, image: true }
+    select: { id: true, name: true }
   })
 
   const projects = await prisma.project.findMany({

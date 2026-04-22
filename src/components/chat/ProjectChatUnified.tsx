@@ -135,16 +135,15 @@ export default function ProjectChatUnified({
   useEffect(() => {
     const el = chatBodyRef.current;
     if (!el) return;
-    
-    // Si no han cambiado el número de mensajes, no hacemos nada (evita snap-back en re-renders)
-    if (messages.length === msgCount) return;
 
     const lastMessage = messages[messages.length - 1];
     const isMe = lastMessage && (Number(lastMessage.userId) === Number(userId) || lastMessage.isMe);
     
-    // Solo scrolleamos si autoScroll está activo o si YO acabo de enviar un mensaje (isMe + cambio en count)
+    // Solo scrolleamos si autoScroll está activo o si YO acabo de enviar un mensaje
     if (autoScroll || isMe) {
-      el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      setTimeout(() => {
+        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
+      }, 50); // Small delay to ensure DOM is updated
       if (isMe) {
         setAutoScroll(true);
         setShowNewMsgBtn(false);
@@ -153,9 +152,7 @@ export default function ProjectChatUnified({
       // Si hay mensajes nuevos y no estamos en autoScroll, mostramos el botón
       setShowNewMsgBtn(true);
     }
-    
-    setMsgCount(messages.length);
-  }, [messages, userId]);
+  }, [messages.length, userId]);
 
 
 
@@ -399,7 +396,7 @@ export default function ProjectChatUnified({
         onScroll={() => {
           const el = chatBodyRef.current
           if (!el) return
-          const isAtBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 50
+          const isAtBottom = el.scrollHeight - el.scrollTop <= el.clientHeight + 100
           if (!isAtBottom) {
              if (autoScroll) setAutoScroll(false)
           } else {
