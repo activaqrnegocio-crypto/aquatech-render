@@ -1905,20 +1905,67 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                         );
                       }
                     })()}
-                     <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: '0.3s' }} className="group-hover:opacity-100">
-                        <button onClick={(e) => { e.stopPropagation(); setSelectedPreviewImage(item); }} className="btn btn-primary btn-sm">Ver</button>
-                        <button onClick={(e) => { e.stopPropagation(); handleDeleteFromGallery(item.id); }} className="btn btn-danger btn-sm" style={{ marginLeft: '5px' }}>✕</button>
+                    {/* Hover Overlay */}
+                    <div 
+                      className="group-hover:opacity-100" 
+                      style={{ 
+                        position: 'absolute', 
+                        inset: 0, 
+                        background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%)', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'space-between', 
+                        opacity: 0, 
+                        transition: 'opacity 0.3s ease', 
+                        padding: '8px',
+                        zIndex: 20
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeleteGalleryItem(item.id); }} 
+                          style={{ 
+                            width: '26px', 
+                            height: '26px', 
+                            borderRadius: '50%', 
+                            backgroundColor: 'rgba(239, 68, 68, 0.9)', 
+                            color: 'white', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            border: 'none', 
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        </button>
                       </div>
-                    {(item.isExpense && item.url) && (
-                      <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: '0.3s' }} className="group-hover:opacity-100">
-                        <button onClick={(e) => { e.stopPropagation(); setSelectedPreviewImage(item); }} className="btn btn-primary btn-sm">Ver Recibo</button>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+                        <div style={{ 
+                          backgroundColor: 'rgba(56, 189, 248, 0.95)', 
+                          color: 'white', 
+                          padding: '4px 10px', 
+                          borderRadius: '20px', 
+                          fontSize: '0.65rem', 
+                          fontWeight: '700',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          backdropFilter: 'blur(8px)',
+                          boxShadow: '0 4px 12px rgba(56, 189, 248, 0.4)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                          {item.isExpense ? 'Ver Recibo' : 'Previsualizar'}
+                        </div>
                       </div>
-                    )}
-                    {(item.mimeType.startsWith('video/') || item.mimeType.startsWith('audio/')) && (
-                      <div style={{ position: 'absolute', top: '5px', right: '5px', zIndex: 10 }}>
-                        <button onClick={() => handleDeleteFromGallery(item.id)} className="btn btn-danger btn-sm" style={{ padding: '4px', fontSize: '10px', minHeight: '0', height: '24px', width: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '50%' }}>✕</button>
-                      </div>
-                    )}
+                    </div>
                   </div>
                 ))}
               </div>
@@ -2024,9 +2071,66 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                         );
                       }
                     })()}
-                    <div style={{ position: 'absolute', inset: 0, backgroundColor: 'rgba(0,0,0,0.6)', display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0, transition: '0.3s' }} className="group-hover:opacity-100">
-                      <button onClick={(e) => { e.stopPropagation(); setSelectedPreviewImage(item); }} className="btn btn-primary btn-sm">Ver</button>
-                      <button onClick={(e) => { e.stopPropagation(); handleDeleteFromGallery(item.id); }} className="btn btn-danger btn-sm" style={{ marginLeft: '5px' }}>✕</button>
+                    {/* Hover Overlay */}
+                    <div 
+                      className="group-hover:opacity-100" 
+                      style={{ 
+                        position: 'absolute', 
+                        inset: 0, 
+                        background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%)', 
+                        display: 'flex', 
+                        flexDirection: 'column', 
+                        justifyContent: 'space-between', 
+                        opacity: 0, 
+                        transition: 'opacity 0.3s ease', 
+                        padding: '8px',
+                        zIndex: 20
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                        <button 
+                          onClick={(e) => { e.stopPropagation(); handleDeleteGalleryItem(item.id); }} 
+                          style={{ 
+                            width: '26px', 
+                            height: '26px', 
+                            borderRadius: '50%', 
+                            backgroundColor: 'rgba(239, 68, 68, 0.9)', 
+                            color: 'white', 
+                            display: 'flex', 
+                            alignItems: 'center', 
+                            justifyContent: 'center', 
+                            border: 'none', 
+                            cursor: 'pointer',
+                            transition: 'transform 0.2s',
+                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                          }}
+                          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                        >
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                        </button>
+                      </div>
+                      
+                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+                        <div style={{ 
+                          backgroundColor: 'rgba(56, 189, 248, 0.95)', 
+                          color: 'white', 
+                          padding: '4px 10px', 
+                          borderRadius: '20px', 
+                          fontSize: '0.65rem', 
+                          fontWeight: '700',
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '4px',
+                          backdropFilter: 'blur(8px)',
+                          boxShadow: '0 4px 12px rgba(56, 189, 248, 0.4)',
+                          textTransform: 'uppercase',
+                          letterSpacing: '0.5px'
+                        }}>
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                          Previsualizar
+                        </div>
+                      </div>
                     </div>
                   </div>
                 ))}

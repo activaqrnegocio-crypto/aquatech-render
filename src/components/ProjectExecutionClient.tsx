@@ -1612,29 +1612,67 @@ export default function ProjectExecutionClient({
                             </div>
                           )}
 
-                          {/* Interaction Overlay */}
-                          <div style={{ 
-                            position: 'absolute', 
-                            inset: 0, 
-                            backgroundColor: 'rgba(0,0,0,0.6)', 
-                            display: 'flex', 
-                            flexDirection: 'column',
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            gap: '8px',
-                            opacity: 0,
-                            padding: '10px',
-                            transition: 'opacity 0.2s',
-                            zIndex: 10
-                          }} className="group-hover:opacity-100">
-                             <button 
-                              onClick={() => setSelectedPreviewImage(item)}
-                              style={{ width: '100%', padding: '6px', backgroundColor: 'var(--primary)', color: 'white', borderRadius: '8px', fontSize: '0.7rem', border: 'none', cursor: 'pointer' }}
-                            > Ver </button>
-                            <button 
-                              onClick={() => handleDownload(item.url, item.filename)}
-                              style={{ width: '100%', padding: '6px', backgroundColor: 'white', color: 'black', borderRadius: '8px', fontSize: '0.7rem', border: 'none', cursor: 'pointer' }}
-                            > Bajar </button>
+                          {/* Hover Overlay */}
+                          <div 
+                            className="group-hover:opacity-100" 
+                            style={{ 
+                              position: 'absolute', 
+                              inset: 0, 
+                              background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%)', 
+                              display: 'flex', 
+                              flexDirection: 'column', 
+                              justifyContent: 'space-between', 
+                              opacity: 0, 
+                              transition: 'opacity 0.3s ease', 
+                              padding: '8px',
+                              zIndex: 20
+                            }}
+                          >
+                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleDownload(item.url, item.filename); }} 
+                                style={{ 
+                                  width: '26px', 
+                                  height: '26px', 
+                                  borderRadius: '50%', 
+                                  backgroundColor: 'rgba(56, 189, 248, 0.9)', 
+                                  color: 'white', 
+                                  display: 'flex', 
+                                  alignItems: 'center', 
+                                  justifyContent: 'center', 
+                                  border: 'none', 
+                                  cursor: 'pointer',
+                                  transition: 'transform 0.2s',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                                }}
+                                onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                                onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                                title="Descargar"
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4m4-10l5 5 5-5m-5 5V3"/></svg>
+                              </button>
+                            </div>
+                            
+                            <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+                              <div style={{ 
+                                backgroundColor: 'rgba(56, 189, 248, 0.95)', 
+                                color: 'white', 
+                                padding: '4px 10px', 
+                                borderRadius: '20px', 
+                                fontSize: '0.65rem', 
+                                fontWeight: '700',
+                                display: 'flex',
+                                alignItems: 'center',
+                                gap: '4px',
+                                backdropFilter: 'blur(8px)',
+                                boxShadow: '0 4px 12px rgba(56, 189, 248, 0.4)',
+                                textTransform: 'uppercase',
+                                letterSpacing: '0.5px'
+                              }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                                Previsualizar
+                              </div>
+                            </div>
                           </div>
                         </div>
                       ))}
@@ -1723,13 +1761,76 @@ export default function ProjectExecutionClient({
                         }
                       })()}
 
+                      {/* Hover Overlay */}
+                      <div 
+                        className="group-hover:opacity-100" 
+                        style={{ 
+                          position: 'absolute', 
+                          inset: 0, 
+                          background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%)', 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          justifyContent: 'space-between', 
+                          opacity: 0, 
+                          transition: 'opacity 0.3s ease', 
+                          padding: '8px',
+                          zIndex: 20
+                        }}
+                      >
+                        <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDownload(item.url, item.filename); }} 
+                            style={{ 
+                              width: '26px', 
+                              height: '26px', 
+                              borderRadius: '50%', 
+                              backgroundColor: 'rgba(56, 189, 248, 0.9)', 
+                              color: 'white', 
+                              display: 'flex', 
+                              alignItems: 'center', 
+                              justifyContent: 'center', 
+                              border: 'none', 
+                              cursor: 'pointer',
+                              transition: 'transform 0.2s',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                            title="Descargar"
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v4m4-10l5 5 5-5m-5 5V3"/></svg>
+                          </button>
+                        </div>
+                        
+                        <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
+                          <div style={{ 
+                            backgroundColor: 'rgba(56, 189, 248, 0.95)', 
+                            color: 'white', 
+                            padding: '4px 10px', 
+                            borderRadius: '20px', 
+                            fontSize: '0.65rem', 
+                            fontWeight: '700',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            backdropFilter: 'blur(8px)',
+                            boxShadow: '0 4px 12px rgba(56, 189, 248, 0.4)',
+                            textTransform: 'uppercase',
+                            letterSpacing: '0.5px'
+                          }}>
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                            Previsualizar
+                          </div>
+                        </div>
+                      </div>
+
                       {item.isPending && (
                         <div style={{ 
                           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
                           backgroundColor: 'rgba(0,0,0,0.5)', 
                           display: 'flex', alignItems: 'center', justifyContent: 'center',
                           flexDirection: 'column', gap: '4px',
-                          zIndex: 10
+                          zIndex: 30
                         }}>
                           <span style={{ fontSize: '1.2rem' }}>🕒</span>
                           <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pendiente</span>
