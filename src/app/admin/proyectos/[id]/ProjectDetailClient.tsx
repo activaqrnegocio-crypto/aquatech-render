@@ -252,7 +252,13 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     }
   }, [filteredChat.length, activeTab, project.id])
 
-  // --- REAL-TIME POLLING: Full sync every 5s ---
+  // --- Ref to access latest chatMessages without causing re-renders ---
+  const chatMessagesRef = useRef(chatMessages)
+  useEffect(() => {
+    chatMessagesRef.current = chatMessages
+  }, [chatMessages])
+
+  // --- REAL-TIME POLLING: Incremental sync every 1s ---
   useEffect(() => {
     const markAsSeen = async () => {
       try {
@@ -276,7 +282,8 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     const pollInterval = setInterval(async () => {
       if (document.hidden) return
       
-      const lastMsg = chatMessages[chatMessages.length - 1]
+      const current = chatMessagesRef.current
+      const lastMsg = current[current.length - 1]
       const since = lastMsg?.createdAt
       const freshMsgs = await fetchMessages(since)
       
@@ -288,7 +295,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           return [...prev, ...uniqueNew]
         })
       }
-    }, 2000)
+    }, 1000)
 
     const handleFocus = () => {
        fetchMessages().then(msgs => { if (msgs.length > 0) setChatMessages(msgs) })
@@ -300,7 +307,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       clearInterval(pollInterval)
       window.removeEventListener('focus', handleFocus)
     }
-  }, [project.id, chatMessages])
+  }, [project.id])
 
   const CATEGORIES = [
     { id: 'PISCINA', label: 'Piscina' },

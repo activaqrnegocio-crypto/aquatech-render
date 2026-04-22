@@ -170,7 +170,7 @@ export default function Sidebar() {
     }
 
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 30000) // Every 30 seconds
+    const interval = setInterval(fetchNotifications, 10000) // Every 10 seconds
     return () => clearInterval(interval)
   }, [status])
   

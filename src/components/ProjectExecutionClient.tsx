@@ -130,7 +130,7 @@ export default function ProjectExecutionClient({
           })
         }
       } catch (err) { console.error(err) }
-    }, 2000) 
+    }, 1000) 
     
     const handleFocus = () => fetchMessages().then(msgs => {
       if (msgs && msgs.length > 0) {
@@ -198,7 +198,7 @@ export default function ProjectExecutionClient({
       } catch (e) { /* silent fail */ }
     }
 
-    const expInterval = setInterval(fetchExpenses, 20000)
+    const expInterval = setInterval(fetchExpenses, 5000)
     return () => clearInterval(expInterval)
   }, [mounted, project.id])
 
@@ -522,7 +522,7 @@ export default function ProjectExecutionClient({
     // Auto-sync outbox interval
     const interval = setInterval(() => {
         if (navigator.onLine) syncOutbox()
-    }, 15000)
+    }, 5000)
 
     return () => {
       window.removeEventListener('online', handleStatusChange)
