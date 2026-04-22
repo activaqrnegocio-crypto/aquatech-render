@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { getLocalNow, forceEcuadorTZ } from '@/lib/date-utils'
 import { isAdmin, isOperator } from '@/lib/rbac'
-import { notifyUser } from '@/lib/push'
+import { notifyUser, notifyAdmins } from '@/lib/push'
 import { sendWhatsAppMessage } from '@/lib/whatsapp'
 
 export async function GET(request: Request) {
@@ -307,6 +307,14 @@ export async function POST(request: Request) {
         }
       }
     }
+
+    // 🔔 Notification: Notify all Admins about new project
+    notifyAdmins(
+      '🆕 Nuevo Proyecto Creado',
+      `${session.user.name} creó: ${title}`,
+      `/admin/proyectos/${project.id}`,
+      `new-project-${project.id}`
+    ).catch(e => console.error('Admin notify error:', e));
 
     return NextResponse.json(project, { status: 201 })
   } catch (error: any) {

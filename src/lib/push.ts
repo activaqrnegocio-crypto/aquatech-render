@@ -134,3 +134,26 @@ export async function notifyProjectTeam(
 ) {
   return sendPushToProjectTeam(projectId, excludeUserId, { title, body, url, tag }).catch(() => {})
 }
+/**
+ * Send push notification to all admins in the system.
+ */
+export async function notifyAdmins(title: string, body: string, url?: string, tag?: string) {
+  try {
+    const admins = await prisma.user.findMany({
+      where: { 
+        role: { in: ['ADMIN', 'ADMINISTRADORA', 'SUPERADMIN'] }, 
+        isActive: true 
+      },
+      select: { id: true }
+    })
+    
+    if (admins.length === 0) return []
+    
+    return Promise.allSettled(
+      admins.map(a => notifyUser(a.id, title, body, url, tag))
+    )
+  } catch (error) {
+    console.error('[PUSH] Error notifying admins:', error)
+    return []
+  }
+}

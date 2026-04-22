@@ -157,7 +157,19 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
     }
 
     // 🔔 Push Notification to team (fire-and-forget)
-    const pushBody = content?.substring(0, 80) || (mediaUrl || media?.url ? '📎 Nuevo archivo adjunto' : 'Nuevo mensaje')
+    let pushBody = content?.substring(0, 80) || 'Nuevo mensaje'
+    
+    // Better body based on type
+    if (finalType === 'IMAGE') pushBody = `📷 Imagen: ${content || 'Nueva foto'}`
+    else if (finalType === 'VIDEO') pushBody = `🎥 Video: ${content || 'Nuevo video'}`
+    else if (finalType === 'AUDIO') pushBody = `🎤 Audio: ${content || 'Mensaje de voz'}`
+    else if (finalType === 'LOCATION') pushBody = `📍 Ubicación enviada`
+    else if (finalType === 'DOCUMENT') pushBody = `📄 Documento: ${content || 'Nuevo archivo'}`
+    else if (finalType === 'EXPENSE_LOG') {
+      const amount = extraData?.amount ? Number(extraData.amount).toFixed(2) : '?'
+      pushBody = `💰 Gasto: $${amount} - ${content || 'Sin descripción'}`
+    }
+
     notifyProjectTeam(
       projectId, userId,
       `💬 ${projectTitle} - ${session.user.name}`,

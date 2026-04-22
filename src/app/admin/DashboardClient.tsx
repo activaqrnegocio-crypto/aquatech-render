@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
+import { usePushNotifications } from '@/hooks/usePushNotifications'
 
 interface DashboardProps {
   stats: {
@@ -109,9 +110,21 @@ function timeAgo(dateStr: string) {
 export default function DashboardClient({ stats, recentExpenses, recentMessages, activeProjects, teamList }: DashboardProps) {
   const [activeTab, setActiveTab] = useState(activeProjects[0]?.id || 0)
   const [mounted, setMounted] = useState(false)
+  const [pushDismissed, setPushDismissed] = useState(true)
+  const { status: pushStatus, subscribe: pushSubscribe, isSubscribing } = usePushNotifications()
 
   useEffect(() => {
     setMounted(true)
+    const dismissed = localStorage.getItem('push_dismissed')
+    if (dismissed) {
+      const dismissedAt = Number(dismissed)
+      // Show again after 7 days
+      if (Date.now() - dismissedAt > 7 * 24 * 60 * 60 * 1000) {
+        setPushDismissed(false)
+      }
+    } else {
+      setPushDismissed(false)
+    }
   }, [])
 
   const budgetPercent = stats.totalBudget > 0 ? Math.min((stats.totalSpent / stats.totalBudget) * 100, 100) : 0
@@ -147,6 +160,69 @@ export default function DashboardClient({ stats, recentExpenses, recentMessages,
         <h1 className="page-title">Dashboard</h1>
         <p className="page-subtitle">Resumen general de Aquatech</p>
       </div>
+
+      {/* Push Notification Banner for Admins */}
+      {pushStatus !== 'subscribed' && pushStatus !== 'unsupported' && pushStatus !== 'denied' && pushStatus !== 'loading' && !pushDismissed && (
+        <div style={{
+          background: 'linear-gradient(135deg, #0070c0, #38bdf8)',
+          borderRadius: '16px',
+          padding: '16px 20px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          gap: '15px',
+          flexWrap: 'wrap',
+          margin: '0 0 25px 0',
+          boxShadow: '0 4px 20px rgba(0, 112, 192, 0.3)',
+          animation: 'fade-in 0.5s ease-out'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '200px' }}>
+            <span style={{ fontSize: '1.8rem' }}>🔔</span>
+            <div>
+              <p style={{ margin: 0, color: 'white', fontWeight: 'bold', fontSize: '0.95rem' }}>Activa las Notificaciones de Administrador</p>
+              <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem' }}>Recibe alertas en tiempo real de nuevos proyectos, mensajes y gastos</p>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <button
+              onClick={async () => {
+                const ok = await pushSubscribe()
+                if (ok) setPushDismissed(true)
+              }}
+              disabled={isSubscribing}
+              style={{
+                backgroundColor: 'white',
+                color: '#0070c0',
+                fontWeight: 'bold',
+                padding: '8px 20px',
+                borderRadius: '10px',
+                border: 'none',
+                fontSize: '0.85rem',
+                cursor: 'pointer'
+              }}
+            >
+              {isSubscribing ? 'Activando...' : '✓ Activar'}
+            </button>
+            <button
+              onClick={() => {
+                localStorage.setItem('push_dismissed', String(Date.now()))
+                setPushDismissed(true)
+              }}
+              style={{
+                backgroundColor: 'transparent',
+                color: 'rgba(255,255,255,0.8)',
+                border: '1px solid rgba(255,255,255,0.4)',
+                padding: '8px 14px',
+                borderRadius: '10px',
+                fontSize: '0.8rem',
+                cursor: 'pointer'
+              }}
+            >
+              Luego
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* KPI Cards */}
       <div className="kpi-grid">

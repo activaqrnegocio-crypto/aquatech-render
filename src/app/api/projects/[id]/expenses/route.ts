@@ -130,10 +130,16 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
 
     // 🔔 Push Notification (fire-and-forget)
     if (!isNote) {
+      const project = await prisma.project.findUnique({
+        where: { id: projectId },
+        select: { title: true }
+      })
+      const projectTitle = project?.title || 'Proyecto'
+
       notifyProjectTeam(
         projectId, userId,
-        `💰 Gasto: $${Number(amount).toFixed(2)}`,
-        `${session.user.name}: ${description || 'Sin descripción'}`,
+        `💰 Gasto: ${projectTitle}`,
+        `${session.user.name}: $${Number(amount).toFixed(2)} - ${description || 'Sin descripción'}`,
         `/admin/operador/proyecto/${projectId}?view=records`,
         `expense-${projectId}`
       )
