@@ -39,8 +39,8 @@ export default function ProyectosPage() {
     if (isAuthorized) {
       fetchProjects()
       
-      // Auto-refresh cada 5 segundos para ver nuevos proyectos "en vivo"
-      const interval = setInterval(fetchProjects, 5000)
+      // Auto-refresh cada 30 segundos para ver nuevos proyectos "en vivo" pero reduciendo carga al servidor
+      const interval = setInterval(fetchProjects, 30000)
       
       // Refrescar al volver a la pestaña
       const handleFocus = () => fetchProjects()

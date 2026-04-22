@@ -56,20 +56,42 @@ export async function GET(request: Request) {
     })
 
     // Map to include unreadCount
-    const projectsWithCounts = await Promise.all(projects.map(async (project) => {
-      const view = views.find(v => v.projectId === project.id)
-      const unreadCount = await prisma.chatMessage.count({
-        where: {
-          projectId: project.id,
-          createdAt: { gt: view ? view.lastSeen : project.createdAt },
-          userId: { not: Number(userId) } // Don't count my own messages
-        }
-      })
+    const unreadCountsMap: Record<number, number> = {}
 
-      return {
-        ...project,
-        unreadCount
+    if (projects.length > 0) {
+      const viewsMap = new Map(views.map(v => [v.projectId, v]))
+      
+      // Batch queries to avoid N+1 and connection pool exhaustion
+      for (let i = 0; i < projects.length; i += 100) {
+        const batch = projects.slice(i, i + 100)
+        const conditions = batch.map(p => {
+          const view = viewsMap.get(p.id)
+          const lastSeen = view ? new Date(view.lastSeen) : new Date(p.createdAt)
+          const sqlDate = lastSeen.toISOString().replace('T', ' ').replace('Z', '')
+          return `(projectId = ${p.id} AND createdAt > '${sqlDate}')`
+        })
+
+        const sql = `
+          SELECT projectId, CAST(COUNT(*) AS UNSIGNED) as count
+          FROM ChatMessage
+          WHERE userId != ${Number(userId)}
+          AND (${conditions.join(' OR ')})
+          GROUP BY projectId
+        `
+        try {
+          const results: any[] = await prisma.$queryRawUnsafe(sql)
+          results.forEach(r => {
+            unreadCountsMap[r.projectId] = Number(r.count)
+          })
+        } catch (err) {
+          console.error("Error fetching unread counts batch:", err)
+        }
       }
+    }
+
+    const projectsWithCounts = projects.map((project) => ({
+      ...project,
+      unreadCount: unreadCountsMap[project.id] || 0
     }))
 
     return NextResponse.json(projectsWithCounts)

@@ -2071,65 +2071,39 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                         );
                       }
                     })()}
-                    {/* Hover Overlay */}
-                    <div 
-                      className="group-hover:opacity-100" 
-                      style={{ 
-                        position: 'absolute', 
-                        inset: 0, 
-                        background: 'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 50%, rgba(0,0,0,0.6) 100%)', 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        justifyContent: 'space-between', 
-                        opacity: 0, 
-                        transition: 'opacity 0.3s ease', 
-                        padding: '8px',
-                        zIndex: 20
-                      }}
-                    >
-                      <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                        <button 
-                          onClick={(e) => { e.stopPropagation(); handleDeleteGalleryItem(item.id); }} 
-                          style={{ 
-                            width: '26px', 
-                            height: '26px', 
-                            borderRadius: '50%', 
-                            backgroundColor: 'rgba(239, 68, 68, 0.9)', 
-                            color: 'white', 
-                            display: 'flex', 
-                            alignItems: 'center', 
-                            justifyContent: 'center', 
-                            border: 'none', 
-                            cursor: 'pointer',
-                            transition: 'transform 0.2s',
-                            boxShadow: '0 2px 8px rgba(0,0,0,0.3)'
-                          }}
-                          onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-                          onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                        >
-                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
-                        </button>
-                      </div>
-                      
-                      <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '4px' }}>
-                        <div style={{ 
-                          backgroundColor: 'rgba(56, 189, 248, 0.95)', 
-                          color: 'white', 
-                          padding: '4px 10px', 
-                          borderRadius: '20px', 
-                          fontSize: '0.65rem', 
-                          fontWeight: '700',
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: '4px',
-                          backdropFilter: 'blur(8px)',
-                          boxShadow: '0 4px 12px rgba(56, 189, 248, 0.4)',
-                          textTransform: 'uppercase',
-                          letterSpacing: '0.5px'
-                        }}>
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
-                          Previsualizar
-                        </div>
+                    {/* Always-visible action badges */}
+                    <div style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 20 }}>
+                      <button 
+                        onClick={(e) => { e.stopPropagation(); handleDeleteGalleryItem(item.id); }} 
+                        style={{ 
+                          width: '28px', height: '28px', borderRadius: '50%', 
+                          backgroundColor: 'rgba(239, 68, 68, 0.85)', backdropFilter: 'blur(4px)',
+                          color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                          border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer',
+                          transition: 'transform 0.2s, background-color 0.2s',
+                          boxShadow: '0 2px 8px rgba(239,68,68,0.4)'
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.15)'; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                        title="Eliminar"
+                      >
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                      </button>
+                    </div>
+                    <div style={{ 
+                      position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 20,
+                      background: 'linear-gradient(to top, rgba(0,0,0,0.7) 0%, transparent 100%)',
+                      padding: '20px 6px 6px', display: 'flex', justifyContent: 'center'
+                    }}>
+                      <div style={{ 
+                        backgroundColor: 'rgba(56, 189, 248, 0.9)', color: 'white', 
+                        padding: '3px 10px', borderRadius: '20px', fontSize: '0.6rem', fontWeight: '700',
+                        display: 'flex', alignItems: 'center', gap: '4px',
+                        textTransform: 'uppercase', letterSpacing: '0.5px',
+                        boxShadow: '0 2px 8px rgba(56,189,248,0.4)'
+                      }}>
+                        <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        Ver
                       </div>
                     </div>
                   </div>
