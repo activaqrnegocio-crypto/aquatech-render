@@ -557,14 +557,12 @@ self.addEventListener('push', (event) => {
     body: data.body || 'Nueva actualización en tu proyecto',
     icon: data.icon || '/icon-192.png',
     badge: data.badge || '/icon-192.png',
-    vibrate: [500, 200, 500, 200, 500, 200, 800, 200, 1000, 200, 1000], // ALARM PATTERN
-    tag: (data.tag || 'general') + '-' + Date.now(), // FORCE UNIQUE
+    vibrate: [200, 100, 200], // Short, safe vibration pattern
+    tag: data.tag || 'aquatech-update', // Static tag so renotify works properly
     renotify: true,
     requireInteraction: true,
     silent: false,
     timestamp: Date.now(),
-    icon: data.icon || '/icon-192.png',
-    badge: data.badge || '/icon-192.png',
     image: '/logo.jpg', // Large image for better visibility
     data: {
       url: data.url || '/admin/operador',
@@ -584,7 +582,7 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
 
-  if (event.action === 'dismiss') return;
+  if (event.action === 'close') return;
 
   const targetUrl = event.notification.data?.url || '/admin/operador';
 

@@ -93,6 +93,7 @@ export function NotificationOnboarding({ onDone }: OnboardingProps) {
         <div className="onboarding-header">
           <div className="onboarding-icon">⚠️</div>
           <h3>{guide.titulo}</h3>
+          <button className="close-btn" onClick={onDone}>✕</button>
         </div>
         <p className="onboarding-desc">Para que las notificaciones lleguen al instante en tu {brand === 'iphone' ? 'iPhone' : 'dispositivo'}, sigue estos pasos:</p>
         
@@ -113,19 +114,16 @@ export function NotificationOnboarding({ onDone }: OnboardingProps) {
       <style jsx>{`
         .onboarding-overlay {
           position: fixed;
-          top: 0;
           left: 0;
           right: 0;
-          bottom: 0;
-          background: rgba(0, 0, 0, 0.85);
-          backdrop-filter: blur(8px);
-          z-index: 10000;
+          bottom: 20px;
+          z-index: 9999;
           display: flex;
-          align-items: center;
+          align-items: flex-end;
           justify-content: center;
-          padding: 20px;
+          padding: 10px 20px;
           opacity: 0;
-          transition: opacity 0.4s ease;
+          transition: all 0.4s ease;
           pointer-events: none;
         }
         .onboarding-overlay.visible {
@@ -135,84 +133,97 @@ export function NotificationOnboarding({ onDone }: OnboardingProps) {
         .onboarding-card {
           background: #1a1a1a;
           border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 24px;
+          border-radius: 20px;
           width: 100%;
-          max-width: 450px;
-          padding: 30px;
-          box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+          max-width: 400px;
+          padding: 20px;
+          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
           transform: translateY(20px);
           transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          position: relative;
         }
         .onboarding-overlay.visible .onboarding-card {
           transform: translateY(0);
         }
+        .close-btn {
+          position: absolute;
+          top: 15px;
+          right: 15px;
+          background: none;
+          border: none;
+          color: #aaa;
+          font-size: 1.2rem;
+          cursor: pointer;
+          padding: 5px;
+        }
         .onboarding-header {
           display: flex;
           align-items: center;
-          gap: 15px;
-          margin-bottom: 20px;
+          gap: 10px;
+          margin-bottom: 12px;
+          padding-right: 20px;
         }
         .onboarding-icon {
-          font-size: 2rem;
+          font-size: 1.5rem;
         }
         h3 {
           margin: 0;
-          font-size: 1.25rem;
+          font-size: 1.1rem;
           color: white;
-          font-weight: 800;
+          font-weight: 700;
           line-height: 1.2;
         }
         .onboarding-desc {
           color: #aaa;
-          font-size: 0.95rem;
-          margin-bottom: 25px;
-          line-height: 1.5;
+          font-size: 0.85rem;
+          margin-bottom: 15px;
+          line-height: 1.4;
         }
         .onboarding-steps {
           list-style: none;
           padding: 0;
-          margin: 0 0 30px 0;
+          margin: 0 0 15px 0;
           display: flex;
           flex-direction: column;
-          gap: 12px;
+          gap: 8px;
         }
         .onboarding-steps li {
           display: flex;
           align-items: flex-start;
-          gap: 12px;
+          gap: 10px;
           background: rgba(255, 255, 255, 0.03);
-          padding: 12px 16px;
-          border-radius: 12px;
+          padding: 8px 12px;
+          border-radius: 10px;
           border: 1px solid rgba(255, 255, 255, 0.05);
         }
         .step-number {
           background: var(--brand-primary, #0070c0);
           color: white;
-          width: 22px;
-          height: 22px;
+          width: 18px;
+          height: 18px;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 0.75rem;
+          font-size: 0.65rem;
           font-weight: bold;
           flex-shrink: 0;
           margin-top: 2px;
         }
         .step-text {
           color: #eee;
-          font-size: 0.9rem;
-          line-height: 1.4;
+          font-size: 0.8rem;
+          line-height: 1.3;
         }
         .onboarding-button {
           width: 100%;
           background: white;
           color: black;
           border: none;
-          padding: 14px;
-          border-radius: 14px;
-          font-weight: 800;
-          font-size: 1rem;
+          padding: 10px;
+          border-radius: 10px;
+          font-weight: 700;
+          font-size: 0.9rem;
           cursor: pointer;
           transition: all 0.2s ease;
         }
