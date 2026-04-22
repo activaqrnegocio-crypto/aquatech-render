@@ -7,6 +7,8 @@ import { useLiveQuery } from 'dexie-react-hooks'
 import Link from 'next/link'
 import CalendarView from '@/components/Calendar/CalendarView'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
+import { NotificationOnboarding } from '@/components/NotificationOnboarding'
+import { IosInstallBanner } from '@/components/IosInstallBanner'
 // Inline SVG icons to match project pattern
 const svgProps = (size: number, style?: React.CSSProperties, className?: string) => ({
   width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
@@ -40,7 +42,13 @@ export default function OperatorDashboardClient({
   const [projects, setProjects] = useState(initialProjects)
   const [selectedTask, setSelectedTask] = useState<any>(null)
   const [pushDismissed, setPushDismissed] = useState(true)
-  const { status: pushStatus, subscribe: pushSubscribe, isSubscribing } = usePushNotifications()
+  const { 
+    status: pushStatus, 
+    subscribe: pushSubscribe, 
+    isSubscribing,
+    showOnboarding,
+    setShowOnboarding 
+  } = usePushNotifications()
 
   // Show push banner if not subscribed and not recently dismissed
   useEffect(() => {
@@ -194,6 +202,14 @@ export default function OperatorDashboardClient({
           </div>
         ) */}
       </div>
+
+      {/* iOS Install Guide (Only if needed) */}
+      <IosInstallBanner />
+
+      {/* Notification Onboarding Modal */}
+      {showOnboarding && (
+        <NotificationOnboarding onDone={() => setShowOnboarding(false)} />
+      )}
 
       {/* Push Notification Banner */}
       {pushStatus !== 'subscribed' && pushStatus !== 'unsupported' && pushStatus !== 'denied' && pushStatus !== 'loading' && !pushDismissed && (

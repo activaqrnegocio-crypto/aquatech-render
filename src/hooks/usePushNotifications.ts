@@ -18,6 +18,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
 export function usePushNotifications() {
   const [status, setStatus] = useState<PushStatus>('loading')
   const [isSubscribing, setIsSubscribing] = useState(false)
+  const [showOnboarding, setShowOnboarding] = useState(false)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -101,6 +102,12 @@ export function usePushNotifications() {
         // 5. Send test notification
         fetch('/api/push/test', { method: 'POST' }).catch(() => {})
         
+        // Trigger onboarding for mobile devices
+        const isMobile = /android|iphone|ipad/i.test(navigator.userAgent)
+        if (isMobile) {
+          setShowOnboarding(true)
+        }
+
         setIsSubscribing(false)
         return true
       } else {
@@ -145,6 +152,8 @@ export function usePushNotifications() {
     isSubscribing,
     subscribe,
     unsubscribe,
+    showOnboarding,
+    setShowOnboarding,
     isSupported: status !== 'unsupported',
     isSubscribed: status === 'subscribed',
   }

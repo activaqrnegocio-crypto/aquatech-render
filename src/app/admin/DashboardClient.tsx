@@ -3,6 +3,8 @@
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
+import { NotificationOnboarding } from '@/components/NotificationOnboarding'
+import { IosInstallBanner } from '@/components/IosInstallBanner'
 
 interface DashboardProps {
   stats: {
@@ -111,7 +113,13 @@ export default function DashboardClient({ stats, recentExpenses, recentMessages,
   const [activeTab, setActiveTab] = useState(activeProjects[0]?.id || 0)
   const [mounted, setMounted] = useState(false)
   const [pushDismissed, setPushDismissed] = useState(true)
-  const { status: pushStatus, subscribe: pushSubscribe, isSubscribing } = usePushNotifications()
+  const { 
+    status: pushStatus, 
+    subscribe: pushSubscribe, 
+    isSubscribing,
+    showOnboarding,
+    setShowOnboarding 
+  } = usePushNotifications()
 
   useEffect(() => {
     setMounted(true)
@@ -160,6 +168,14 @@ export default function DashboardClient({ stats, recentExpenses, recentMessages,
         <h1 className="page-title">Dashboard</h1>
         <p className="page-subtitle">Resumen general de Aquatech</p>
       </div>
+
+      {/* iOS Install Guide (Only if needed) */}
+      <IosInstallBanner />
+
+      {/* Notification Onboarding Modal */}
+      {showOnboarding && (
+        <NotificationOnboarding onDone={() => setShowOnboarding(false)} />
+      )}
 
       {/* Push Notification Banner for Admins */}
       {pushStatus !== 'subscribed' && pushStatus !== 'unsupported' && pushStatus !== 'denied' && pushStatus !== 'loading' && !pushDismissed && (
