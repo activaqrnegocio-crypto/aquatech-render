@@ -5,23 +5,22 @@ import { useEffect } from 'react'
 /**
  * Service Worker Registration
  * 
- * Registers /sw.js which forwards to /custom-sw.js via importScripts.
- * This approach ensures:
- * - Old cached JS (that registers /sw.js) still works
- * - New code also registers /sw.js
- * - No unregister/re-register gap that leaves the app without a SW
- * - Both paths execute the same custom-sw.js offline-first logic
+ * Registers /custom-sw.js directly as the Service Worker.
+ * Also attempts /sw.js as a bridge (which imports custom-sw.js)
+ * for backward compatibility with devices that have the old SW.
  * 
- * After registration, sends PRECACHE_URLS to warm-up the cache
- * with critical pages while the user has an active session.
+ * CRITICAL: Does NOT unregister existing SWs to avoid gaps
+ * where no SW is active (which causes ERR_FAILED offline).
  */
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
     if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')) {
       const registerSW = async () => {
         try {
-          const reg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-          console.log('[App] SW registered, scope:', reg.scope);
+          // Register custom-sw.js directly — this will update any existing
+          // registration for scope '/' regardless of what script URL was used before
+          const reg = await navigator.serviceWorker.register('/custom-sw.js', { scope: '/' });
+          console.log('[App] SW registered (custom-sw.js), scope:', reg.scope);
 
           // Force the new SW to activate immediately if waiting
           if (reg.waiting) {
@@ -38,18 +37,22 @@ export default function ServiceWorkerRegistration() {
             }
           });
 
-          // Warm-up cache after SW activates (3s delay to ensure activation)
-          setTimeout(() => {
-            warmUpCache();
-          }, 3000);
+          // Warm-up cache after SW activates
+          setTimeout(() => warmUpCache(), 3000);
 
           // Check for SW updates every 30 minutes
-          setInterval(() => {
-            reg.update();
-          }, 30 * 60 * 1000);
+          setInterval(() => reg.update(), 30 * 60 * 1000);
 
         } catch (err) {
           console.error('[App] SW registration failed:', err);
+          // Fallback: try sw.js (bridge file) if custom-sw.js fails
+          try {
+            const fallbackReg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
+            console.log('[App] SW fallback registered (sw.js), scope:', fallbackReg.scope);
+            setTimeout(() => warmUpCache(), 3000);
+          } catch (fallbackErr) {
+            console.error('[App] SW fallback also failed:', fallbackErr);
+          }
         }
       };
 
@@ -66,21 +69,22 @@ export default function ServiceWorkerRegistration() {
 }
 
 /**
- * Warm-up cache: sends a message to the active SW to pre-cache
- * critical pages. Runs AFTER mount so session cookies are available,
- * ensuring cached pages are the actual dashboard (not login redirects).
+ * Warm-up cache: pre-cache critical pages with active session cookies.
+ * Retries if SW hasn't claimed the page yet.
  */
-function warmUpCache() {
+function warmUpCache(retries = 0) {
   if (!navigator.serviceWorker.controller) {
-    // SW not controlling yet, retry in 2s
-    setTimeout(() => warmUpCache(), 2000);
+    if (retries < 5) {
+      setTimeout(() => warmUpCache(retries + 1), 2000);
+    }
     return;
   }
 
-  const isOperator = window.location.pathname.includes('/operador');
-  const isSubcon = window.location.pathname.includes('/subcontratista');
+  const path = window.location.pathname;
+  const isOperator = path.includes('/operador');
+  const isSubcon = path.includes('/subcontratista');
 
-  const criticalPages = [
+  const pages = [
     '/admin',
     '/admin/',
     '/admin/login',
@@ -91,27 +95,17 @@ function warmUpCache() {
   ];
 
   if (isOperator) {
-    criticalPages.push(
-      '/admin/operador',
-      '/admin/operador/',
-      '/admin/operador/nuevo',
-    );
+    pages.push('/admin/operador', '/admin/operador/', '/admin/operador/nuevo');
   } else if (isSubcon) {
-    criticalPages.push(
-      '/admin/subcontratista',
-    );
+    pages.push('/admin/subcontratista');
   } else {
-    criticalPages.push(
-      '/admin/proyectos',
-      '/admin/recursos',
-      '/admin/reportes',
-    );
+    pages.push('/admin/proyectos', '/admin/recursos', '/admin/reportes');
   }
 
   navigator.serviceWorker.controller.postMessage({
     type: 'PRECACHE_URLS',
-    urls: criticalPages,
+    urls: pages,
   });
 
-  console.log('[App] Warm-up cache sent for', criticalPages.length, 'pages');
+  console.log('[App] Warm-up cache sent for', pages.length, 'pages');
 }

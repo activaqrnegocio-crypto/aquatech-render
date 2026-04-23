@@ -16,6 +16,9 @@ RUN npx prisma generate
 # Build the application
 RUN npm run build
 
+# Ensure sw.js bridge exists (next-pwa may delete it during build)
+RUN echo "importScripts('/custom-sw.js');" > public/sw.js
+
 # Stage 2: Run the application
 FROM node:20-alpine AS runner
 
