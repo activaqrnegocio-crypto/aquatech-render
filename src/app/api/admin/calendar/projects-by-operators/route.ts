@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { isAdmin as checkIsAdmin } from '@/lib/rbac'
+import { isAdmin as checkIsAdmin, hasModuleAccess } from '@/lib/rbac'
 
 /**
  * GET /api/admin/calendar/projects-by-operators?operatorIds=1,2,3
@@ -18,7 +18,9 @@ export async function GET(request: Request) {
     }
 
     const isAdmin = checkIsAdmin((session.user as any).role)
-    if (!isAdmin) {
+    const canAccess = isAdmin || hasModuleAccess(session.user as any, 'calendario')
+
+    if (!canAccess) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 

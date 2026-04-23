@@ -2,7 +2,7 @@ import { prisma } from '@/lib/prisma'
 import { NextResponse } from 'next/server'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { isAdmin } from '@/lib/rbac'
+import { isAdmin, hasModuleAccess } from '@/lib/rbac'
 import { getLocalNow, formatToEcuador } from '@/lib/date-utils'
 
 export const dynamic = 'force-dynamic'
@@ -10,7 +10,10 @@ export const dynamic = 'force-dynamic'
 export async function POST(req: Request) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session || !isAdmin((session.user as any).role)) {
+    
+    const canAccess = session && (isAdmin((session.user as any).role) || hasModuleAccess(session.user as any, 'calendario'))
+
+    if (!canAccess) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
