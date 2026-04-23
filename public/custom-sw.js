@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v38';
+const CACHE_VERSION = 'v39';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -10,12 +10,14 @@ const RSC_CACHE    = `aquatech-rsc-${CACHE_VERSION}`;
 
 // Files to pre-cache on install (always available offline)
 const PRE_CACHE = [
+  '/',
   '/offline.html',
   '/logo.jpg',
   '/cotizacion.jpg',
   '/manifest.json',
   '/admin',
   '/admin/operador',
+  '/admin/subcontratista',
   '/admin/operador/nuevo',
   '/admin/proyectos/nuevo',
   '/admin/inventario',
@@ -175,7 +177,15 @@ self.addEventListener('fetch', (event) => {
   }
 
   // ── Everything else → Network First with cache
-  event.respondWith(networkFirst(request, ASSETS_CACHE));
+  try {
+    event.respondWith(
+      networkFirst(request, ASSETS_CACHE).catch(() => 
+        caches.match('/offline.html')
+      )
+    );
+  } catch (err) {
+    console.error('[SW] Critical fetch listener error:', err);
+  }
 });
 
 // ─── STRATEGIES ─────────────────────────────────────────────
@@ -192,27 +202,20 @@ async function rscNetworkFirst(request) {
   const cacheKey = url.toString();
 
   try {
-    const response = await fetchWithTimeout(request, 10000);
+    const response = await fetchWithTimeout(request.clone(), 10000);
     if (response.ok) {
       const cache = await caches.open(RSC_CACHE);
-      // Store using the normalized URL as key so it matches regardless of _rsc param
       cache.put(cacheKey, response.clone());
     }
     return response;
   } catch (e) {
-    // Network failed — try cache with the normalized key
     const cache = await caches.open(RSC_CACHE);
     const cached = await cache.match(cacheKey);
-    if (cached) {
-      console.log('[SW] Serving RSC from cache:', cacheKey);
-      return cached;
-    }
+    if (cached) return cached;
     
-    // Also try exact match with ignoreVary
-    const exactCached = await caches.match(request, { ignoreVary: true, ignoreSearch: false });
+    const exactCached = await caches.match(request.clone(), { ignoreVary: true });
     if (exactCached) return exactCached;
 
-    // Return error so Next.js can handle it gracefully
     return new Response(JSON.stringify({ error: 'offline' }), {
       status: 503,
       headers: { 'Content-Type': 'application/json' }
@@ -227,23 +230,22 @@ async function rscNetworkFirst(request) {
  * because RSC payloads are NOT valid HTML and would render as raw text.
  */
 async function navigationHandler(request) {
+  console.log('[SW] Handling navigation for:', request.url);
   try {
-    const response = await fetchWithTimeout(request, 8000);
+    const response = await fetchWithTimeout(request.clone(), 8000);
     if (response.ok && response.status === 200) {
       const cache = await caches.open(PAGES_CACHE);
-      cache.put(request, response.clone());
+      cache.put(request.url, response.clone());
     }
     return response;
   } catch (e) {
-    // ONLY search PAGES_CACHE or STATIC_CACHE — never global caches.match() which would 
-    // return RSC payloads from RSC_CACHE and display raw JSON text
+    console.error('[SW] Navigation failed, fallback to cache:', e);
     const pagesCache = await caches.open(PAGES_CACHE);
-    let cached = await pagesCache.match(request, { ignoreVary: true, ignoreSearch: true });
+    let cached = await pagesCache.match(request.url, { ignoreVary: true, ignoreSearch: true });
     if (cached) return cached;
 
-    // Fallback to STATIC_CACHE (where PRE_CACHE items like /admin/operador live)
     const staticCache = await caches.open(STATIC_CACHE);
-    cached = await staticCache.match(request, { ignoreVary: true, ignoreSearch: true });
+    cached = await staticCache.match(request.url, { ignoreVary: true, ignoreSearch: true });
     if (cached) {
       console.log('[SW] Serving from STATIC_CACHE:', request.url);
       return cached;
