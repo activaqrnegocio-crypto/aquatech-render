@@ -19,7 +19,9 @@ export default withAuth(
           pathname.startsWith("/_next") ||
           pathname === "/favicon.ico" ||
           pathname === "/manifest.json" ||
-          pathname === "/sw.js"
+          pathname === "/sw.js" ||
+          pathname === "/custom-sw.js" ||
+          pathname === "/offline.html"
         ) {
           return true;
         }
