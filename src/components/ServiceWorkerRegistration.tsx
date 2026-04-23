@@ -6,7 +6,7 @@ export default function ServiceWorkerRegistration() {
   useEffect(() => {
     if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')) {
       const registerSW = () => {
-        navigator.serviceWorker.register('/custom-sw.js', { scope: '/' })
+        navigator.serviceWorker.register('/sw.js', { scope: '/' })
           .then((reg) => {
             console.log('[App] SW registered, scope:', reg.scope);
             // Check for updates every 30 minutes

@@ -19,9 +19,17 @@ export default function AdminError({
     // forzar la recarga "hard" (completa) permite que el Service Worker atrape la petición
     // de tipo "navigate" y responda directamente con el HTML cacheado de forma nativa.
     if (offline) {
-      setTimeout(() => {
-        window.location.reload()
-      }, 300)
+      const reloadKey = 'offline_reload_attempt';
+      const lastReload = sessionStorage.getItem(reloadKey);
+      const now = Date.now();
+      
+      // Only auto-reload if we haven't tried in the last 10 seconds
+      if (!lastReload || (now - parseInt(lastReload) > 10000)) {
+        sessionStorage.setItem(reloadKey, now.toString());
+        setTimeout(() => {
+          window.location.reload()
+        }, 300)
+      }
     }
   }, [error])
 

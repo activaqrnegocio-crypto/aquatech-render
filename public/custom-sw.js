@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v37';
+const CACHE_VERSION = 'v38';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -21,6 +21,7 @@ const PRE_CACHE = [
   '/admin/inventario',
   '/admin/cotizaciones',
   '/admin/cotizaciones/offline',
+  '/admin/login',
   '/favicon.ico',
 ];
 
@@ -191,7 +192,7 @@ async function rscNetworkFirst(request) {
   const cacheKey = url.toString();
 
   try {
-    const response = await fetchWithTimeout(request, 6000);
+    const response = await fetchWithTimeout(request, 10000);
     if (response.ok) {
       const cache = await caches.open(RSC_CACHE);
       // Store using the normalized URL as key so it matches regardless of _rsc param
@@ -243,16 +244,27 @@ async function navigationHandler(request) {
     // Fallback to STATIC_CACHE (where PRE_CACHE items like /admin/operador live)
     const staticCache = await caches.open(STATIC_CACHE);
     cached = await staticCache.match(request, { ignoreVary: true, ignoreSearch: true });
-    if (cached) return cached;
+    if (cached) {
+      console.log('[SW] Serving from STATIC_CACHE:', request.url);
+      return cached;
+    }
 
     // Nothing in cache → show offline page
-    const offlinePage = await caches.match('/offline.html');
-    if (offlinePage) return offlinePage;
+    try {
+      const offlinePage = await caches.match('/offline.html');
+      if (offlinePage) return offlinePage;
+    } catch (cacheErr) {}
 
-    return new Response('<h1>Sin conexión</h1><p>Por favor, conéctate a internet.</p>', {
-      status: 503,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' }
-    });
+    return new Response(
+      '<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0a0f1e;color:white;">' +
+      '<h1>Sin conexión</h1><p>La página solicitada no está en el caché offline.</p>' +
+      '<button onclick="window.location.reload()" style="padding:10px 20px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;">Reintentar</button>' +
+      '</body></html>', 
+      {
+        status: 503,
+        headers: { 'Content-Type': 'text/html; charset=utf-8' }
+      }
+    );
   }
 }
 
