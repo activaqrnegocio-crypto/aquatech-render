@@ -2,11 +2,11 @@ import type { NextConfig } from "next";
 import path from "path";
 const withPWA = require("@ducanh2912/next-pwa").default({
   dest: "public",
-  sw: "sw.js", // The generated SW name
-  disable: false, // Temporarily enabled for local testing
-  workboxOptions: {
-    importScripts: ['/custom-sw.js']
-  }
+  sw: "sw.js",
+  disable: true, // DISABLED: We use /custom-sw.js directly to avoid Workbox conflicts
+  // The Workbox-generated sw.js was intercepting navigation requests with its
+  // own route handlers that had no offline fallback, causing ERR_FAILED on
+  // cold-start offline. Our custom-sw.js handles everything independently.
 });
 
 const config: NextConfig = {

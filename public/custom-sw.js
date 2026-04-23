@@ -1,7 +1,8 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker (Offline-First) v41
+// Aquatech CRM — Custom Service Worker (Standalone Offline-First) v42
+// Standalone: No Workbox dependency. Registered directly as /custom-sw.js
 // ============================================================
-const CACHE_VERSION = 'v41';
+const CACHE_VERSION = 'v42';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -239,58 +240,114 @@ async function navigationHandler(request) {
   const url = new URL(request.url);
   console.log('[SW] Handling navigation for:', url.pathname);
   
+  // ── STEP 1: Try network first (8s timeout)
   try {
     const response = await fetchWithTimeout(request.clone(), 8000);
     if (response.ok && response.status === 200) {
+      // Cache the successful navigation for future offline use
       const cache = await caches.open(PAGES_CACHE);
       cache.put(request.url, response.clone());
+      // Also cache without/with trailing slash variant
+      const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
+      cache.put(alt, response.clone());
     }
     return response;
   } catch (e) {
-    console.error('[SW] Navigation failed, fallback to cache:', e);
-    
-    // 1. Try exact match
-    let cached = await caches.match(request.url, { ignoreVary: true });
-    if (cached) return cached;
-
-    // 2. Try variations (with/without slash)
-    const altUrl = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
-    cached = await caches.match(altUrl, { ignoreVary: true });
-    if (cached) return cached;
-
-    // 3. Try PRE_CACHE entries
-    const staticCache = await caches.open(STATIC_CACHE);
-    cached = await staticCache.match(request.url, { ignoreVary: true, ignoreSearch: true });
-    if (cached) return cached;
-
-    // 4. APP SHELL FALLBACK (Crucial for cold-start offline)
-    const isOperatorPath = url.pathname.includes('/operador');
-    const isSubconPath = url.pathname.includes('/subcontratista');
-    const shellUrl = isOperatorPath ? '/admin/operador' : (isSubconPath ? '/admin/subcontratista' : '/admin');
-    
-    console.log('[SW] Page not in cache, trying shell fallback:', shellUrl);
-    cached = await caches.match(shellUrl, { ignoreVary: true, ignoreSearch: true });
-    if (cached) return cached;
-
-    // 5. Final attempt: root /
-    cached = await caches.match('/', { ignoreVary: true, ignoreSearch: true });
-    if (cached) return cached;
-
-    // 6. Show offline page
-    const offlinePage = await caches.match('/offline.html');
-    if (offlinePage) return offlinePage;
-
-    return new Response(
-      '<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0a0f1e;color:white;">' +
-      '<h1>Sin conexión</h1><p>La página solicitada no está disponible offline.</p>' +
-      '<button onclick="window.location.reload()" style="padding:10px 20px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;">Reintentar</button>' +
-      '</body></html>', 
-      {
-        status: 503,
-        headers: { 'Content-Type': 'text/html; charset=utf-8' }
-      }
-    );
+    console.warn('[SW] Navigation network failed for:', url.pathname, e.message);
   }
+  
+  // ── OFFLINE FALLBACK CHAIN ──
+  // Search ALL caches (not just specific ones) to find any cached version
+  
+  // STEP 2: Try exact URL match across all caches
+  let cached = await caches.match(request.url, { ignoreVary: true, ignoreSearch: true });
+  if (cached) {
+    console.log('[SW] Found exact cache match');
+    return cached;
+  }
+
+  // STEP 3: Try with/without trailing slash
+  const altUrl = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
+  cached = await caches.match(altUrl, { ignoreVary: true, ignoreSearch: true });
+  if (cached) {
+    console.log('[SW] Found alternate slash cache match');
+    return cached;
+  }
+
+  // STEP 4: Try just the pathname (in case the full URL with host doesn't match)
+  const allCacheNames = await caches.keys();
+  for (const cacheName of allCacheNames) {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    for (const key of keys) {
+      const keyUrl = new URL(key.url);
+      if (keyUrl.pathname === url.pathname) {
+        const match = await cache.match(key);
+        if (match) {
+          console.log('[SW] Found pathname match in cache:', cacheName);
+          return match;
+        }
+      }
+    }
+  }
+
+  // STEP 5: APP SHELL FALLBACK — serve the parent dashboard shell
+  const isOperatorPath = url.pathname.includes('/operador');
+  const isSubconPath = url.pathname.includes('/subcontratista');
+  const shellPaths = isOperatorPath 
+    ? ['/admin/operador', '/admin/operador/'] 
+    : (isSubconPath 
+      ? ['/admin/subcontratista', '/admin/subcontratista/'] 
+      : ['/admin', '/admin/']);
+  
+  for (const shellPath of shellPaths) {
+    cached = await caches.match(shellPath, { ignoreVary: true, ignoreSearch: true });
+    if (cached) {
+      console.log('[SW] Serving app shell fallback:', shellPath);
+      return cached;
+    }
+  }
+
+  // STEP 6: Try root /
+  cached = await caches.match('/', { ignoreVary: true, ignoreSearch: true });
+  if (cached) {
+    console.log('[SW] Serving root fallback');
+    return cached;
+  }
+
+  // STEP 7: Any cached HTML page at all (last resort before offline.html)
+  for (const cacheName of allCacheNames) {
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    for (const key of keys) {
+      const match = await cache.match(key);
+      if (match && match.headers.get('content-type')?.includes('text/html')) {
+        console.log('[SW] Serving any cached HTML as emergency fallback');
+        return match;
+      }
+    }
+  }
+
+  // STEP 8: Show offline page
+  const offlinePage = await caches.match('/offline.html');
+  if (offlinePage) return offlinePage;
+
+  // STEP 9: Generate inline offline page (absolute last resort)
+  console.error('[SW] ALL cache lookups failed — generating inline offline page');
+  return new Response(
+    '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+    '<title>Sin conexión</title></head>' +
+    '<body style="font-family:system-ui,sans-serif;text-align:center;padding:50px;background:#0a0f1e;color:white;">' +
+    '<h1 style="margin-bottom:16px;">📡 Sin conexión</h1>' +
+    '<p style="color:#94a3b8;margin-bottom:24px;">La app necesita cargar al menos una vez con internet para funcionar offline.</p>' +
+    '<p style="color:#64748b;font-size:0.85rem;margin-bottom:24px;">Conecta el WiFi, abre la app, navega un momento, y luego podrás usarla sin internet.</p>' +
+    '<button onclick="window.location.reload()" style="padding:12px 24px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;font-size:1rem;">Reintentar</button>' +
+    '</body></html>', 
+    {
+      status: 503,
+      headers: { 'Content-Type': 'text/html; charset=utf-8' }
+    }
+  );
 }
 
 /**
@@ -425,20 +482,28 @@ self.addEventListener('message', (event) => {
     });
   }
 
-  // Allow explicit pre-caching of URLs
+  // Allow explicit pre-caching of URLs (pages with auth cookies)
   if (event.data && event.data.type === 'PRECACHE_URLS') {
     const urls = event.data.urls || [];
-    console.log('[SW] Pre-caching', urls.length, 'URLs');
+    console.log('[SW] Warm-up pre-caching', urls.length, 'URLs');
     event.waitUntil(
       caches.open(PAGES_CACHE).then(async (cache) => {
         for (const url of urls) {
           try {
-            const response = await fetch(url, { credentials: 'same-origin' });
-            if (response.ok) {
-              await cache.put(url, response);
+            const response = await fetch(url, { 
+              credentials: 'same-origin',
+              redirect: 'follow'
+            });
+            if (response.ok && response.status === 200) {
+              // Cache under the exact URL
+              await cache.put(url, response.clone());
+              // Also cache the variant (with/without trailing slash)
+              const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
+              await cache.put(alt, response.clone());
+              console.log('[SW] Warm-cached:', url);
             }
           } catch (e) {
-            // Skip failed pre-caches silently
+            console.warn('[SW] Warm-cache failed for:', url);
           }
         }
       })
