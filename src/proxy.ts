@@ -21,7 +21,8 @@ export default withAuth(
           pathname === "/manifest.json" ||
           pathname === "/sw.js" ||
           pathname === "/custom-sw.js" ||
-          pathname === "/offline.html"
+          pathname === "/offline.html" ||
+          pathname === "/api/serve-sw"
         ) {
           return true;
         }

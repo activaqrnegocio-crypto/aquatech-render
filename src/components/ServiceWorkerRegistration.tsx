@@ -5,24 +5,30 @@ import { useEffect } from 'react'
 /**
  * Service Worker Registration
  * 
- * Registers /custom-sw.js directly as the Service Worker.
- * Also attempts /sw.js as a bridge (which imports custom-sw.js)
- * for backward compatibility with devices that have the old SW.
+ * Tries multiple registration paths to ensure the SW installs:
+ * 1. /api/serve-sw (API route with guaranteed correct Content-Type)
+ * 2. /custom-sw.js (direct file)
+ * 3. /sw.js (bridge file)
  * 
- * CRITICAL: Does NOT unregister existing SWs to avoid gaps
- * where no SW is active (which causes ERR_FAILED offline).
+ * The Next.js standalone server sometimes serves static files with
+ * incorrect Content-Type headers, which causes Chrome to reject
+ * Service Worker registration. The API route bypasses this issue.
  */
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
-    if ('serviceWorker' in navigator && (window.location.protocol === 'https:' || window.location.hostname === 'localhost')) {
-      const registerSW = async () => {
-        try {
-          // Register custom-sw.js directly — this will update any existing
-          // registration for scope '/' regardless of what script URL was used before
-          const reg = await navigator.serviceWorker.register('/custom-sw.js', { scope: '/' });
-          console.log('[App] SW registered (custom-sw.js), scope:', reg.scope);
+    if (!('serviceWorker' in navigator)) return;
+    if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') return;
 
-          // Force the new SW to activate immediately if waiting
+    const registerSW = async () => {
+      // Try registration paths in order of reliability
+      const paths = ['/api/serve-sw', '/custom-sw.js', '/sw.js'];
+      
+      for (const swPath of paths) {
+        try {
+          const reg = await navigator.serviceWorker.register(swPath, { scope: '/' });
+          console.log(`[App] SW registered via ${swPath}, scope: ${reg.scope}`);
+
+          // Force activate if waiting
           if (reg.waiting) {
             reg.waiting.postMessage('skipWaiting');
           }
@@ -37,46 +43,36 @@ export default function ServiceWorkerRegistration() {
             }
           });
 
-          // Warm-up cache after SW activates
+          // Warm-up cache after 3s
           setTimeout(() => warmUpCache(), 3000);
 
-          // Check for SW updates every 30 minutes
+          // Check for updates every 30 minutes
           setInterval(() => reg.update(), 30 * 60 * 1000);
 
+          // Success — stop trying other paths
+          return;
         } catch (err) {
-          console.error('[App] SW registration failed:', err);
-          // Fallback: try sw.js (bridge file) if custom-sw.js fails
-          try {
-            const fallbackReg = await navigator.serviceWorker.register('/sw.js', { scope: '/' });
-            console.log('[App] SW fallback registered (sw.js), scope:', fallbackReg.scope);
-            setTimeout(() => warmUpCache(), 3000);
-          } catch (fallbackErr) {
-            console.error('[App] SW fallback also failed:', fallbackErr);
-          }
+          console.warn(`[App] SW registration failed for ${swPath}:`, err);
         }
-      };
-
-      if (document.readyState === 'complete') {
-        registerSW();
-      } else {
-        window.addEventListener('load', registerSW);
-        return () => window.removeEventListener('load', registerSW);
       }
+
+      console.error('[App] ALL SW registration paths failed');
+    };
+
+    if (document.readyState === 'complete') {
+      registerSW();
+    } else {
+      window.addEventListener('load', registerSW);
+      return () => window.removeEventListener('load', registerSW);
     }
   }, []);
 
   return null;
 }
 
-/**
- * Warm-up cache: pre-cache critical pages with active session cookies.
- * Retries if SW hasn't claimed the page yet.
- */
 function warmUpCache(retries = 0) {
   if (!navigator.serviceWorker.controller) {
-    if (retries < 5) {
-      setTimeout(() => warmUpCache(retries + 1), 2000);
-    }
+    if (retries < 5) setTimeout(() => warmUpCache(retries + 1), 2000);
     return;
   }
 
@@ -85,13 +81,9 @@ function warmUpCache(retries = 0) {
   const isSubcon = path.includes('/subcontratista');
 
   const pages = [
-    '/admin',
-    '/admin/',
-    '/admin/login',
-    '/admin/cotizaciones',
-    '/admin/cotizaciones/',
-    '/admin/cotizaciones/offline',
-    '/admin/inventario',
+    '/admin', '/admin/', '/admin/login',
+    '/admin/cotizaciones', '/admin/cotizaciones/',
+    '/admin/cotizaciones/offline', '/admin/inventario',
   ];
 
   if (isOperator) {
