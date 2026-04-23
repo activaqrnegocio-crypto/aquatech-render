@@ -3,13 +3,16 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { redirect } from 'next/navigation'
 import AdminCalendarClient from './AdminCalendarClient'
+import { isAdmin, hasModuleAccess } from '@/lib/rbac'
 
 export default async function AdminCalendarPage() {
   const session = await getServerSession(authOptions)
   if (!session) redirect('/admin/login')
 
   const userRole = (session.user as any).role
-  if (userRole !== 'ADMIN' && userRole !== 'ADMINISTRADORA' && userRole !== 'SUPERADMIN') {
+  const canAccess = isAdmin(userRole) || hasModuleAccess(session.user as any, 'calendario')
+
+  if (!canAccess) {
     redirect('/admin')
   }
 

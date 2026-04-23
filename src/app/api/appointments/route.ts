@@ -4,7 +4,7 @@ import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
 import { sendWhatsAppMessage } from '@/lib/whatsapp'
 import { formatTimeEcuador, forceEcuadorTZ, formatDateEcuador } from '@/lib/date-utils'
-import { isAdmin as checkIsAdmin } from '@/lib/rbac'
+import { isAdmin as checkIsAdmin, hasModuleAccess } from '@/lib/rbac'
 import { notifyUser } from '@/lib/push'
 
 export async function GET(request: Request) {
@@ -20,11 +20,12 @@ export async function GET(request: Request) {
     }
 
     const isAdmin = checkIsAdmin((session.user as any).role)
+    const canManage = isAdmin || hasModuleAccess(session.user as any, 'calendario')
     const where: any = {}
     
-    // If Admin and userId is "all" or not provided, show all.
-    // Otherwise, if not Admin, force current userId.
-    if (isAdmin) {
+    // If Admin/Manager and userId is "all" or not provided, show all.
+    // Otherwise, if not Manager, force current userId.
+    if (canManage) {
       if (userId && userId !== 'all') {
         where.userId = Number(userId)
       }
@@ -68,10 +69,11 @@ export async function POST(request: Request) {
     const { title, description, startTime, endTime, userId, userIds, projectId, clientLocation, operatorLocation, attachments, attachmentLinks, clientName, clientPhone } = body;
 
     const isAdmin = checkIsAdmin((session.user as any).role)
+    const canManage = isAdmin || hasModuleAccess(session.user as any, 'calendario')
     
     // Determine target user IDs
     let targetUserIds: number[] = []
-    if (isAdmin && userIds && Array.isArray(userIds) && userIds.length > 0) {
+    if (canManage && userIds && Array.isArray(userIds) && userIds.length > 0) {
       targetUserIds = userIds.map((id: any) => Number(id))
     } else if (userId) {
       targetUserIds = [Number(userId)]
@@ -81,8 +83,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Se requiere al menos un operador' }, { status: 400 })
     }
 
-    // Non-admins can only assign to themselves
-    if (!isAdmin) {
+    // Non-managers can only assign to themselves
+    if (!canManage) {
       const selfId = Number(session.user.id)
       if (targetUserIds.length !== 1 || targetUserIds[0] !== selfId) {
         return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
