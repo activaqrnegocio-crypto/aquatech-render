@@ -1,7 +1,7 @@
 // ============================================================
 // Aquatech CRM — Custom Service Worker (Offline-First) v14
 // ============================================================
-const CACHE_VERSION = 'v39';
+const CACHE_VERSION = 'v40';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -36,8 +36,12 @@ self.addEventListener('install', (event) => {
         // Fetch individually to prevent a single 302/404 from breaking the whole install
         for (const url of PRE_CACHE) {
           try {
-            const response = await fetch(new Request(url, { credentials: 'same-origin' }));
-            // Only cache 200 OK responses. Redirects (like /admin/login) will be skipped
+            // Include credentials to ensure we capture the actual dashboard if logged in
+            const response = await fetch(new Request(url, { 
+              credentials: 'same-origin',
+              redirect: 'follow'
+            }));
+            
             if (response.ok) {
               await cache.put(url, response);
             } else {
@@ -246,10 +250,22 @@ async function navigationHandler(request) {
 
     const staticCache = await caches.open(STATIC_CACHE);
     cached = await staticCache.match(request.url, { ignoreVary: true, ignoreSearch: true });
-    if (cached) {
-      console.log('[SW] Serving from STATIC_CACHE:', request.url);
-      return cached;
-    }
+    if (cached) return cached;
+
+    // --- APP SHELL FALLBACK ---
+    // If we can't find the exact page, try to serve the main dashboard shell
+    // This allows Next.js to handle the route client-side once the shell loads.
+    const isOperatorPath = request.url.includes('/operador');
+    const isSubconPath = request.url.includes('/subcontratista');
+    const shellUrl = isOperatorPath ? '/admin/operador' : (isSubconPath ? '/admin/subcontratista' : '/admin');
+    
+    console.log('[SW] Page not in cache, trying shell fallback:', shellUrl);
+    cached = await caches.match(shellUrl, { ignoreVary: true, ignoreSearch: true });
+    if (cached) return cached;
+
+    // Final attempt: root /
+    cached = await caches.match('/', { ignoreVary: true, ignoreSearch: true });
+    if (cached) return cached;
 
     // Nothing in cache → show offline page
     try {
