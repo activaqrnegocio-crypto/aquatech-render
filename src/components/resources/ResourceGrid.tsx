@@ -1,6 +1,7 @@
 'use client'
 
-import React, { useState } from 'react'
+import React, { useState, useEffect } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import './Resources.css'
 
 interface ResourceGridProps {
@@ -17,6 +18,82 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
   const [isUploading, setIsUploading] = useState(false)
   const [isSaving, setIsSaving] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [isLoadingSync, setIsLoadingSync] = useState(false)
+
+  // Re-fetch resources on mount to sync with latest data (fixes stale SW cache)
+  useEffect(() => {
+    const fetchLatest = async () => {
+      setIsLoadingSync(true);
+      try {
+        const res = await fetch('/api/resources');
+        if (res.ok) {
+          const data = await res.json();
+          setResources(data);
+        }
+      } catch (err) {
+        console.warn('[ResourceGrid] Failed to re-fetch latest data offline, using initial props.');
+      } finally {
+        setIsLoadingSync(false);
+      }
+    };
+    fetchLatest();
+  }, []);
+
+  // Preloading next image
+  useEffect(() => {
+    if (selectedGallery && selectedGallery.images.length > 1) {
+      const nextIdx = (selectedGallery.index + 1) % selectedGallery.images.length;
+      const nextImgUrl = selectedGallery.images[nextIdx];
+      if (nextImgUrl && !nextImgUrl.includes('type=video')) {
+        const img = new Image();
+        img.src = nextImgUrl;
+      }
+    }
+  }, [selectedGallery]);
+
+  const compressImage = async (file: File): Promise<Blob | File> => {
+    if (!file.type.startsWith('image/') || file.type.includes('gif') || file.type.includes('svg')) return file;
+
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = (event) => {
+        const img = new Image();
+        img.src = event.target?.result as string;
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+
+          const MAX_SIZE = 1600;
+          if (width > height) {
+            if (width > MAX_SIZE) {
+              height *= MAX_SIZE / width;
+              width = MAX_SIZE;
+            }
+          } else {
+            if (height > MAX_SIZE) {
+              width *= MAX_SIZE / height;
+              height = MAX_SIZE;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx?.drawImage(img, 0, 0, width, height);
+
+          canvas.toBlob(
+            (blob) => resolve(blob || file),
+            'image/webp',
+            0.82
+          );
+        };
+        img.onerror = () => resolve(file);
+      };
+      reader.onerror = () => resolve(file);
+    });
+  };
 
   const getImagesArray = (urlStr: string | null) => {
     if (!urlStr) return [];
@@ -67,20 +144,28 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
     try {
       const uploadedUrls: string[] = []
       for (const file of files) {
+        let finalFile: Blob | File = file;
         let finalName = file.name;
-        const isVid = file.type.startsWith('video/') || /\\.(mp4|webm|ogg|mov|m4v|avi|mkv|3gp)$/i.test(finalName);
+        
+        const isImg = file.type.startsWith('image/') && !file.type.includes('gif') && !file.type.includes('svg');
+        const isVid = file.type.startsWith('video/') || /\.(mp4|webm|ogg|mov|m4v|avi|mkv|3gp)$/i.test(finalName);
+
+        if (isImg) {
+          finalFile = await compressImage(file);
+          finalName = finalName.replace(/\.[^/.]+$/, "") + ".webp";
+        }
 
         // Forzar extensión si es un video y no tiene una conocida
-        if (isVid && !/\\.(mp4|webm|ogg|mov|m4v|avi|mkv|3gp)$/i.test(finalName)) {
+        if (isVid && !/\.(mp4|webm|ogg|mov|m4v|avi|mkv|3gp)$/i.test(finalName)) {
           finalName += '.mp4';
-        } else if (file.type.startsWith('image/') && !/\\.(jpg|jpeg|png|gif|webp|svg|heic|heif)$/i.test(finalName)) {
-          finalName += '.jpg';
+        } else if (isImg && !/\.(webp)$/i.test(finalName)) {
+          finalName += '.webp';
         }
 
         const res = await fetch(`/api/upload?filename=${encodeURIComponent(finalName)}`, { 
           method: 'POST', 
-          body: file,
-          headers: { 'Content-Type': file.type || 'application/octet-stream' }
+          body: finalFile,
+          headers: { 'Content-Type': isImg ? 'image/webp' : (file.type || 'application/octet-stream') }
         })
         const data = await res.json()
         if (data.url) {
@@ -420,50 +505,75 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
         </div>
       )}
 
-      {selectedGallery && selectedGallery.images.length > 0 && (
-        <div className="lightbox-overlay" onClick={() => setSelectedGallery(null)}>
-          <div className="lightbox-content" onClick={e => e.stopPropagation()} style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: 0 }}>
-            
-            <div key={selectedGallery.index} style={{ animation: 'fadeIn 0.3s ease-out', width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-              {isVideo(selectedGallery.images[selectedGallery.index]) ? (
-                <video src={selectedGallery.images[selectedGallery.index]} controls autoPlay playsInline style={{ maxHeight: '90vh', maxWidth: '90vw' }} />
-              ) : isAudio(selectedGallery.images[selectedGallery.index]) ? (
-                <div style={{ backgroundColor: 'var(--bg-card)', padding: '50px', borderRadius: '30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '450px', boxShadow: '0 25px 60px rgba(0,0,0,0.6)' }}>
-                   <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
-                     <svg width="50" height="50" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
-                   </div>
-                   <h3 style={{ margin: 0, color: 'white' }}>Reproduciendo Audio</h3>
-                   <audio src={selectedGallery.images[selectedGallery.index]} controls autoPlay style={{ width: '100%' }} />
-                </div>
-              ) : (
-                <img 
-                  src={selectedGallery.images[selectedGallery.index]} 
-                  alt="Preview" 
-                  style={{ maxHeight: '90vh', maxWidth: '90vw', objectFit: 'contain' }} 
-                  onError={(e) => { e.currentTarget.src = '/Logo.jpg'; }}
-                />
+      <AnimatePresence>
+        {selectedGallery && selectedGallery.images.length > 0 && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="lightbox-overlay" 
+            onClick={() => setSelectedGallery(null)}
+          >
+            <motion.div 
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              exit={{ scale: 0.9, opacity: 0 }}
+              transition={{ type: 'spring', damping: 25, stiffness: 300 }}
+              className="lightbox-content" 
+              onClick={e => e.stopPropagation()} 
+              style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', overflow: 'hidden', padding: 0 }}
+            >
+              
+              <AnimatePresence mode="wait">
+                <motion.div 
+                  key={selectedGallery.index}
+                  initial={{ x: 20, opacity: 0 }}
+                  animate={{ x: 0, opacity: 1 }}
+                  exit={{ x: -20, opacity: 0 }}
+                  transition={{ duration: 0.2, ease: 'easeOut' }}
+                  style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                >
+                  {isVideo(selectedGallery.images[selectedGallery.index]) ? (
+                    <video src={selectedGallery.images[selectedGallery.index]} controls autoPlay playsInline style={{ maxHeight: '90vh', maxWidth: '90vw' }} />
+                  ) : isAudio(selectedGallery.images[selectedGallery.index]) ? (
+                    <div style={{ backgroundColor: 'var(--bg-card)', padding: '50px', borderRadius: '30px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '450px', boxShadow: '0 25px 60px rgba(0,0,0,0.6)' }}>
+                       <div style={{ width: '100px', height: '100px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+                         <svg width="50" height="50" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                       </div>
+                       <h3 style={{ margin: 0, color: 'white' }}>Reproduciendo Audio</h3>
+                       <audio src={selectedGallery.images[selectedGallery.index]} controls autoPlay style={{ width: '100%' }} />
+                    </div>
+                  ) : (
+                    <img 
+                      src={selectedGallery.images[selectedGallery.index]} 
+                      alt="Preview" 
+                      style={{ maxHeight: '90vh', maxWidth: '90vw', objectFit: 'contain' }} 
+                      onError={(e) => { e.currentTarget.src = '/Logo.jpg'; }}
+                    />
+                  )}
+                </motion.div>
+              </AnimatePresence>
+              
+              {selectedGallery.images.length > 1 && (
+                <>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setSelectedGallery({...selectedGallery, index: (selectedGallery.index - 1 + selectedGallery.images.length) % selectedGallery.images.length}) }} 
+                    style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white', borderRadius: '50%', width: '45px', height: '45px', cursor: 'pointer', fontSize: '24px', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
+                  >‹</button>
+                  <button 
+                    onClick={(e) => { e.stopPropagation(); setSelectedGallery({...selectedGallery, index: (selectedGallery.index + 1) % selectedGallery.images.length}) }} 
+                    style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white', borderRadius: '50%', width: '45px', height: '45px', cursor: 'pointer', fontSize: '24px', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
+                  >›</button>
+                  <div style={{ position: 'absolute', bottom: '15px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '6px 16px', borderRadius: '20px', fontSize: '0.9rem', zIndex: 10, backdropFilter: 'blur(4px)', fontWeight: 'bold' }}>
+                    {selectedGallery.index + 1} / {selectedGallery.images.length}
+                  </div>
+                </>
               )}
-            </div>
-            
-            {selectedGallery.images.length > 1 && (
-              <>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setSelectedGallery({...selectedGallery, index: (selectedGallery.index - 1 + selectedGallery.images.length) % selectedGallery.images.length}) }} 
-                  style={{ position: 'absolute', left: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white', borderRadius: '50%', width: '45px', height: '45px', cursor: 'pointer', fontSize: '24px', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
-                >‹</button>
-                <button 
-                  onClick={(e) => { e.stopPropagation(); setSelectedGallery({...selectedGallery, index: (selectedGallery.index + 1) % selectedGallery.images.length}) }} 
-                  style={{ position: 'absolute', right: '10px', top: '50%', transform: 'translateY(-50%)', background: 'rgba(0,0,0,0.7)', border: 'none', color: 'white', borderRadius: '50%', width: '45px', height: '45px', cursor: 'pointer', fontSize: '24px', zIndex: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(4px)' }}
-                >›</button>
-                <div style={{ position: 'absolute', bottom: '15px', left: '50%', transform: 'translateX(-50%)', background: 'rgba(0,0,0,0.7)', color: 'white', padding: '6px 16px', borderRadius: '20px', fontSize: '0.9rem', zIndex: 10, backdropFilter: 'blur(4px)', fontWeight: 'bold' }}>
-                  {selectedGallery.index + 1} / {selectedGallery.images.length}
-                </div>
-              </>
-            )}
-            <button className="lightbox-close" onClick={() => setSelectedGallery(null)} style={{ zIndex: 20 }}>✕</button>
-          </div>
-        </div>
-      )}
+              <button className="lightbox-close" onClick={() => setSelectedGallery(null)} style={{ zIndex: 20 }}>✕</button>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

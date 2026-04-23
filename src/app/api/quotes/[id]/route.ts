@@ -8,7 +8,11 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
     const { id } = await params
     const quote = await prisma.quote.findUnique({
       where: { id: Number(id) },
-      include: { items: true, client: true }
+      include: { 
+        items: { include: { material: true } }, 
+        client: true,
+        project: true
+      }
     })
     
     if (!quote) return NextResponse.json({ error: 'Not found' }, { status: 404 })

@@ -1,7 +1,7 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker (Offline-First) v14
+// Aquatech CRM — Custom Service Worker (Offline-First) v41
 // ============================================================
-const CACHE_VERSION = 'v40';
+const CACHE_VERSION = 'v41';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
@@ -16,12 +16,14 @@ const PRE_CACHE = [
   '/cotizacion.jpg',
   '/manifest.json',
   '/admin',
+  '/admin/',
   '/admin/operador',
-  '/admin/subcontratista',
+  '/admin/operador/',
   '/admin/operador/nuevo',
   '/admin/proyectos/nuevo',
   '/admin/inventario',
   '/admin/cotizaciones',
+  '/admin/cotizaciones/',
   '/admin/cotizaciones/offline',
   '/admin/login',
   '/favicon.ico',
@@ -234,7 +236,9 @@ async function rscNetworkFirst(request) {
  * because RSC payloads are NOT valid HTML and would render as raw text.
  */
 async function navigationHandler(request) {
-  console.log('[SW] Handling navigation for:', request.url);
+  const url = new URL(request.url);
+  console.log('[SW] Handling navigation for:', url.pathname);
+  
   try {
     const response = await fetchWithTimeout(request.clone(), 8000);
     if (response.ok && response.status === 200) {
@@ -244,38 +248,41 @@ async function navigationHandler(request) {
     return response;
   } catch (e) {
     console.error('[SW] Navigation failed, fallback to cache:', e);
-    const pagesCache = await caches.open(PAGES_CACHE);
-    let cached = await pagesCache.match(request.url, { ignoreVary: true, ignoreSearch: true });
+    
+    // 1. Try exact match
+    let cached = await caches.match(request.url, { ignoreVary: true });
     if (cached) return cached;
 
+    // 2. Try variations (with/without slash)
+    const altUrl = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
+    cached = await caches.match(altUrl, { ignoreVary: true });
+    if (cached) return cached;
+
+    // 3. Try PRE_CACHE entries
     const staticCache = await caches.open(STATIC_CACHE);
     cached = await staticCache.match(request.url, { ignoreVary: true, ignoreSearch: true });
     if (cached) return cached;
 
-    // --- APP SHELL FALLBACK ---
-    // If we can't find the exact page, try to serve the main dashboard shell
-    // This allows Next.js to handle the route client-side once the shell loads.
-    const isOperatorPath = request.url.includes('/operador');
-    const isSubconPath = request.url.includes('/subcontratista');
+    // 4. APP SHELL FALLBACK (Crucial for cold-start offline)
+    const isOperatorPath = url.pathname.includes('/operador');
+    const isSubconPath = url.pathname.includes('/subcontratista');
     const shellUrl = isOperatorPath ? '/admin/operador' : (isSubconPath ? '/admin/subcontratista' : '/admin');
     
     console.log('[SW] Page not in cache, trying shell fallback:', shellUrl);
     cached = await caches.match(shellUrl, { ignoreVary: true, ignoreSearch: true });
     if (cached) return cached;
 
-    // Final attempt: root /
+    // 5. Final attempt: root /
     cached = await caches.match('/', { ignoreVary: true, ignoreSearch: true });
     if (cached) return cached;
 
-    // Nothing in cache → show offline page
-    try {
-      const offlinePage = await caches.match('/offline.html');
-      if (offlinePage) return offlinePage;
-    } catch (cacheErr) {}
+    // 6. Show offline page
+    const offlinePage = await caches.match('/offline.html');
+    if (offlinePage) return offlinePage;
 
     return new Response(
       '<!DOCTYPE html><html><body style="font-family:sans-serif;text-align:center;padding:50px;background:#0a0f1e;color:white;">' +
-      '<h1>Sin conexión</h1><p>La página solicitada no está en el caché offline.</p>' +
+      '<h1>Sin conexión</h1><p>La página solicitada no está disponible offline.</p>' +
       '<button onclick="window.location.reload()" style="padding:10px 20px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;">Reintentar</button>' +
       '</body></html>', 
       {
@@ -293,7 +300,7 @@ async function networkFirst(request, cacheName, timeout = 10000) {
   if (request.method !== 'GET') return fetch(request);
   try {
     const response = await fetchWithTimeout(request, timeout);
-    if (response.ok) {
+    if (response.ok || response.status === 0) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
     }
@@ -341,8 +348,8 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await caches.match(request, { ignoreVary: true });
   
   const fetchPromise = fetch(request).then(response => {
-    if (response && response.ok) {
-      const responseToCache = response.clone(); // Clone immediately and synchronously
+    if (response && (response.ok || response.status === 0)) {
+      const responseToCache = response.clone();
       caches.open(cacheName).then(cache => {
         cache.put(request, responseToCache).catch(err => {
           console.warn('[SW] Cache put failed:', err);
