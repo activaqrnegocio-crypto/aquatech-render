@@ -330,14 +330,40 @@ export default function AppointmentModal({
 
     setLoading(true)
     try {
-      const { realFiles, linkFiles } = await processFilesMixed(formData.mediaFiles)
+      let realFiles: any[] = []
+      let linkFiles: any[] = []
+
+      if (navigator.onLine) {
+        const result = await processFilesMixed(formData.mediaFiles)
+        realFiles = result.realFiles
+        linkFiles = result.linkFiles
+      } else {
+        // Offline: Convert files to base64 for outbox
+        for (const file of formData.mediaFiles) {
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result as string)
+            reader.readAsDataURL(file)
+          })
+          
+          const isVideo = file.type.startsWith('video/')
+          if (isVideo) {
+            linkFiles.push({ type: 'video', name: file.name, base64 })
+          } else {
+            let mediaType = 'document'
+            if (file.type.startsWith('image/')) mediaType = 'image'
+            if (file.type.startsWith('audio/')) mediaType = 'audio'
+            realFiles.push({ type: mediaType, name: file.name, base64 })
+          }
+        }
+      }
 
       const payload = {
         ...formData,
         startTime: forceEcuadorTZ(formData.startTime),
         endTime: forceEcuadorTZ(formData.endTime),
-        attachments: realFiles, // Estos se envían como archivos reales
-        attachmentLinks: linkFiles, // Estos van como links en el mensaje
+        attachments: realFiles, 
+        attachmentLinks: linkFiles, 
         userIds: targetUserIds,
         userId: targetUserIds[0]
       }

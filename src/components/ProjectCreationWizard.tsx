@@ -26,6 +26,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
   const [step, setStep] = useLocalStorage('project_draft_step', 1)
   const [loading, setLoading] = useState(false)
   const [gpsLoading, setGpsLoading] = useState(false)
+  const isCreatingRef = useRef(false)
 
   useEffect(() => {
     setIsMounted(true)
@@ -244,6 +245,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
   }
 
   const handleCreate = async () => {
+    if (isCreatingRef.current) return
     if (!projectData.title) return setError('Falta el nombre del proyecto.')
     
     // Auto-fill budget if empty to pass validation
@@ -255,6 +257,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
       isTaxed: false
     }]
     
+    isCreatingRef.current = true
     setLoading(true)
     setError('')
 
@@ -284,7 +287,18 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
           timestamp: Date.now(),
           status: 'pending'
         })
-        alert('Estás sin conexión. El proyecto se ha guardado localmente.')
+        
+        // Clear local draft data after successful outbox add
+        setStep(1)
+        removeProjectData()
+        removeClientData()
+        removePhases()
+        removeTeam()
+        removeBudgetItems()
+        removeFiles()
+        window.localStorage.removeItem('project_draft_is_new_client')
+        
+        alert('Estás sin conexión. El proyecto se ha guardado localmente y se sincronizará cuando vuelvas a tener internet.')
         router.push(panelBase)
         return
       }
@@ -321,6 +335,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
     } catch (err: any) {
       setError(err.message)
       setLoading(false)
+      isCreatingRef.current = false
     }
   }
 
@@ -690,16 +705,31 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                             compact 
                             onCapture={async (blob, type, text) => {
                               try {
-                                const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
-                                const result = await uploadToBunnyClientSide(blob, 'specs-audio.webm', 'audios');
-                                setProjectData(prev => ({ ...prev, specsAudioUrl: result.url }));
+                                const isOnline = navigator.onLine;
+                                let url = '';
+                                let filename = `specs-audio-${Date.now()}.webm`;
+
+                                if (isOnline) {
+                                  const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
+                                  const result = await uploadToBunnyClientSide(blob, filename, 'projects');
+                                  url = result.url;
+                                  filename = result.filename;
+                                } else {
+                                  url = await new Promise((resolve) => {
+                                    const reader = new FileReader();
+                                    reader.onload = () => resolve(reader.result as string);
+                                    reader.readAsDataURL(blob);
+                                  });
+                                }
+
+                                setProjectData(prev => ({ ...prev, specsAudioUrl: isOnline ? url : '' }));
                                 
-                                // Also add to gallery as PLANOS
+                                // Also add to gallery as MASTER
                                 const fileObj: any = {
                                   id: `audio-${Date.now()}`,
-                                  name: result.filename,
-                                  type: 'DOCUMENT', // Using DOCUMENT as fallback for generic gallery support
-                                  url: result.url,
+                                  name: filename,
+                                  type: 'AUDIO',
+                                  url: url,
                                   size: blob.size,
                                   category: 'MASTER',
                                   mimeType: 'audio/webm'
@@ -707,7 +737,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                                 setUploadedFiles(prev => [...prev, fileObj]);
                                 updateSpec('description', (projectData.technicalSpecs.description || '') + ' ' + text);
                               } catch (err) {
-                                console.error('Error uploading specs audio:', err);
+                                console.error('Error handling specs audio:', err);
                                 updateSpec('description', (projectData.technicalSpecs.description || '') + ' ' + text);
                               }
                             }} 
@@ -736,46 +766,78 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                       <div className="animate-slide-down" style={{ marginBottom: '25px', padding: '20px', backgroundColor: 'var(--bg-deep)', borderRadius: '16px', border: '1px solid var(--border)' }}>
                          <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '1.1rem', textAlign: 'center' }}>Cámara Integrada</h3>
                          <CameraCapture 
-                            onClose={() => setShowCameraCapture(false)}
-                            onPhotoCapture={async (blob) => {
+                                       onPhotoCapture={async (blob) => {
                                try {
                                   setShowCameraCapture(false)
-                                  const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
-                                  const result = await uploadToBunnyClientSide(blob, `Foto-${Date.now()}.jpg`, 'projects')
+                                  const isOnline = navigator.onLine;
+                                  let url = '';
+                                  let filename = `Foto-${Date.now()}.jpg`;
+
+                                  if (isOnline) {
+                                    const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
+                                    const result = await uploadToBunnyClientSide(blob, filename, 'projects')
+                                    url = result.url;
+                                    filename = result.filename;
+                                  } else {
+                                    url = await new Promise((resolve) => {
+                                      const reader = new FileReader();
+                                      reader.onload = () => resolve(reader.result as string);
+                                      reader.readAsDataURL(blob);
+                                    });
+                                  }
+
                                   const fileObj: any = {
                                      id: `capture-${Date.now()}`,
-                                     name: result.filename,
+                                     name: filename,
                                      type: 'IMAGE',
-                                     url: result.url,
+                                     url: url,
                                      size: blob.size,
-                                     category: 'MASTER'
+                                     category: 'MASTER',
+                                     mimeType: 'image/jpeg'
                                   }
                                   setUploadedFiles(prev => [...prev, fileObj])
                                } catch (err) {
-                                  console.error('Error uploading photo:', err)
-                                  alert('Error al subir foto')
+                                  console.error('Error handling photo:', err)
+                                  alert('Error al procesar foto')
                                }
                             }}
                             onVideoCapture={async (blob) => {
                                try {
                                   setShowCameraCapture(false)
-                                  const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
-                                  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm'
-                                  const result = await uploadToBunnyClientSide(blob, `Video-${Date.now()}.${ext}`, 'projects')
+                                  const isOnline = navigator.onLine;
+                                  let url = '';
+                                  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
+                                  let filename = `Video-${Date.now()}.${ext}`;
+
+                                  if (isOnline) {
+                                    const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
+                                    const result = await uploadToBunnyClientSide(blob, filename, 'projects')
+                                    url = result.url;
+                                    filename = result.filename;
+                                  } else {
+                                    url = await new Promise((resolve) => {
+                                      const reader = new FileReader();
+                                      reader.onload = () => resolve(reader.result as string);
+                                      reader.readAsDataURL(blob);
+                                    });
+                                  }
+
                                   const fileObj: any = {
                                      id: `capture-${Date.now()}`,
-                                     name: result.filename,
+                                     name: filename,
                                      type: 'VIDEO',
-                                     url: result.url,
+                                     url: url,
                                      size: blob.size,
-                                     category: 'MASTER'
+                                     category: 'MASTER',
+                                     mimeType: blob.type
                                   }
                                   setUploadedFiles(prev => [...prev, fileObj])
                                } catch (err) {
-                                  console.error('Error uploading video:', err)
-                                  alert('Error al subir video')
+                                  console.error('Error handling video:', err)
+                                  alert('Error al procesar video')
                                }
                             }}
+                            onClose={() => setShowCameraCapture(false)}
                          />
                       </div>
                     )}
@@ -789,7 +851,20 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                    ) : (
                       <>
                         <button type="button" className="btn btn-ghost" onClick={handleBack}>&larr; Volver</button>
-                        <button type="button" className="btn btn-primary" onClick={handleCreate} disabled={loading}>{loading ? 'Creando...' : 'Finalizar Proyecto'}</button>
+                        <button 
+                          type="button" 
+                          className="btn btn-primary" 
+                          onClick={handleCreate} 
+                          disabled={loading}
+                          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+                        >
+                          {loading ? (
+                            <>
+                              <div className="loading-spinner" style={{ width: '16px', height: '16px', borderTopColor: 'white' }} />
+                              {navigator.onLine ? 'Creando...' : 'Guardando...'}
+                            </>
+                          ) : 'Finalizar Proyecto'}
+                        </button>
                       </>
                    )}
                 </div>

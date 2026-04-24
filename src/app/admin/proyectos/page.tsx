@@ -4,6 +4,8 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/lib/db'
 
 /**
  * AQUATECH_PROJECT_VIEW_V3
@@ -64,6 +66,24 @@ export default function ProyectosPage() {
       setLoading(false)
     }
   }
+
+  // --- OFFLINE SUPPORT ---
+  const pendingProjects = useLiveQuery(
+    () => db.outbox.where('type').equals('PROJECT').toArray(),
+    []
+  ) || []
+
+  // Combine online projects with offline pending ones
+  const allProjects = [
+    ...pendingProjects.map(p => ({
+      ...p.payload,
+      id: `pending-${p.id}`,
+      isPending: true,
+      createdAt: new Date(p.timestamp).toISOString(),
+      status: p.payload.status || 'LEAD'
+    })),
+    ...projects.filter(p => !pendingProjects.some(pp => pp.payload.title === p.title))
+  ]
 
   const handleStatusChange = async (projectId: number, newStatus: string, e: React.MouseEvent) => {
     e.preventDefault()
@@ -127,8 +147,8 @@ export default function ProyectosPage() {
   ]
 
   const filteredProjects = statusFilter === 'ALL' 
-    ? projects 
-    : projects.filter(p => {
+    ? allProjects 
+    : allProjects.filter(p => {
         if (statusFilter === 'ARCHIVADO') {
             return ['ARCHIVADO', 'COMPLETADO', 'CANCELADO', 'PENDIENTE'].includes(p.status);
         }
@@ -185,8 +205,8 @@ export default function ProyectosPage() {
             <span style={{ marginLeft: '10px', opacity: 0.7 }}>
               ({
                 opt.id === 'ARCHIVADO' 
-                  ? projects.filter(p => ['ARCHIVADO', 'COMPLETADO', 'CANCELADO', 'PENDIENTE'].includes(p.status)).length
-                  : projects.filter(p => p.status === opt.id).length
+                  ? allProjects.filter(p => ['ARCHIVADO', 'COMPLETADO', 'CANCELADO', 'PENDIENTE'].includes(p.status)).length
+                  : allProjects.filter(p => p.status === opt.id).length
               })
             </span>
           </button>
@@ -206,8 +226,8 @@ export default function ProyectosPage() {
           const statusColor = getStatusColor(p.status)
 
           return (
-            <div key={p.id} style={{ position: 'relative' }}>
-              <Link href={`/admin/proyectos/${p.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
+            <div key={p.id} style={{ position: 'relative', opacity: p.isPending ? 0.8 : 1 }}>
+              <Link href={p.isPending ? '#' : `/admin/proyectos/${p.id}`} style={{ textDecoration: 'none', color: 'inherit', cursor: p.isPending ? 'default' : 'pointer' }}>
                 <div className="card h-full" style={{ 
                   padding: '24px', 
                   borderRadius: '16px', 
@@ -228,6 +248,18 @@ export default function ProyectosPage() {
                       background: `linear-gradient(135deg, transparent 50%, ${statusColor}15 50%)`,
                       zIndex: 0
                   }}></div>
+
+                  {p.isPending && (
+                    <div style={{ 
+                      position: 'absolute', top: '12px', left: '12px', 
+                      backgroundColor: 'rgba(245, 158, 11, 0.9)', color: 'white', 
+                      padding: '4px 10px', borderRadius: '8px', fontSize: '0.7rem', 
+                      fontWeight: 'bold', zIndex: 10, display: 'flex', alignItems: 'center', gap: '5px' 
+                    }}>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                      PENDIENTE DE SINCRONIZACIÓN
+                    </div>
+                  )}
 
                   <div>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '20px', position: 'relative', zIndex: 1 }}>

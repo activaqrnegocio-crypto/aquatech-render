@@ -46,10 +46,26 @@ export async function POST(
 
     const { id } = await params
     const projectId = Number(id)
-    const { url, filename, mimeType, sizeBytes, category } = await request.json()
+    let { url, filename, mimeType, sizeBytes, category } = await request.json()
 
     if (!url) {
       return NextResponse.json({ error: 'Faltan datos de la imagen' }, { status: 400 })
+    }
+
+    // 0. Handle Base64 uploads (offline sync fallback)
+    if (url.startsWith('data:')) {
+      const { uploadToBunny } = await import('@/lib/bunny')
+      try {
+        const matches = url.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/)
+        if (matches && matches.length === 3) {
+          const buffer = Buffer.from(matches[2], 'base64')
+          const uploadResult = await uploadToBunny(buffer, filename || `gallery_${Date.now()}.jpg`, `projects/${projectId}/gallery`)
+          url = uploadResult // Now it's a URL string
+        }
+      } catch (error) {
+        console.error('Error uploading Base64 to Bunny:', error)
+        return NextResponse.json({ error: 'Error al subir archivo a BunnyCDN' }, { status: 500 })
+      }
     }
 
     const newItem = await prisma.projectGalleryItem.create({

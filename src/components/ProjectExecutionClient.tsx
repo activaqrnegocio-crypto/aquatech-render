@@ -52,6 +52,8 @@ export default function ProjectExecutionClient({
   const [liveChat, setLiveChat] = useState<any[]>(initialChat || [])
   const liveChatInitialized = useRef(false)
   const [mounted, setMounted] = useState(false)
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const isSyncingRef = useRef(false)
 
   const GALLERY_LABEL = "Planos y Referencias"
   
@@ -417,8 +419,12 @@ export default function ProjectExecutionClient({
 
   const syncOutbox = async () => {
     if (!navigator.onLine) return
-    const items = await db.outbox.where('status').equals('pending').toArray()
-    if (items.length === 0) return
+    if (isSyncingRef.current) return
+    isSyncingRef.current = true
+
+    try {
+      const items = await db.outbox.where('status').equals('pending').toArray()
+      if (items.length === 0) return
 
     for (const item of items) {
        try {
@@ -508,6 +514,9 @@ export default function ProjectExecutionClient({
           await db.outbox.update(item.id!, { status: 'pending' })
        }
     }
+     } finally {
+       isSyncingRef.current = false
+     }
     router.refresh()
   }
 
@@ -777,11 +786,10 @@ export default function ProjectExecutionClient({
 
     setExpenseForm(false)
     removeExpenseDraft()
-    processExpense()
+    await processExpense() // Fix: Await the process before clearing loading
     setLoading(false)
     } catch (e) {
       console.error("Outer expense error:", e)
-    } finally {
       setLoading(false)
     }
   }
@@ -842,7 +850,7 @@ export default function ProjectExecutionClient({
 
   const handleSendMessage = async (e: React.FormEvent, customMsg?: string, customPhase?: number, mediaFile?: File, extraData?: any, forcedType?: string) => {
     if (e) e.preventDefault()
-    if (loading) return // Guard against double execution
+    if (loading || isSendingMessage) return // Guard against double execution
     const msgToSend = customMsg || message
     const phaseIdToSend = customPhase !== undefined ? customPhase : activePhase
     
@@ -888,6 +896,7 @@ export default function ProjectExecutionClient({
     else removeNoteDraft()
 
     // --- ASYNC BACKGROUND PROCESSING ---
+    setIsSendingMessage(true)
     const processMessage = async () => {
       try {
         let location: any = null
@@ -1038,6 +1047,8 @@ export default function ProjectExecutionClient({
       } catch (outerError) {
         console.error("Outer background process error:", outerError);
         setLiveChat(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m))
+      } finally {
+        setIsSendingMessage(false)
       }
     }
 
@@ -1892,9 +1903,10 @@ export default function ProjectExecutionClient({
                 project={project}
                 messages={combinedChat} 
                 userId={userId}
+                isSending={isSendingMessage}
                 isOperatorView={isFieldStaff}
-                activeRecord={null} // FORCE NULL TO HIDE JOURNEY BUTTONS
-                onDayAction={() => {}} // Disabled as per request
+                onDayAction={handleDayRecord}
+                activeRecord={activeRecord}
                 backUrl={panelBase} 
                 onBack={() => setActiveTab('records')}
                 onSendMessage={(content, type, extraData) => {

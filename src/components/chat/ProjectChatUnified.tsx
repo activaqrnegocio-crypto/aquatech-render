@@ -46,6 +46,7 @@ interface ProjectChatUnifiedProps {
   onDayAction?: () => void
   activeRecord?: any
   isOperatorView?: boolean
+  isSending?: boolean
   backUrl?: string
   onBack?: () => void
   hideBack?: boolean
@@ -59,6 +60,7 @@ export default function ProjectChatUnified({
   onDayAction,
   activeRecord,
   isOperatorView = false,
+  isSending = false,
   backUrl = '/admin/proyectos',
   onBack,
   hideBack = false
@@ -157,7 +159,7 @@ export default function ProjectChatUnified({
 
 
   const handleSend = () => {
-    if (!inputValue.trim()) return
+    if (!inputValue.trim() || isSending) return
     onSendMessage(inputValue, 'TEXT', { phaseId: selectedPhaseId })
     setInputValue('')
   }
@@ -257,14 +259,15 @@ export default function ProjectChatUnified({
   // --- Render Attachment Menu Item ---
   const AttachmentItem = ({ icon, label, color, onClick }: any) => (
     <div 
-      onClick={() => { onClick(); setShowAttachments(false); }}
+      onClick={() => { if (!isSending) { onClick(); setShowAttachments(false); }}}
       style={{ 
         display: 'flex', 
         flexDirection: 'column', 
         alignItems: 'center', 
         gap: '8px', 
         cursor: 'pointer',
-        width: '75px'
+        width: '75px',
+        opacity: isSending ? 0.5 : 1
       }}
     >
       <div style={{ 
@@ -279,8 +282,8 @@ export default function ProjectChatUnified({
         boxShadow: '0 4px 8px rgba(0,0,0,0.2)',
         transition: 'transform 0.1s'
       }}
-      onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-      onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+      onMouseEnter={(e) => !isSending && (e.currentTarget.style.transform = 'scale(1.1)')}
+      onMouseLeave={(e) => !isSending && (e.currentTarget.style.transform = 'scale(1)')}
       >
         {icon}
       </div>
@@ -966,7 +969,7 @@ export default function ProjectChatUnified({
       {/* --- INPUT BAR --- */}
       <footer className="chat-footer">
         <div className="input-row">
-           <button className="btn-icon"><Smile /></button>
+           <button className="btn-icon" disabled={isSending}><Smile /></button>
             <div className="input-container">
               <textarea 
                 placeholder="Escribir un mensaje"
@@ -974,8 +977,9 @@ export default function ProjectChatUnified({
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 rows={1}
+                disabled={isSending}
               />
-              <button onClick={() => setShowAttachments(!showAttachments)} className="btn-icon">
+              <button onClick={() => setShowAttachments(!showAttachments)} className="btn-icon" disabled={isSending}>
                  <Paperclip />
               </button>
               <button onClick={() => setShowCamera(true)} className="btn-icon" title="Cámara (Foto/Video)">

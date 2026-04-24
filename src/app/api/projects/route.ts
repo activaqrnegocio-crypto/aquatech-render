@@ -6,6 +6,7 @@ import { getLocalNow, forceEcuadorTZ } from '@/lib/date-utils'
 import { isAdmin, isOperator } from '@/lib/rbac'
 import { notifyUser, notifyAdmins } from '@/lib/push'
 import { sendWhatsAppMessage } from '@/lib/whatsapp'
+import { uploadToBunny } from '@/lib/bunny'
 
 export async function GET(request: Request) {
   try {
@@ -132,6 +133,46 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Es obligatorio incluir los ítems de la cotización para crear el proyecto.' }, { status: 400 })
     }
 
+    // 0. Idempotency check: Don't create same project for same user/client in last 60s
+    const sixtySecondsAgo = new Date(Date.now() - 60000);
+    const existingRecentProject = await prisma.project.findFirst({
+      where: {
+        title,
+        createdBy: Number(userId),
+        clientId: clientId ? Number(clientId) : undefined,
+        createdAt: { gte: sixtySecondsAgo }
+      }
+    });
+
+    if (existingRecentProject) {
+      console.log(`[IDEMPOTENCY] Project "${title}" already created recently (ID: ${existingRecentProject.id})`);
+      return NextResponse.json(existingRecentProject, { status: 201 }); // Return existing instead of erroring
+    }
+
+    // 0.1 Handle Base64 files before transaction
+    const processedFiles: any[] = [];
+    if (data.files && Array.isArray(data.files)) {
+      for (const file of data.files) {
+        if (typeof file.url === 'string' && file.url.startsWith('data:')) {
+          try {
+            const matches = file.url.match(/^data:([A-Za-z-+\/]+);base64,(.+)$/);
+            if (matches && matches.length === 3) {
+              const buffer = Buffer.from(matches[2], 'base64');
+              const bunnyUrl = await uploadToBunny(buffer, file.filename || 'upload.jpg', 'projects');
+              processedFiles.push({ ...file, url: bunnyUrl });
+            } else {
+              processedFiles.push(file);
+            }
+          } catch (err) {
+            console.error('Error uploading base64 file to Bunny:', err);
+            processedFiles.push(file);
+          }
+        } else {
+          processedFiles.push(file);
+        }
+      }
+    }
+
     const project = await prisma.$transaction(async (tx) => {
       // 1. Get or Create Client
       let targetClientId = clientId ? Number(clientId) : null
@@ -221,7 +262,7 @@ export async function POST(request: Request) {
           },
           
           gallery: {
-            create: (data.files || []).map((file: any) => ({
+            create: (processedFiles).map((file: any) => ({
               url: file.url,
               filename: file.filename || 'upload',
               mimeType: file.mimeType || 'application/octet-stream',

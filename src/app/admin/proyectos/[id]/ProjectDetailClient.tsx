@@ -11,6 +11,8 @@ import MediaCapture from '@/components/MediaCapture'
 import { useSession } from 'next-auth/react'
 import { PROJECT_TYPES, translateType, PROJECT_CATEGORIES, translateCategory } from '@/lib/constants'
 import ProjectChatUnified from '@/components/chat/ProjectChatUnified'
+import { db } from '@/lib/db'
+import { useLiveQuery } from 'dexie-react-hooks'
 
 export default function ProjectDetailClient({ project, availableOperators = [] }: any) {
   const router = useRouter()
@@ -36,15 +38,12 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const [activeTab, setActiveTab] = useState<'CHAT' | 'GALLERY' | 'EVIDENCE'>(() => {
     const view = searchParams.get('view')
     if (view === 'CHAT' || view === 'GALLERY' || view === 'EVIDENCE') return view
-    // Fallback for legacy URL with 'EXPENSES'
     if (view === 'EXPENSES') return 'EVIDENCE'
     return 'CHAT'
   })
 
-  // Renamed label for UI consistency
   const GALLERY_LABEL = 'Planos y Referencias'
 
-  // Sync tab with URL
   const setActiveTabWithUrl = (tab: 'CHAT' | 'GALLERY' | 'EVIDENCE') => {
     setActiveTab(tab)
     const params = new URLSearchParams(searchParams.toString())
@@ -61,6 +60,13 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   
   // --- CHAT STATE ---
   const [chatMessages, setChatMessages] = useState(project.chatMessages || [])
+  
+  // Pending items from Dexie Outbox
+  const pendingItems = useLiveQuery(
+    () => db.outbox.where('projectId').equals(project.id).toArray(),
+    [project.id]
+  ) || []
+
   const [message, setMessage] = useState('')
   const [activePhase, setActivePhase] = useState<number | null>(null)
   const [isSending, setIsSending] = useState(false)
@@ -72,7 +78,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const [isEditingTeam, setIsEditingTeam] = useState(false)
   const [selectedTeam, setSelectedTeam] = useState<number[]>(project.team.map((t: any) => t.user.id))
   const [isSavingTeam, setIsSavingTeam] = useState(false)
-  // ONLY official project gallery uploads (no chat media mixed here anymore)
+  
   const initialGallery = (project.gallery || []).sort((a: any, b: any) => 
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   )
@@ -111,13 +117,45 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       category: 'MASTER',
       isExpense: true
     })).filter((e: any) => e.url)
-    return [...baseFiles, ...expenseFiles]
-  }, [gallery, expenses])
+
+    // Add pending uploads from outbox
+    const pendingUploads = (pendingItems || [])
+      .filter((item: any) => (item.type === 'MEDIA_UPLOAD' || item.type === 'GALLERY_UPLOAD'))
+      .filter((item: any) => {
+        const cat = (item.payload?.category || 'MASTER').toUpperCase()
+        return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
+      })
+      .map((item: any) => ({
+        id: `pending-${item.id}`,
+        url: item.payload?.url || item.payload?.base64 || '',
+        filename: item.payload?.filename || 'Pendiente...',
+        mimeType: item.payload?.mimeType || 'image/jpeg',
+        category: 'MASTER',
+        isPending: true
+      }))
+
+    return [...baseFiles, ...expenseFiles, ...pendingUploads]
+  }, [gallery, expenses, pendingItems])
 
   const evidenceGallery = useMemo(() => {
     // Strictly ONLY EVIDENCE category (uploaded as finals)
-    return gallery.filter((item: any) => (item.category || '').toUpperCase() === 'EVIDENCE')
-  }, [gallery])
+    const base = gallery.filter((item: any) => (item.category || '').toUpperCase() === 'EVIDENCE')
+    
+    // Add pending evidence uploads
+    const pendingEvidence = (pendingItems || [])
+      .filter((item: any) => (item.type === 'MEDIA_UPLOAD' || item.type === 'GALLERY_UPLOAD'))
+      .filter((item: any) => (item.payload?.category || '').toUpperCase() === 'EVIDENCE')
+      .map((item: any) => ({
+        id: `pending-ev-${item.id}`,
+        url: item.payload?.url || item.payload?.base64 || '',
+        filename: item.payload?.filename || 'Pendiente...',
+        mimeType: item.payload?.mimeType || 'image/jpeg',
+        category: 'EVIDENCE',
+        isPending: true
+      }))
+
+    return [...base, ...pendingEvidence]
+  }, [gallery, pendingItems])
 
   const chatGallery = useMemo(() => {
     // Extract media from persistent chat messages
@@ -130,11 +168,24 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         createdAt: msg.createdAt
       })))
 
+    // Extract media from pending chat messages
+    const pendingChat = (pendingItems || [])
+      .filter((item: any) => item.type === 'MESSAGE' && item.payload?.media)
+      .map((item: any) => ({
+        id: `pending-chat-${item.id}`,
+        url: item.payload.media.url || item.payload.media.base64 || '',
+        filename: item.payload.media.filename || 'Enviando...',
+        mimeType: item.payload.media.mimeType || 'image/jpeg',
+        isFromChat: true,
+        isPending: true,
+        createdAt: new Date(item.timestamp).toISOString()
+      }))
+
     // Sort by date (newest first)
-    return fromChat.sort((a: any, b: any) => 
+    return [...fromChat, ...pendingChat].sort((a: any, b: any) => 
       new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
     )
-  }, [chatMessages])
+  }, [chatMessages, pendingItems])
 
   const [isUploading, setIsUploading] = useState(false)
   const [showAllGallery, setShowAllGallery] = useState(false)
@@ -479,16 +530,45 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const handleAddExpense = async () => {
     if (!expenseForm.amount || !expenseForm.description) return alert('Importe y descripción obligatorios')
     setIsSavingExpense(true)
+
+    const expensePayload = {
+      amount: Number(expenseForm.amount),
+      description: expenseForm.description,
+      date: expenseForm.date,
+      isNote: expenseForm.isNote,
+      category: 'OTRO'
+    }
+
+    // Offline support
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        await db.outbox.add({
+          type: 'EXPENSE',
+          projectId: project.id,
+          payload: expensePayload,
+          timestamp: Date.now(),
+          status: 'pending'
+        })
+        setExpenseForm({
+          amount: '',
+          description: '',
+          isNote: false,
+          date: new Date().toISOString().split('T')[0]
+        })
+        setIsExpenseModalOpen(false)
+        return
+      } catch (e) {
+        console.error('Error saving offline expense:', e)
+      } finally {
+        setIsSavingExpense(false)
+      }
+    }
+
     try {
       const resp = await fetch(`/api/projects/${project.id}/expenses`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          amount: Number(expenseForm.amount),
-          description: expenseForm.description,
-          date: expenseForm.date,
-          isNote: expenseForm.isNote
-        })
+        body: JSON.stringify(expensePayload)
       })
       if (resp.ok) {
         setExpenseForm({
@@ -499,7 +579,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         })
         setIsExpenseModalOpen(false)
         startTransition(() => {
-          // router.refresh() - state updated via full page refresh elsewhere, but removed here for local update
+          router.refresh()
         })
       } else {
         const err = await resp.json()
@@ -534,6 +614,24 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
 
   const handleUploadToGallery = async (file: ProjectFile, category: string = 'MASTER') => {
     setIsUploading(true)
+
+    // Offline support
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+       try {
+          await db.outbox.add({
+             type: 'GALLERY_UPLOAD',
+             projectId: project.id,
+             payload: { ...file, category },
+             timestamp: Date.now(),
+             status: 'pending'
+          })
+          setIsUploading(false)
+          return
+       } catch (e) {
+          console.error('Error saving offline gallery item:', e)
+       }
+    }
+
     try {
       const resp = await fetch(`/api/projects/${project.id}/gallery`, {
         method: 'POST',
@@ -723,6 +821,27 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         }
       }
 
+      // Offline support for general messages
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+         try {
+            let offlinePayload = { ...payload }
+            await db.outbox.add({
+               type: 'MESSAGE',
+               projectId: project.id,
+               payload: offlinePayload,
+               timestamp: Date.now(),
+               status: 'pending'
+            })
+            setMessage('')
+            setShowMediaCapture(null)
+            return
+         } catch (e) {
+            console.error('Error saving offline message:', e)
+         } finally {
+            setIsSending(false)
+         }
+      }
+
       const res = await fetch(`/api/projects/${project.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -764,14 +883,31 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       }
 
       if (extraData?.file) {
-        const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
         const file = extraData.file as File
-        const uploadResult = await uploadToBunnyClientSide(file, file.name, `projects/${project.id}/chat`)
-        payload.media = {
-          url: uploadResult.url,
-          filename: uploadResult.filename,
-          mimeType: file.type
+        
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+          // Offline: convert to base64
+          const base64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader()
+            reader.onload = () => resolve(reader.result as string)
+            reader.readAsDataURL(file)
+          })
+          payload.media = {
+            base64,
+            filename: file.name,
+            mimeType: file.type
+          }
+        } else {
+          // Online: upload to Bunny
+          const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
+          const uploadResult = await uploadToBunnyClientSide(file, file.name, `projects/${project.id}/chat`)
+          payload.media = {
+            url: uploadResult.url,
+            filename: uploadResult.filename,
+            mimeType: file.type
+          }
         }
+        
         if (type === 'FILE') {
           payload.type = file.type.startsWith('image/') ? 'IMAGE' : 
                          file.type.startsWith('video/') ? 'VIDEO' : 
@@ -802,9 +938,24 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         }
       }
 
-      if (location) {
-        payload.lat = location.lat
-        payload.lng = location.lng
+      // Offline interceptor for Unified Chat
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+         try {
+            await db.outbox.add({
+               type: 'MESSAGE',
+               projectId: project.id,
+               payload,
+               timestamp: Date.now(),
+               lat: location?.lat,
+               lng: location?.lng,
+               status: 'pending'
+            })
+            return
+         } catch (e) {
+            console.error('Error saving offline unified message:', e)
+         } finally {
+            setIsSending(false)
+         }
       }
 
       const res = await fetch(`/api/projects/${project.id}/messages`, {
@@ -812,6 +963,8 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...payload,
+          lat: location?.lat,
+          lng: location?.lng,
           extraData: payload.extraData ? (typeof payload.extraData === 'string' ? payload.extraData : JSON.stringify(payload.extraData)) : undefined
         })
       })

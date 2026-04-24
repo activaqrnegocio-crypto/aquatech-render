@@ -1,6 +1,6 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker (Standalone Offline-First) v45
-// FIX: Content-Type validation — only cache HTML for navigation
+// Aquatech CRM — Custom Service Worker (Standalone Offline-First) v47
+// FIX: Task Sync with base64 media handling
 // ============================================================
 const STATIC_CACHE = 'aquatech-static';
 const PAGES_CACHE  = 'aquatech-pages';
@@ -16,6 +16,12 @@ const PRE_CACHE = [
   '/favicon.ico',
   '/logo.jpg',
   '/cotizacion.jpg',
+  '/admin',
+  '/admin/cotizaciones',
+  '/admin/cotizaciones/nuevo',
+  '/admin/proyectos/nuevo',
+  '/admin/operador',
+  '/admin/inventario'
 ];
 
 // ─── INSTALL ────────────────────────────────────────────────
@@ -335,14 +341,41 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   // Try app shell fallback
   const isOperator = pathname.includes('/operador');
   const isSubcon = pathname.includes('/subcontratista');
-  const shells = isOperator 
+  
+  // Base shells based on path
+  let shells = isOperator 
     ? ['/admin/operador', '/admin/operador/'] 
     : isSubcon 
       ? ['/admin/subcontratista', '/admin/subcontratista/']
       : ['/admin', '/admin/'];
   
+  // Universal fallbacks: if we are at root or admin entry, try ALL roles
+  if (pathname === '/' || pathname === '/admin' || pathname === '/admin/') {
+    try {
+      const auth = await getAuthFromIndexedDB();
+      const role = auth?.role?.toUpperCase();
+      if (role === 'OPERATOR' || role === 'OPERADOR') {
+        shells = ['/admin/operador', '/admin/operador/', '/admin', '/admin/'];
+      } else if (role === 'SUBCONTRATISTA') {
+        shells = ['/admin/subcontratista', '/admin/subcontratista/', '/admin', '/admin/'];
+      } else {
+        shells = ['/admin', '/admin/', '/admin/operador', '/admin/operador/'];
+      }
+    } catch (e) {
+      // Fallback to trying everything if auth check fails
+      shells = ['/admin', '/admin/', '/admin/operador', '/admin/operador/', '/admin/subcontratista', '/admin/subcontratista/'];
+    }
+  }
+
+  // Ensure /admin is always in the list as a catch-all for any admin path
+  if (pathname.startsWith('/admin') && !shells.includes('/admin')) {
+    shells.push('/admin', '/admin/');
+  }
+  
   for (const shell of shells) {
-    cached = await caches.match(shell, { ignoreVary: true, ignoreSearch: true });
+    // FIX: Use full URL for matching to ensure consistency
+    const shellUrl = new URL(shell, self.location.origin).href;
+    cached = await caches.match(shellUrl, { ignoreVary: true, ignoreSearch: true });
     if (isValidHTMLResponse(cached)) {
        if (!forceServe && !pathname.includes('/login') && (cached.url || '').includes('/login')) {
           // skip
@@ -372,6 +405,20 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
           }
         }
       } catch (e) { /* skip invalid URLs */ }
+    }
+  }
+
+  // LAST RESORT: Try any parent path that is cached (Hierarchical search)
+  let currentPath = pathname;
+  while (currentPath.length > 1) {
+    currentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
+    if (!currentPath || currentPath === '/admin') break; 
+    
+    const parentUrl = new URL(currentPath, self.location.origin).href;
+    const parentMatch = await caches.match(parentUrl, { ignoreVary: true, ignoreSearch: true });
+    if (isValidHTMLResponse(parentMatch)) {
+      console.log('[SW] Found hierarchical fallback:', currentPath);
+      return parentMatch;
     }
   }
 
@@ -600,7 +647,29 @@ async function processOutboxSync() {
 
       console.log(`[SW] Found ${pendingItems.length} pending items to sync`);
 
+      const now = Date.now();
       for (const item of pendingItems) {
+        // Priority to UI: Only sync if item has been pending for more than 15 seconds
+        // This gives the active tab enough time to sync every 5 seconds.
+        if (now - item.timestamp < 15000) {
+          console.log(`[SW] Skipping item ${item.id}, too fresh for SW sync (Priority to UI)`);
+          continue;
+        }
+
+        // Re-check status inside a transaction to ensure it's still pending
+        const stillPending = await new Promise((res) => {
+          const tx = db.transaction(['outbox'], 'readonly');
+          const store = tx.objectStore('outbox');
+          const req = store.get(item.id);
+          req.onsuccess = () => {
+            const result = req.result;
+            res(result && (result.status === 'pending' || result.status === 'failed'));
+          };
+          req.onerror = () => res(false);
+        });
+
+        if (!stillPending) continue;
+
         try {
           await new Promise((res, rej) => {
             const tx = db.transaction(['outbox'], 'readwrite');
@@ -615,9 +684,12 @@ async function processOutboxSync() {
           let method = 'POST';
           
           if (item.type === 'QUOTE') endpoint = '/api/quotes';
+          else if (item.type === 'TASK') endpoint = '/api/appointments';
           else if (item.type === 'MATERIAL') endpoint = '/api/materials';
           else if (item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD') {
             endpoint = `/api/projects/${item.projectId}/messages`;
+          } else if (item.type === 'GALLERY_UPLOAD') {
+            endpoint = `/api/projects/${item.projectId}/gallery`;
           } else if (item.type === 'EXPENSE') {
             endpoint = `/api/projects/${item.projectId}/expenses`;
           } else if (item.type === 'DAY_START') {
@@ -632,6 +704,60 @@ async function processOutboxSync() {
             endpoint = '/api/projects';
           }
 
+          // Special handling for TASK with base64 media
+          if (item.type === 'TASK' && item.payload && (item.payload.attachments?.some(a => a.base64) || item.payload.attachmentLinks?.some(l => l.base64))) {
+            try {
+              console.log('[SW] Processing base64 media for TASK...');
+              const configResp = await fetch('/api/storage/config');
+              if (configResp.ok) {
+                const config = await configResp.json();
+                
+                // Helper to upload base64 to Bunny from SW
+                const uploadBase64 = async (base64, name) => {
+                  const parts = base64.split(';base64,');
+                  const contentType = parts[0].split(':')[1];
+                  const raw = atob(parts[1]);
+                  const rawLength = raw.length;
+                  const uInt8Array = new Uint8Array(rawLength);
+                  for (let i = 0; i < rawLength; ++i) { uInt8Array[i] = raw.charCodeAt(i); }
+                  const blob = new Blob([uInt8Array], { type: contentType });
+                  
+                  const timestamp = Date.now();
+                  const safeName = name.replace(/[^a-zA-Z0-9.-]/g, '_');
+                  const path = `/${config.storageZone}/appointments/${timestamp}-${safeName}`;
+                  const uploadUrl = `https://${config.storageHost}${path}`;
+                  
+                  const res = await fetch(uploadUrl, {
+                    method: 'PUT',
+                    headers: { 'AccessKey': config.accessKey, 'Content-Type': 'application/octet-stream' },
+                    body: blob
+                  });
+                  if (!res.ok) throw new Error('Bunny upload failed');
+                  return `${config.pullZoneUrl}/appointments/${timestamp}-${safeName}`;
+                };
+
+                if (item.payload.attachments) {
+                  for (let a of item.payload.attachments) {
+                    if (a.base64) {
+                      a.data = await uploadBase64(a.base64, a.name);
+                      delete a.base64;
+                    }
+                  }
+                }
+                if (item.payload.attachmentLinks) {
+                  for (let l of item.payload.attachmentLinks) {
+                    if (l.base64) {
+                      l.url = await uploadBase64(l.base64, l.name);
+                      delete l.base64;
+                    }
+                  }
+                }
+              }
+            } catch (mediaErr) {
+              console.error('[SW] Media sync failed, sending without media or retrying', mediaErr);
+            }
+          }
+
           if (endpoint) {
             const res = await fetch(endpoint, {
               method,
@@ -641,7 +767,8 @@ async function processOutboxSync() {
                 lat: item.lat, 
                 lng: item.lng, 
                 createdAt: new Date(item.timestamp).toISOString(),
-                isOfflineSync: true 
+                isOfflineSync: true,
+                isNew: item.payload.isNew // Carry over the flag for the API
               })
             });
 

@@ -1,6 +1,8 @@
 'use client'
 
 import { useState, useEffect, useMemo } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/lib/db'
 import CalendarView from '@/components/Calendar/CalendarView'
 import AppointmentModal from '@/components/Calendar/AppointmentModal'
 import CalendarAssistant from '@/components/Calendar/CalendarAssistant'
@@ -32,6 +34,22 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
     }
   }
 
+  // --- OFFLINE SUPPORT ---
+  const pendingTasks = useLiveQuery(
+    () => db.outbox.where('type').equals('TASK').toArray(),
+    []
+  ) || []
+
+  const allAppointments = useMemo(() => {
+    const pending = pendingTasks.map(item => ({
+      ...item.payload,
+      id: `pending-${item.id}`,
+      isPending: true,
+      status: 'PENDING'
+    }))
+    return [...appointments, ...pending]
+  }, [appointments, pendingTasks])
+
   useEffect(() => {
     fetchAppointments()
 
@@ -49,6 +67,26 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
     const payload: any = { ...data }
     if (isNew && data.userIds && Array.isArray(data.userIds)) {
       payload.userIds = data.userIds
+    }
+
+    // Offline interceptor
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        await db.outbox.add({
+          type: 'TASK',
+          projectId: Number(payload.projectId) || 0,
+          payload: { ...payload, isNew },
+          timestamp: Date.now(),
+          status: 'pending'
+        })
+        setIsModalOpen(false)
+        alert('Tarea guardada localmente. Se sincronizará y notificará a los operadores cuando vuelvas a tener internet.')
+        return
+      } catch (err) {
+        console.error('Error saving task offline:', err)
+        alert('Error al guardar localmente')
+        return
+      }
     }
 
     const res = await fetch(url, {
@@ -112,7 +150,7 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
 
         <div className="calendar-wrapper">
           <CalendarView 
-            events={appointments}
+            events={allAppointments}
             isAdmin={true}
             viewMode="WEEK"
             onAddEvent={(date) => { 
