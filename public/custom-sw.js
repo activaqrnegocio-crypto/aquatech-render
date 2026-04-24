@@ -1,13 +1,12 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker (Standalone Offline-First) v43
-// FIX: Don't cache login redirects. Cache-first for navigation.
+// Aquatech CRM — Custom Service Worker (Standalone Offline-First) v44
+// FIX: Fixed cache names — survive across SW updates even when offline
 // ============================================================
-const CACHE_VERSION = 'v43';
-const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
-const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
-const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
-const FONTS_CACHE  = `aquatech-fonts-${CACHE_VERSION}`;
-const RSC_CACHE    = `aquatech-rsc-${CACHE_VERSION}`;
+const STATIC_CACHE = 'aquatech-static';
+const PAGES_CACHE  = 'aquatech-pages';
+const ASSETS_CACHE = 'aquatech-assets';
+const FONTS_CACHE  = 'aquatech-fonts';
+const RSC_CACHE    = 'aquatech-rsc';
 
 // Only pre-cache truly PUBLIC files (no auth required)
 const PRE_CACHE = [
@@ -20,7 +19,7 @@ const PRE_CACHE = [
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  console.log(`[SW ${CACHE_VERSION}] Installing...`);
+  console.log('[SW] Installing...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(async (cache) => {
@@ -31,7 +30,8 @@ self.addEventListener('install', (event) => {
               await cache.put(url, response);
             }
           } catch (err) {
-            console.warn(`[SW] Pre-cache failed for ${url}:`, err);
+            // Offline install — skip, existing cache survives
+            console.warn(`[SW] Pre-cache skipped (offline?): ${url}`);
           }
         }
       })
@@ -41,17 +41,17 @@ self.addEventListener('install', (event) => {
 
 // ─── ACTIVATE ───────────────────────────────────────────────
 self.addEventListener('activate', (event) => {
-  console.log(`[SW ${CACHE_VERSION}] Activating...`);
+  console.log('[SW] Activating...');
+  // DON'T delete any caches — they must survive across SW updates
+  // (especially when the update happens while the user is offline)
+  // Old versioned caches (aquatech-*-v42, etc.) can be cleaned up safely
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys
-          .filter(key => 
-            key.startsWith('aquatech-') && 
-            ![STATIC_CACHE, PAGES_CACHE, ASSETS_CACHE, FONTS_CACHE, RSC_CACHE].includes(key)
-          )
+          .filter(key => key.startsWith('aquatech-') && key.match(/-v\d+$/))
           .map(key => {
-            console.log('[SW] Removing old cache:', key);
+            console.log('[SW] Removing old versioned cache:', key);
             return caches.delete(key);
           })
       )

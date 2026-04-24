@@ -15,20 +15,24 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
   const [currentQuote, setCurrentQuote] = useState(quote)
   
   // Re-fetch quote on mount to ensure we have the latest data (fixes stale SW cache)
+  // Skip re-fetch for offline/pending quotes (id is not numeric)
   useEffect(() => {
+    const quoteId = currentQuote?.id;
+    if (!quoteId || typeof quoteId === 'string' && isNaN(Number(quoteId))) return;
+    
     const fetchLatest = async () => {
       try {
-        const res = await fetch(`/api/quotes/${currentQuote.id}`);
+        const res = await fetch(`/api/quotes/${quoteId}`);
         if (res.ok) {
           const data = await res.json();
           setCurrentQuote(data);
         }
       } catch (err) {
-        console.warn('[QuoteDetail] Failed to re-fetch latest data offline, using initial props.');
+        console.warn('[QuoteDetail] Failed to re-fetch latest data, using initial props.');
       }
     };
     fetchLatest();
-  }, [currentQuote.id]);
+  }, []);
   
   // Project Search State
   const [projectSearch, setProjectSearch] = useState('')
@@ -188,7 +192,7 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
             Volver a Cotizaciones
           </Link>
           <div style={{ display: 'flex', alignItems: 'center', gap: '15px' }}>
-            <h2 style={{ margin: 0 }}>Cotización #{currentQuote.id.toString().padStart(5, '0')}</h2>
+            <h2 style={{ margin: 0 }}>Cotización #{String(currentQuote.id ?? '').padStart(5, '0')}</h2>
             <span className={`badge badge-${currentQuote.status === 'BORRADOR' ? 'info' : currentQuote.status === 'ACEPTADA' ? 'success' : 'warning'}`}>
               {currentQuote.status}
             </span>
@@ -215,7 +219,7 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
               <img src="/logo.jpg" alt="AQUA TECH" style={{ height: '60px', width: 'auto', objectFit: 'contain' }} />
               <div style={{ textAlign: 'right', border: '1px solid #ddd', padding: '15px', borderRadius: '4px' }}>
                 <div style={{ fontWeight: 'bold', fontSize: '1.1rem' }}>R.U.C.: 1105048852001</div>
-                <div style={{ color: 'var(--primary)', fontWeight: 'bold' }}>COTIZACIÓN # {currentQuote.id.toString().padStart(5, '0')}</div>
+                <div style={{ color: 'var(--primary)', fontWeight: 'bold' }}>COTIZACIÓN # {String(currentQuote.id ?? '').padStart(5, '0')}</div>
                 <div style={{ fontSize: '0.8rem' }}>CASTILLO CASTILLO PABLO JOSE</div>
               </div>
             </div>
@@ -294,7 +298,7 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
                 <strong style={{ display: 'block', marginBottom: '6px', color: '#374151' }}>OBSERVACIONES:</strong>
                 <p style={{ margin: '0 0 12px 0', color: '#4b5563', wordBreak: 'break-word', whiteSpace: 'pre-wrap' }}>{currentQuote.notes || 'Ninguna'}</p>
                 <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '10px', color: '#374151' }}>
-                  <strong>SON:</strong> {numberToSpanishWords(Number(currentQuote.totalAmount))}
+                  <strong>SON:</strong> {numberToSpanishWords(Number(currentQuote.totalAmount || 0))}
                 </div>
               </div>
             </div>

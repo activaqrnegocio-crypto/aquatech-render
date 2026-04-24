@@ -61,6 +61,7 @@ export function addAquatechHeader(doc: jsPDF, title: string, subtitle: string) {
 
 // Helper to convert numbers to Spanish words for "SON: ..."
 export function numberToSpanishWords(n: number): string {
+  if (isNaN(n) || n === undefined || n === null) return 'CERO, 00/100 DOLARES';
   const units = ['', 'UN', 'DOS', 'TRES', 'CUATRO', 'CINCO', 'SEIS', 'SIETE', 'OCHO', 'NUEVE'];
   const tens = ['', 'DIEZ', 'VEINTE', 'TREINTA', 'CUARENTA', 'CINCUENTA', 'SESENTA', 'SETENTA', 'OCHENTA', 'NOVENTA'];
   const teens = ['DIEZ', 'ONCE', 'DOCE', 'TRECE', 'CATORCE', 'QUINCE', 'DIECISEIS', 'DIECISIETE', 'DIECIOCHO', 'DIECINUEVE'];

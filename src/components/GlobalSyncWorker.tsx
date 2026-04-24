@@ -45,12 +45,27 @@ export default function GlobalSyncWorker() {
           
           let finalPayload = { ...item.payload }
           
-          // Handle media upload if there is a raw file in the outbox item
-          if (item.payload.file && (item.type === 'MESSAGE' || item.type === 'EXPENSE' || item.type === 'MEDIA_UPLOAD')) {
+          // Handle media upload: reconstruct File from stored ArrayBuffer
+          const hasFileData = item.payload.fileData?.buffer;
+          const hasRawFile = item.payload.file;
+          
+          if ((hasFileData || hasRawFile) && (item.type === 'MESSAGE' || item.type === 'EXPENSE' || item.type === 'MEDIA_UPLOAD')) {
             try {
               const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
-              const uploadFile = item.payload.file
-              const finalFilename = uploadFile.name || `sync_upload_${Date.now()}`
+              
+              let uploadFile: File | Blob;
+              let finalFilename: string;
+              
+              if (hasFileData) {
+                // Reconstruct File from stored ArrayBuffer (new format — survives IDB)
+                const blob = new Blob([item.payload.fileData.buffer], { type: item.payload.fileData.type });
+                uploadFile = new File([blob], item.payload.fileData.name, { type: item.payload.fileData.type });
+                finalFilename = item.payload.fileData.name;
+              } else {
+                // Legacy: raw File object (may work if app wasn't restarted)
+                uploadFile = item.payload.file;
+                finalFilename = item.payload.file.name || `sync_upload_${Date.now()}`;
+              }
               
               const uploadResult = await uploadToBunnyClientSide(uploadFile, finalFilename, `projects/${item.projectId}/chat`)
               finalPayload.media = {
@@ -58,14 +73,21 @@ export default function GlobalSyncWorker() {
                 filename: uploadResult.filename,
                 mimeType: uploadResult.mimeType
               }
-              // Remove file from payload before sending to API
+              // Clean up file data from payload before sending to API
               delete finalPayload.file
+              delete finalPayload.fileData
+              delete finalPayload.previewBase64
             } catch (uploadError) {
               console.error('Failed to upload media during sync:', uploadError)
               await db.outbox.update(item.id!, { status: 'pending' })
               continue // Try next item
             }
           }
+          
+          // Clean up any remaining file data
+          delete finalPayload.fileData
+          delete finalPayload.previewBase64
+          delete finalPayload.file
           
           if (endpoint) {
              const res = await fetch(endpoint, {

@@ -947,10 +947,40 @@ export default function ProjectExecutionClient({
       }
 
       if (!navigator.onLine || uploadErrorOccurred) {
+         // Convert File to ArrayBuffer so it survives IndexedDB persistence across app restarts
+         let fileData: any = null;
+         let previewBase64: string | null = null;
+         if (mediaFile) {
+           try {
+             const buffer = await mediaFile.arrayBuffer();
+             fileData = {
+               buffer: buffer,
+               name: mediaFile.name,
+               type: mediaFile.type,
+               size: mediaFile.size
+             };
+             // Generate a small preview for display in chat
+             if (mediaFile.type.startsWith('image/')) {
+               previewBase64 = await new Promise<string>((resolve) => {
+                 const reader = new FileReader();
+                 reader.onload = () => resolve(reader.result as string);
+                 reader.onerror = () => resolve('');
+                 reader.readAsDataURL(mediaFile);
+               });
+             }
+           } catch (e) {
+             console.warn('[Offline] Failed to convert file to buffer:', e);
+           }
+         }
+
          await db.outbox.add({
             type: 'MESSAGE',
             projectId: project.id,
-            payload: { ...payload, file: mediaFile }, // Store raw file for later upload
+            payload: { 
+              ...payload, 
+              fileData: fileData, // ArrayBuffer + metadata (survives IDB)
+              previewBase64: previewBase64 // For display in pending messages
+            },
             timestamp: Date.now(),
             lat: location?.lat,
             lng: location?.lng,
@@ -986,10 +1016,18 @@ export default function ProjectExecutionClient({
           }
         }
       } catch (e) {
+         // Convert File to ArrayBuffer for IDB persistence
+         let fileData: any = null;
+         if (mediaFile) {
+           try {
+             const buffer = await mediaFile.arrayBuffer();
+             fileData = { buffer, name: mediaFile.name, type: mediaFile.type, size: mediaFile.size };
+           } catch (err) { console.warn('[Offline] File buffer conversion failed:', err); }
+         }
          await db.outbox.add({
             type: 'MESSAGE',
             projectId: project.id,
-            payload,
+            payload: { ...payload, fileData },
             timestamp: Date.now(),
             lat: location?.lat,
             lng: location?.lng,
@@ -1154,22 +1192,42 @@ export default function ProjectExecutionClient({
     ...liveChat,
     ...pendingItems
       .filter((item: any) => item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD')
-      .map((item: any) => ({
-        id: `pending-${item.id}`,
-        projectId: item.projectId,
-        userId: userId,
-        userName: 'Yo (Pendiente)',
-        content: item.payload.content || (item.type === 'MEDIA_UPLOAD' ? '[Archivo]' : ''),
-        type: item.payload.type || item.type,
-        createdAt: new Date(item.timestamp).toISOString(),
-        isMe: true,
-        isPending: true,
-        status: item.status,
-        lat: item.lat,
-        lng: item.lng,
-        phaseId: item.payload.phaseId, // FIX: crucial for filtering by phase
-        media: item.payload.media ? [{ url: item.payload.media.url || item.payload.media.base64, filename: item.payload.media.filename, mimeType: item.payload.media.mimeType }] : []
-      }))
+      .map((item: any) => {
+        // Build media array from either existing media or stored file preview
+        let mediaArr: any[] = [];
+        if (item.payload.media) {
+          mediaArr = [{ url: item.payload.media.url || item.payload.media.base64, filename: item.payload.media.filename, mimeType: item.payload.media.mimeType }];
+        } else if (item.payload.previewBase64) {
+          // Use the base64 preview generated at save time
+          mediaArr = [{ url: item.payload.previewBase64, filename: item.payload.fileData?.name || 'Archivo', mimeType: item.payload.fileData?.type || 'image/jpeg' }];
+        } else if (item.payload.fileData) {
+          // Create a temporary blob URL from the stored ArrayBuffer
+          try {
+            const blob = new Blob([item.payload.fileData.buffer], { type: item.payload.fileData.type });
+            const blobUrl = URL.createObjectURL(blob);
+            mediaArr = [{ url: blobUrl, filename: item.payload.fileData.name, mimeType: item.payload.fileData.type }];
+          } catch (e) {
+            mediaArr = [];
+          }
+        }
+
+        return {
+          id: `pending-${item.id}`,
+          projectId: item.projectId,
+          userId: userId,
+          userName: 'Yo (Pendiente)',
+          content: item.payload.content || (item.type === 'MEDIA_UPLOAD' ? '[Archivo pendiente]' : (item.payload.fileData ? `📎 ${item.payload.fileData.name}` : '')),
+          type: item.payload.type || item.type,
+          createdAt: new Date(item.timestamp).toISOString(),
+          isMe: true,
+          isPending: true,
+          status: item.status,
+          lat: item.lat,
+          lng: item.lng,
+          phaseId: item.payload.phaseId,
+          media: mediaArr
+        };
+      })
   ].sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
 
   const filteredChat = combinedChat.filter((msg: any) => {
