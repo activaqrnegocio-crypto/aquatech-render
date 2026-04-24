@@ -1,33 +1,21 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker (Standalone Offline-First) v42
-// Standalone: No Workbox dependency. Registered directly as /custom-sw.js
+// Aquatech CRM — Custom Service Worker (Standalone Offline-First) v43
+// FIX: Don't cache login redirects. Cache-first for navigation.
 // ============================================================
-const CACHE_VERSION = 'v42';
+const CACHE_VERSION = 'v43';
 const STATIC_CACHE = `aquatech-static-${CACHE_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${CACHE_VERSION}`;
 const ASSETS_CACHE = `aquatech-assets-${CACHE_VERSION}`;
 const FONTS_CACHE  = `aquatech-fonts-${CACHE_VERSION}`;
 const RSC_CACHE    = `aquatech-rsc-${CACHE_VERSION}`;
 
-// Files to pre-cache on install (always available offline)
+// Only pre-cache truly PUBLIC files (no auth required)
 const PRE_CACHE = [
-  '/',
   '/offline.html',
+  '/manifest.json',
+  '/favicon.ico',
   '/logo.jpg',
   '/cotizacion.jpg',
-  '/manifest.json',
-  '/admin',
-  '/admin/',
-  '/admin/operador',
-  '/admin/operador/',
-  '/admin/operador/nuevo',
-  '/admin/proyectos/nuevo',
-  '/admin/inventario',
-  '/admin/cotizaciones',
-  '/admin/cotizaciones/',
-  '/admin/cotizaciones/offline',
-  '/admin/login',
-  '/favicon.ico',
 ];
 
 // ─── INSTALL ────────────────────────────────────────────────
@@ -36,19 +24,11 @@ self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(async (cache) => {
-        // Fetch individually to prevent a single 302/404 from breaking the whole install
         for (const url of PRE_CACHE) {
           try {
-            // Include credentials to ensure we capture the actual dashboard if logged in
-            const response = await fetch(new Request(url, { 
-              credentials: 'same-origin',
-              redirect: 'follow'
-            }));
-            
-            if (response.ok) {
+            const response = await fetch(url);
+            if (response.ok && !response.redirected) {
               await cache.put(url, response);
-            } else {
-              console.warn(`[SW] Pre-cache skipped for ${url} (status: ${response.status})`);
             }
           } catch (err) {
             console.warn(`[SW] Pre-cache failed for ${url}:`, err);
@@ -82,10 +62,16 @@ self.addEventListener('activate', (event) => {
 // ─── FETCH ──────────────────────────────────────────────────
 self.addEventListener('fetch', (event) => {
   const { request } = event;
-  const url = new URL(request.url);
 
   // Only handle GET requests
   if (request.method !== 'GET') return;
+
+  let url;
+  try {
+    url = new URL(request.url);
+  } catch (e) {
+    return; // Invalid URL, let browser handle
+  }
 
   // Skip chrome-extension, ws, etc.
   if (!url.protocol.startsWith('http')) return;
@@ -130,21 +116,7 @@ self.addEventListener('fetch', (event) => {
 
   // ── API requests
   if (url.pathname.startsWith('/api/')) {
-    if (request.method === 'GET') {
-      // Cache GET requests (Network First) so projects and data load offline
-      // Increased timeout to 15s to prevent "0 projects" on slow connections
-      event.respondWith(networkFirst(request, 'aquatech-apis-v1', 15000));
-    } else {
-      // POST, PATCH, DELETE are network only (mutations)
-      event.respondWith(
-        fetch(request).catch(() => 
-          new Response(JSON.stringify({ error: 'Sin conexión', offline: true }), {
-            status: 503,
-            headers: { 'Content-Type': 'application/json' }
-          })
-        )
-      );
-    }
+    event.respondWith(networkFirst(request, 'aquatech-apis-v1', 15000));
     return;
   }
 
@@ -166,8 +138,7 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ── RSC (React Server Component) requests — these are client-side navigations
-  // Next.js App Router uses RSC header for client-side transitions, NOT navigate mode
+  // ── RSC (React Server Component) requests — client-side navigations
   const isRSC = request.headers.get('RSC') === '1' || 
                 request.headers.get('Next-Router-Prefetch') === '1' ||
                 url.searchParams.has('_rsc');
@@ -177,40 +148,33 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ── Full-page navigation → Network First with offline.html fallback
+  // ── Full-page navigation → CACHE FIRST with network update
   if (request.mode === 'navigate') {
     event.respondWith(navigationHandler(request));
     return;
   }
 
   // ── Everything else → Network First with cache
-  try {
-    event.respondWith(
-      networkFirst(request, ASSETS_CACHE).catch(() => 
-        caches.match('/offline.html')
-      )
-    );
-  } catch (err) {
-    console.error('[SW] Critical fetch listener error:', err);
-  }
+  event.respondWith(
+    networkFirst(request, ASSETS_CACHE).catch(() => 
+      caches.match('/offline.html')
+    )
+  );
 });
 
 // ─── STRATEGIES ─────────────────────────────────────────────
 
 /**
  * RSC Network First — specialized for React Server Component payloads.
- * Caches by URL path only (ignoring RSC-specific headers/params) so that
- * a prefetched response can serve a real navigation request offline.
  */
 async function rscNetworkFirst(request) {
-  // Build a normalized cache key: just the pathname (strip _rsc param)
   const url = new URL(request.url);
   url.searchParams.delete('_rsc');
   const cacheKey = url.toString();
 
   try {
     const response = await fetchWithTimeout(request.clone(), 10000);
-    if (response.ok) {
+    if (response.ok && !response.redirected) {
       const cache = await caches.open(RSC_CACHE);
       cache.put(cacheKey, response.clone());
     }
@@ -220,9 +184,6 @@ async function rscNetworkFirst(request) {
     const cached = await cache.match(cacheKey);
     if (cached) return cached;
     
-    const exactCached = await caches.match(request.clone(), { ignoreVary: true });
-    if (exactCached) return exactCached;
-
     return new Response(JSON.stringify({ error: 'offline' }), {
       status: 503,
       headers: { 'Content-Type': 'application/json' }
@@ -231,123 +192,129 @@ async function rscNetworkFirst(request) {
 }
 
 /**
- * Navigation handler — for full page loads (first visit, refresh).
- * Try network → PAGES_CACHE only → offline.html
- * IMPORTANT: We ONLY search PAGES_CACHE here, never RSC_CACHE or ASSETS_CACHE,
- * because RSC payloads are NOT valid HTML and would render as raw text.
+ * Navigation handler — CACHE-FIRST for instant offline response.
+ * 
+ * Strategy:
+ * 1. Check cache FIRST (instant response if available)
+ * 2. If cache hit → serve it AND update in background
+ * 3. If cache miss → try network with short timeout
+ * 4. If all fails → offline.html → inline HTML
  */
 async function navigationHandler(request) {
   const url = new URL(request.url);
-  console.log('[SW] Handling navigation for:', url.pathname);
+  console.log('[SW] Navigation:', url.pathname);
+
+  // ── STEP 1: Check cache first for instant offline response
+  let cached = await findCachedPage(request.url, url.pathname);
   
-  // ── STEP 1: Try network first (8s timeout)
+  if (cached) {
+    // Validate: don't serve cached login pages for non-login URLs
+    const cachedUrl = cached.url || '';
+    if (!url.pathname.includes('/login') && cachedUrl.includes('/login')) {
+      console.log('[SW] Cached response is login redirect, skipping');
+      cached = null;
+    }
+  }
+
+  if (cached) {
+    console.log('[SW] Serving from cache:', url.pathname);
+    // Update in background (stale-while-revalidate for pages)
+    updatePageInBackground(request.clone(), url.pathname);
+    return cached;
+  }
+
+  // ── STEP 2: Cache miss → try network with SHORT timeout (3s)
   try {
-    const response = await fetchWithTimeout(request.clone(), 8000);
-    if (response.ok && response.status === 200) {
-      // Cache the successful navigation for future offline use
+    const response = await fetchWithTimeout(request.clone(), 3000);
+    if (response.ok && !response.redirected) {
       const cache = await caches.open(PAGES_CACHE);
       cache.put(request.url, response.clone());
-      // Also cache without/with trailing slash variant
+      // Also cache slash variant
       const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
       cache.put(alt, response.clone());
     }
     return response;
   } catch (e) {
-    console.warn('[SW] Navigation network failed for:', url.pathname, e.message);
-  }
-  
-  // ── OFFLINE FALLBACK CHAIN ──
-  // Search ALL caches (not just specific ones) to find any cached version
-  
-  // STEP 2: Try exact URL match across all caches
-  let cached = await caches.match(request.url, { ignoreVary: true, ignoreSearch: true });
-  if (cached) {
-    console.log('[SW] Found exact cache match');
-    return cached;
+    console.warn('[SW] Navigation network failed:', url.pathname);
   }
 
-  // STEP 3: Try with/without trailing slash
-  const altUrl = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
-  cached = await caches.match(altUrl, { ignoreVary: true, ignoreSearch: true });
-  if (cached) {
-    console.log('[SW] Found alternate slash cache match');
-    return cached;
-  }
-
-  // STEP 4: Try just the pathname (in case the full URL with host doesn't match)
-  const allCacheNames = await caches.keys();
-  for (const cacheName of allCacheNames) {
-    const cache = await caches.open(cacheName);
-    const keys = await cache.keys();
-    for (const key of keys) {
-      const keyUrl = new URL(key.url);
-      if (keyUrl.pathname === url.pathname) {
-        const match = await cache.match(key);
-        if (match) {
-          console.log('[SW] Found pathname match in cache:', cacheName);
-          return match;
-        }
-      }
-    }
-  }
-
-  // STEP 5: APP SHELL FALLBACK — serve the parent dashboard shell
-  const isOperatorPath = url.pathname.includes('/operador');
-  const isSubconPath = url.pathname.includes('/subcontratista');
-  const shellPaths = isOperatorPath 
-    ? ['/admin/operador', '/admin/operador/'] 
-    : (isSubconPath 
-      ? ['/admin/subcontratista', '/admin/subcontratista/'] 
-      : ['/admin', '/admin/']);
-  
-  for (const shellPath of shellPaths) {
-    cached = await caches.match(shellPath, { ignoreVary: true, ignoreSearch: true });
-    if (cached) {
-      console.log('[SW] Serving app shell fallback:', shellPath);
-      return cached;
-    }
-  }
-
-  // STEP 6: Try root /
-  cached = await caches.match('/', { ignoreVary: true, ignoreSearch: true });
-  if (cached) {
-    console.log('[SW] Serving root fallback');
-    return cached;
-  }
-
-  // STEP 7: Any cached HTML page at all (last resort before offline.html)
-  for (const cacheName of allCacheNames) {
-    const cache = await caches.open(cacheName);
-    const keys = await cache.keys();
-    for (const key of keys) {
-      const match = await cache.match(key);
-      if (match && match.headers.get('content-type')?.includes('text/html')) {
-        console.log('[SW] Serving any cached HTML as emergency fallback');
-        return match;
-      }
-    }
-  }
-
-  // STEP 8: Show offline page
+  // ── STEP 3: Try offline.html
   const offlinePage = await caches.match('/offline.html');
   if (offlinePage) return offlinePage;
 
-  // STEP 9: Generate inline offline page (absolute last resort)
-  console.error('[SW] ALL cache lookups failed — generating inline offline page');
+  // ── STEP 4: Inline fallback (absolute last resort)
   return new Response(
     '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>Sin conexión</title></head>' +
     '<body style="font-family:system-ui,sans-serif;text-align:center;padding:50px;background:#0a0f1e;color:white;">' +
     '<h1 style="margin-bottom:16px;">📡 Sin conexión</h1>' +
-    '<p style="color:#94a3b8;margin-bottom:24px;">La app necesita cargar al menos una vez con internet para funcionar offline.</p>' +
-    '<p style="color:#64748b;font-size:0.85rem;margin-bottom:24px;">Conecta el WiFi, abre la app, navega un momento, y luego podrás usarla sin internet.</p>' +
-    '<button onclick="window.location.reload()" style="padding:12px 24px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;font-size:1rem;">Reintentar</button>' +
+    '<p style="color:#94a3b8;">Conecta a internet y recarga.</p>' +
+    '<button onclick="window.location.reload()" style="margin-top:20px;padding:12px 24px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;">Reintentar</button>' +
     '</body></html>', 
-    {
-      status: 503,
-      headers: { 'Content-Type': 'text/html; charset=utf-8' }
-    }
+    { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
   );
+}
+
+/**
+ * Find a cached page by URL, with multiple fallback strategies
+ */
+async function findCachedPage(requestUrl, pathname) {
+  // Try exact URL
+  let cached = await caches.match(requestUrl, { ignoreVary: true, ignoreSearch: true });
+  if (cached) return cached;
+
+  // Try slash variant
+  const alt = requestUrl.endsWith('/') ? requestUrl.slice(0, -1) : requestUrl + '/';
+  cached = await caches.match(alt, { ignoreVary: true, ignoreSearch: true });
+  if (cached) return cached;
+
+  // Try by pathname across all caches
+  const allCacheNames = await caches.keys();
+  for (const cacheName of allCacheNames) {
+    if (cacheName.includes('rsc') || cacheName.includes('fonts')) continue;
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    for (const key of keys) {
+      try {
+        const keyUrl = new URL(key.url);
+        if (keyUrl.pathname === pathname || keyUrl.pathname === pathname + '/' || keyUrl.pathname + '/' === pathname) {
+          const match = await cache.match(key);
+          if (match) return match;
+        }
+      } catch (e) { /* skip invalid URLs */ }
+    }
+  }
+
+  // Try app shell fallback
+  const isOperator = pathname.includes('/operador');
+  const isSubcon = pathname.includes('/subcontratista');
+  const shells = isOperator 
+    ? ['/admin/operador', '/admin/operador/'] 
+    : isSubcon 
+      ? ['/admin/subcontratista', '/admin/subcontratista/']
+      : ['/admin', '/admin/'];
+  
+  for (const shell of shells) {
+    cached = await caches.match(shell, { ignoreVary: true, ignoreSearch: true });
+    if (cached) return cached;
+  }
+
+  return null;
+}
+
+/**
+ * Update a page in the background (for stale-while-revalidate)
+ */
+function updatePageInBackground(request, pathname) {
+  fetch(request).then(response => {
+    if (response.ok && !response.redirected) {
+      caches.open(PAGES_CACHE).then(cache => {
+        cache.put(request.url, response.clone());
+        const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
+        cache.put(alt, response.clone());
+      });
+    }
+  }).catch(() => { /* offline, ignore */ });
 }
 
 /**
@@ -357,7 +324,7 @@ async function networkFirst(request, cacheName, timeout = 10000) {
   if (request.method !== 'GET') return fetch(request);
   try {
     const response = await fetchWithTimeout(request, timeout);
-    if (response.ok || response.status === 0) {
+    if ((response.ok || response.status === 0) && !response.redirected) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
     }
@@ -366,7 +333,6 @@ async function networkFirst(request, cacheName, timeout = 10000) {
     const cached = await caches.match(request, { ignoreVary: true });
     if (cached) return cached;
     
-    // If it's a JSON request, return a clean offline error instead of breaking
     if (request.headers.get('Accept')?.includes('application/json') || request.url.includes('/api/')) {
        return new Response(JSON.stringify([]), {
          status: 200, 
@@ -408,9 +374,7 @@ async function staleWhileRevalidate(request, cacheName) {
     if (response && (response.ok || response.status === 0)) {
       const responseToCache = response.clone();
       caches.open(cacheName).then(cache => {
-        cache.put(request, responseToCache).catch(err => {
-          console.warn('[SW] Cache put failed:', err);
-        });
+        cache.put(request, responseToCache).catch(() => {});
       });
     }
     return response;
@@ -448,32 +412,28 @@ function isStaticAsset(pathname) {
 function getAuthFromIndexedDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('AquatechOfflineDB');
-    
-    request.onerror = () => reject(request.error);
+    request.onerror = () => resolve(null);
     request.onsuccess = () => {
       const db = request.result;
-      
       try {
-        const transaction = db.transaction(['auth'], 'readonly');
-        const store = transaction.objectStore('auth');
-        const getRequest = store.get('last_session');
-        
-        getRequest.onsuccess = () => resolve(getRequest.result);
-        getRequest.onerror = () => reject(getRequest.error);
-      } catch (err) {
+        const tx = db.transaction('authShadow', 'readonly');
+        const store = tx.objectStore('authShadow');
+        const getReq = store.get('current');
+        getReq.onsuccess = () => resolve(getReq.result || null);
+        getReq.onerror = () => resolve(null);
+      } catch (e) {
         resolve(null);
       }
     };
   });
 }
 
-// ─── MESSAGES ───────────────────────────────────────────────
+// ─── MESSAGE HANDLER ───────────────────────────────────────────
 self.addEventListener('message', (event) => {
   if (event.data === 'skipWaiting') {
     self.skipWaiting();
   }
   
-  // Allow manual cache clearing
   if (event.data === 'clearCache') {
     caches.keys().then(keys => 
       Promise.all(keys.filter(k => k.startsWith('aquatech-')).map(k => caches.delete(k)))
@@ -482,7 +442,7 @@ self.addEventListener('message', (event) => {
     });
   }
 
-  // Allow explicit pre-caching of URLs (pages with auth cookies)
+  // Warm-up pre-caching — ONLY caches non-redirected responses
   if (event.data && event.data.type === 'PRECACHE_URLS') {
     const urls = event.data.urls || [];
     console.log('[SW] Warm-up pre-caching', urls.length, 'URLs');
@@ -494,13 +454,14 @@ self.addEventListener('message', (event) => {
               credentials: 'same-origin',
               redirect: 'follow'
             });
-            if (response.ok && response.status === 200) {
-              // Cache under the exact URL
+            // CRITICAL: Skip redirected responses (login page redirects)
+            if (response.ok && !response.redirected) {
               await cache.put(url, response.clone());
-              // Also cache the variant (with/without trailing slash)
               const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
               await cache.put(alt, response.clone());
               console.log('[SW] Warm-cached:', url);
+            } else if (response.redirected) {
+              console.warn('[SW] Skipped redirect for:', url, '→', response.url);
             }
           } catch (e) {
             console.warn('[SW] Warm-cache failed for:', url);
@@ -519,22 +480,12 @@ self.addEventListener('sync', (event) => {
   }
 });
 
-/**
- * Native IndexedDB connection inside the Service Worker
- * because we cannot import Dexie/lib directly here.
- */
 function openAquatechDB() {
   return new Promise((resolve, reject) => {
-    // Open without version to use latest
     const request = indexedDB.open('AquatechOfflineDB');
-    
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
-    // Don't abort - let it open even if upgrade needed, 
-    // though Dexie should handle the actual schema definition
-    request.onupgradeneeded = (e) => {
-      console.log('[SW] DB Upgrade needed in SW context...');
-    };
+    request.onupgradeneeded = () => {};
   });
 }
 
@@ -567,7 +518,6 @@ async function processOutboxSync() {
 
       for (const item of pendingItems) {
         try {
-          // 1. Update status to syncing
           await new Promise((res, rej) => {
             const tx = db.transaction(['outbox'], 'readwrite');
             const store = tx.objectStore('outbox');
@@ -577,7 +527,6 @@ async function processOutboxSync() {
             req.onerror = rej;
           });
 
-          // 2. Fetch API specialized by type
           let endpoint = '';
           let method = 'POST';
           
@@ -613,7 +562,6 @@ async function processOutboxSync() {
             });
 
             if (res.ok) {
-               // 3. Delete on success
                await new Promise((deleteRes) => {
                  const txd = db.transaction(['outbox'], 'readwrite');
                  const stored = txd.objectStore('outbox');
@@ -627,7 +575,6 @@ async function processOutboxSync() {
           }
         } catch (e) {
           console.error(`[SW] Failed to sync item ${item.id}:`, e);
-          // 4. Mark as failed
           await new Promise((res) => {
             const txError = db.transaction(['outbox'], 'readwrite');
             const storeError = txError.objectStore('outbox');
@@ -659,13 +606,13 @@ self.addEventListener('push', (event) => {
     body: data.body || 'Nueva actualización en tu proyecto',
     icon: data.icon || '/icon-192.png',
     badge: data.badge || '/icon-192.png',
-    vibrate: [200, 100, 200], // Short, safe vibration pattern
-    tag: data.tag || 'aquatech-update', // Static tag so renotify works properly
+    vibrate: [200, 100, 200],
+    tag: data.tag || 'aquatech-update',
     renotify: true,
     requireInteraction: true,
     silent: false,
     timestamp: Date.now(),
-    image: '/logo.jpg', // Large image for better visibility
+    image: '/logo.jpg',
     data: {
       url: data.url || '/admin/operador',
       timestamp: Date.now()
@@ -691,16 +638,13 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true })
       .then((windowClients) => {
-        // If there's already an open window with the CRM, focus and navigate
         for (const client of windowClients) {
           if (client.url.includes('/admin/') && 'focus' in client) {
             client.navigate(targetUrl);
             return client.focus();
           }
         }
-        // Otherwise open a new window
         return clients.openWindow(targetUrl);
       })
   );
 });
-

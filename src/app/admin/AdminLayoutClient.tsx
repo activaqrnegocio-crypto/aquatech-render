@@ -3,13 +3,54 @@
 import { usePathname, useRouter } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import GlobalSyncWorker from '@/components/GlobalSyncWorker'
-import { Suspense } from 'react'
+import { Suspense, useEffect } from 'react'
 
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
   const pathname = usePathname()
   const router = useRouter()
   const isLoginPage = pathname === '/admin/login'
   const isDashboard = pathname === '/admin' || pathname === '/admin/' || pathname === '/admin/operador' || pathname === '/admin/operador/'
+
+  // ── Warm-up SW cache AFTER login (user has valid session cookies)
+  useEffect(() => {
+    if (isLoginPage) return; // Don't warm-up on login page
+    if (!('serviceWorker' in navigator)) return;
+
+    const warmUp = () => {
+      if (!navigator.serviceWorker.controller) {
+        // SW not yet active, retry
+        setTimeout(warmUp, 2000);
+        return;
+      }
+
+      const isOperator = pathname.includes('/operador');
+      const isSubcon = pathname.includes('/subcontratista');
+
+      const pages = [
+        '/admin', '/admin/', '/admin/login',
+        '/admin/cotizaciones', '/admin/cotizaciones/',
+        '/admin/cotizaciones/offline', '/admin/inventario',
+      ];
+
+      if (isOperator) {
+        pages.push('/admin/operador', '/admin/operador/', '/admin/operador/nuevo');
+      } else if (isSubcon) {
+        pages.push('/admin/subcontratista');
+      } else {
+        pages.push('/admin/proyectos', '/admin/recursos', '/admin/reportes');
+      }
+
+      navigator.serviceWorker.controller.postMessage({
+        type: 'PRECACHE_URLS',
+        urls: pages,
+      });
+      console.log('[App] Warm-up cache sent (post-login) for', pages.length, 'pages');
+    };
+
+    // Wait 3s after mount to let the page fully load
+    const timer = setTimeout(warmUp, 3000);
+    return () => clearTimeout(timer);
+  }, [isLoginPage, pathname]);
 
   if (isLoginPage) {
     return <main>{children}</main>
@@ -39,3 +80,4 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     </div>
   )
 }
+
