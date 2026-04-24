@@ -3,8 +3,9 @@
 import { useEffect } from 'react'
 
 /**
- * Service Worker Registration — ONLY registers the SW.
- * The warm-up cache is triggered from AdminLayoutClient (after login).
+ * Service Worker Registration — registers from /custom-sw.js directly.
+ * MUST use a root-level file (not /api/serve-sw) to ensure scope '/' works
+ * reliably on WebAPK (installed PWA) without Service-Worker-Allowed header.
  */
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
@@ -12,7 +13,22 @@ export default function ServiceWorkerRegistration() {
     if (window.location.protocol !== 'https:' && window.location.hostname !== 'localhost') return;
 
     const registerSW = async () => {
-      const paths = ['/api/serve-sw', '/custom-sw.js', '/sw.js'];
+      try {
+        // First: unregister any SW with wrong scope (e.g., from /api/serve-sw)
+        const existingRegs = await navigator.serviceWorker.getRegistrations();
+        for (const reg of existingRegs) {
+          const scopeUrl = new URL(reg.scope);
+          if (scopeUrl.pathname !== '/') {
+            console.log('[App] Unregistering SW with wrong scope:', reg.scope);
+            await reg.unregister();
+          }
+        }
+      } catch (e) {
+        console.warn('[App] Failed to clean old SW registrations:', e);
+      }
+
+      // Register from root-level file — guarantees scope '/'
+      const paths = ['/custom-sw.js', '/sw.js'];
       
       for (const swPath of paths) {
         try {
@@ -33,7 +49,7 @@ export default function ServiceWorkerRegistration() {
           });
 
           setInterval(() => reg.update(), 30 * 60 * 1000);
-          return; // Success
+          return; // Success — stop trying other paths
         } catch (err) {
           console.warn(`[App] SW registration failed for ${swPath}:`, err);
         }

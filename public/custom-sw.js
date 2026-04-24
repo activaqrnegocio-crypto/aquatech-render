@@ -152,7 +152,24 @@ self.addEventListener('fetch', (event) => {
 
   // ── Full-page navigation → CACHE FIRST with network update
   if (request.mode === 'navigate') {
-    event.respondWith(navigationHandler(request));
+    event.respondWith(
+      navigationHandler(request).catch((err) => {
+        console.error('[SW] Navigation handler crashed:', err);
+        // ABSOLUTE FALLBACK — never show ERR_FAILED
+        return caches.match('/offline.html').then(offlinePage => {
+          if (offlinePage) return offlinePage;
+          return new Response(
+            '<!DOCTYPE html><html><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+            '<title>Sin conexión</title></head>' +
+            '<body style="font-family:system-ui;text-align:center;padding:50px;background:#0a0f1e;color:white;">' +
+            '<h1>📡 Sin conexión</h1><p>Conecta a internet y recarga.</p>' +
+            '<button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#3b82f6;color:white;border:none;border-radius:8px;">Reintentar</button>' +
+            '</body></html>',
+            { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+          );
+        });
+      })
+    );
     return;
   }
 
