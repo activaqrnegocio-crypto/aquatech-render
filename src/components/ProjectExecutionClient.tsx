@@ -19,6 +19,8 @@ import { compressImage as optimizedCompress } from '@/lib/image-optimization'
 import Link from 'next/link'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import ProjectChatUnified from './chat/ProjectChatUnified'
+import { translateType, translateCategory } from '@/lib/constants'
+import { formatDate } from '@/lib/date-utils'
 
 export default function ProjectExecutionClient({ 
   project, 
@@ -53,6 +55,10 @@ export default function ProjectExecutionClient({
   const liveChatInitialized = useRef(false)
   const [mounted, setMounted] = useState(false)
   const [isSendingMessage, setIsSendingMessage] = useState(false)
+  const [isOffline, setIsOffline] = useState(false)
+  const [isOnline, setIsOnline] = useState(true)
+  const [isFichaOpen, setIsFichaOpen] = useState(false)
+  const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const isSyncingRef = useRef(false)
 
   const GALLERY_LABEL = "Planos y Referencias"
@@ -415,7 +421,7 @@ export default function ProjectExecutionClient({
   }, [searchParams])
 
 
-  const [isOnline, setIsOnline] = useState(true)
+
 
   const syncOutbox = async () => {
     if (!navigator.onLine) return
@@ -900,7 +906,9 @@ export default function ProjectExecutionClient({
     const processMessage = async () => {
       try {
         let location: any = null
-        if ('geolocation' in navigator) {
+        if (extraData?.lat && extraData?.lng) {
+          location = { lat: extraData.lat, lng: extraData.lng }
+        } else if ('geolocation' in navigator) {
           location = await new Promise((resolve) => {
             navigator.geolocation.getCurrentPosition(
               pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
@@ -914,7 +922,7 @@ export default function ProjectExecutionClient({
           console.warn("Ubicación no detectada, enviando sin coordenadas para mayor rapidez.")
         }
 
-      let mediaData = null
+      let mediaData: any = null
       let uploadErrorOccurred = false;
       if (mediaFile && navigator.onLine) {
         try {
@@ -947,7 +955,7 @@ export default function ProjectExecutionClient({
       const cleanExtraData = extraData ? { ...extraData } : undefined;
       if (cleanExtraData && cleanExtraData.file) delete cleanExtraData.file;
 
-      const payload = { 
+      const payload: any = { 
         phaseId: phaseIdToSend, 
         content: msgToSend, 
         type: determinedType,
@@ -956,40 +964,27 @@ export default function ProjectExecutionClient({
       }
 
       if (!navigator.onLine || uploadErrorOccurred) {
-         // Convert File to ArrayBuffer so it survives IndexedDB persistence across app restarts
-         let fileData: any = null;
-         let previewBase64: string | null = null;
          if (mediaFile) {
            try {
-             const buffer = await mediaFile.arrayBuffer();
-             fileData = {
-               buffer: buffer,
-               name: mediaFile.name,
-               type: mediaFile.type,
-               size: mediaFile.size
+             const base64 = await new Promise<string>((resolve) => {
+               const reader = new FileReader();
+               reader.onload = () => resolve(reader.result as string);
+               reader.readAsDataURL(mediaFile);
+             });
+             payload.media = {
+               base64: base64,
+               filename: mediaFile.name,
+               mimeType: mediaFile.type
              };
-             // Generate a small preview for display in chat
-             if (mediaFile.type.startsWith('image/')) {
-               previewBase64 = await new Promise<string>((resolve) => {
-                 const reader = new FileReader();
-                 reader.onload = () => resolve(reader.result as string);
-                 reader.onerror = () => resolve('');
-                 reader.readAsDataURL(mediaFile);
-               });
-             }
            } catch (e) {
-             console.warn('[Offline] Failed to convert file to buffer:', e);
+             console.warn('[Offline] Failed to convert file to base64:', e);
            }
          }
 
          await db.outbox.add({
             type: 'MESSAGE',
             projectId: project.id,
-            payload: { 
-              ...payload, 
-              fileData: fileData, // ArrayBuffer + metadata (survives IDB)
-              previewBase64: previewBase64 // For display in pending messages
-            },
+            payload: payload,
             timestamp: Date.now(),
             lat: location?.lat,
             lng: location?.lng,
@@ -1117,10 +1112,23 @@ export default function ProjectExecutionClient({
       const isOffline = !navigator.onLine
       const isBase64 = typeof file.url === 'string' && file.url.startsWith('data:')
 
-      let processedBase64 = isBase64 ? file.url : null
+      let processedUrl = file.url;
+      if (isOffline && typeof file.url === 'string' && file.url.startsWith('blob:')) {
+         try {
+           const res = await fetch(file.url);
+           const blob = await res.blob();
+           processedUrl = await new Promise<string>((resolve) => {
+             const reader = new FileReader();
+             reader.onload = () => resolve(reader.result as string);
+             reader.readAsDataURL(blob);
+           });
+         } catch (e) {
+           console.warn('Failed to convert blob to base64 for gallery:', e);
+         }
+      }
 
       const galleryPayload = {
-        url: file.url,
+        url: processedUrl,
         filename: file.filename,
         mimeType: file.mimeType,
         category: file.category || 'EVIDENCE',
@@ -1283,94 +1291,170 @@ export default function ProjectExecutionClient({
     })
   }
 
-  const generateFichaPDF = () => {
+  const fetchFullProjectData = async () => {
     try {
-      const doc = new jsPDF()
-      
-      // 1. Professional Header
-      addAquatechHeader(doc, 'FICHA TÉCNICA DE PROYECTO', `PROYECTO: ${project.title}`);
-      
-      doc.setFontSize(10);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(100);
-      doc.text(`ID Seguimiento: #${project.id}`, 20, 42);
-      doc.text(`Fecha de Impresión: ${formatToEcuador(new Date(), { day: '2-digit', month: '2-digit', year: 'numeric' })}`, 145, 42);
+      const resp = await fetch(`/api/projects/${project.id}/export`)
+      if (!resp.ok) throw new Error('Failed to fetch full data')
+      return await resp.json()
+    } catch (e) {
+      console.error(e)
+      alert('Error descargando datos para la ficha')
+      return null
+    }
+  }
 
-      let y = 55
-      doc.setTextColor(0, 112, 192); // Aquatech Blue
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'bold');
+  const generateProjectPDF = async () => {
+    setIsDownloadingPdf(true)
+    try {
+      const fullProject = await fetchFullProjectData()
+      if (!fullProject) return
+
+      const { jsPDF } = await import('jspdf')
+      const { default: autoTable } = await import('jspdf-autotable')
+      const doc = new jsPDF()
+
+      // ====== PAGE 1: PORTADA + DATOS GENERALES ======
+      doc.setFillColor(12, 26, 42)
+      doc.rect(0, 0, 210, 55, 'F')
+      doc.setDrawColor(56, 189, 248)
+      doc.setLineWidth(0.5)
+      doc.line(20, 50, 190, 50)
+
+      doc.setTextColor(56, 189, 248)
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'bold')
+      doc.text('AQUATECH S.A.', 20, 18)
+      
+      doc.setTextColor(255, 255, 255)
+      doc.setFontSize(24)
+      doc.text('FICHA TÉCNICA DE PROYECTO', 20, 33)
+      
+      doc.setFontSize(11)
+      doc.setFont('helvetica', 'normal')
+      doc.text(`#${fullProject.id} — ${fullProject.title}`, 20, 43)
+      doc.text(`Fecha: ${formatToEcuador(new Date(), { day: '2-digit', month: '2-digit', year: 'numeric' })}`, 150, 43)
+
+      let y = 70
+
+      // Categorías y Contratos for merging
+      let categories: string[] = []
+      let contracts: string[] = []
+      try { categories = JSON.parse(fullProject.categoryList || '[]') } catch {}
+      try { contracts = JSON.parse(fullProject.contractTypeList || '[]') } catch {}
+
+      // 1. Datos Generales
+      doc.setTextColor(56, 189, 248)
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
       doc.text('1. DATOS GENERALES', 20, y)
-      y += 8
+      y += 10
+
+      doc.setTextColor(60, 60, 60)
+      doc.setFontSize(10)
+      doc.setFont('helvetica', 'normal')
 
       const infoRows = [
-        ['Título del Proyecto', project.title],
-        ['Estado Actual', project.status],
-        ['Ciudad / Ubicación', projectCity || 'N/A'],
-        ['Dirección Exacta', projectAddress || 'N/A'],
-        ['Fecha Inicia Obra', formatDate(project.startDate)],
-        ['Fecha Entrega Est.', formatDate(project.endDate)],
+        ['Título', fullProject.title],
+        ['Tipo de Proyecto', translateType(fullProject.type)],
+        ['Tipo de Contrato', contracts.map(c => translateType(c)).join(', ') || 'N/A'],
+        ['Categorías', categories.map(c => translateCategory(c)).join(', ') || 'N/A'],
+        ['Ubicación', `${fullProject.city || ''} ${fullProject.address || ''}`.trim() || 'N/A'],
+        ['Fecha Inicio', formatDate(fullProject.startDate)],
+        ['Fecha Fin (Est.)', formatDate(fullProject.endDate)],
+        ['Estado Actual', fullProject.status === 'ACTIVO' ? 'En Ejecución' : fullProject.status],
       ]
 
       autoTable(doc, {
         startY: y,
-        head: [['Detalle', 'Información']],
+        head: [['Campo', 'Información Detallada']],
         body: infoRows,
         theme: 'grid',
-        headStyles: { fillColor: [0, 112, 192], textColor: 255 },
-        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [56, 189, 248], textColor: 255 },
+        styles: { fontSize: 9, cellPadding: 4 },
         columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } }
       })
-      y = (doc as any).lastAutoTable.finalY + 12
+      y = (doc as any).lastAutoTable.finalY + 20
 
-      doc.setTextColor(0, 112, 192);
-      doc.setFontSize(12);
-      doc.setFont('helvetica', 'bold');
-      doc.text('2. INFORMACIÓN DEL CLIENTE', 20, y)
-      y += 8
+      // 2. Especificaciones Técnicas (The "3" requested, now renumbered as 2)
+      let specs: any = {}
+      try { specs = JSON.parse(fullProject.technicalSpecs || '{}') } catch {}
+      if (specs.description || fullProject.specsTranscription) {
+        doc.setTextColor(56, 189, 248)
+        doc.setFontSize(14)
+        doc.setFont('helvetica', 'bold')
+        doc.text('2. ESPECIFICACIONES TÉCNICAS', 20, y)
+        y += 8
+        doc.setTextColor(60, 60, 60)
+        doc.setFontSize(10)
+        doc.setFont('helvetica', 'normal')
+        const specText = fullProject.specsTranscription || specs.description || ''
+        const wrapped = doc.splitTextToSize(specText, 170)
+        doc.text(wrapped, 20, y)
+        y += wrapped.length * 5 + 20
+      }
+
+      // ====== PAGE 2: CLIENTE Y EQUIPO ======
+      if (y > 220) { doc.addPage(); y = 20; }
+      
+      doc.setTextColor(56, 189, 248)
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.text('3. INFORMACIÓN DEL CLIENTE', 20, y)
+      y += 10
 
       autoTable(doc, {
         startY: y,
-        head: [['Concepto', 'Datos de Contacto']],
+        head: [['Campo', 'Valor']],
         body: [
-          ['Nombre / Razón Social', clientName || 'N/A'],
-          ['Localidad', projectCity || 'N/A'],
-          ['Dirección Principal', projectAddress || 'N/A'],
+          ['Nombre / Razón Social', fullProject.client?.name || 'N/A'],
+          ['Teléfono', fullProject.client?.phone || 'N/A'],
+          ['Email', fullProject.client?.email || 'N/A'],
+          ['Dirección', fullProject.client?.address || 'N/A'],
         ],
         theme: 'grid',
-        headStyles: { fillColor: [100, 100, 100], textColor: 255 },
-        styles: { fontSize: 9, cellPadding: 3 },
+        headStyles: { fillColor: [56, 189, 248], textColor: 255 },
+        styles: { fontSize: 9, cellPadding: 4 },
         columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } }
       })
-      y = (doc as any).lastAutoTable.finalY + 12
+      y = (doc as any).lastAutoTable.finalY + 20
 
-      const phaseData = project.phases?.map((p: any, i: number) => [
-        `${i + 1}`, 
-        p.title, 
-        p.description || '—', 
-        `${p.estimatedDays || 0} d`, 
-        p.status === 'COMPLETADA' ? '✓' : p.status === 'EN_PROGRESO' ? '...' : '-'
-      ]) || []
+      // Equipo Asignado
+      if (y > 220) { doc.addPage(); y = 20; }
+      doc.setTextColor(56, 189, 248)
+      doc.setFontSize(14)
+      doc.setFont('helvetica', 'bold')
+      doc.text('4. EQUIPO ASIGNADO', 20, y)
+      y += 10
 
-      if (phaseData.length > 0) {
-        doc.setTextColor(0, 112, 192);
-        doc.setFontSize(12);
-        doc.text('3. FASES Y CRONOGRAMA', 20, y)
-        y += 8
-        autoTable(doc, {
-          startY: y,
-          head: [['#', 'Fase de Trabajo', 'Descripción', 'Plazo', 'Estado']],
-          body: phaseData,
-          theme: 'grid',
-          headStyles: { fillColor: [0, 112, 192], textColor: 255 },
-          styles: { fontSize: 8 },
-        })
+      const teamData = fullProject.team.map((m: any, i: number) => [
+        (i + 1).toString(), m.user.name, m.user.role || 'Operador', m.user.phone || 'N/A'
+      ])
+
+      autoTable(doc, {
+        startY: y,
+        head: [['#', 'Nombre', 'Rol', 'Teléfono']],
+        body: teamData.length > 0 ? teamData : [['—', 'Sin equipo asignado', '', '']],
+        theme: 'grid',
+        headStyles: { fillColor: [56, 189, 248], textColor: 255 },
+        styles: { fontSize: 9 }
+      })
+
+      // Footer
+      const pageCount = doc.getNumberOfPages()
+      for (let i = 1; i <= pageCount; i++) {
+        doc.setPage(i)
+        doc.setFontSize(8)
+        doc.setTextColor(160, 160, 160)
+        doc.text(`Aquatech CRM — Ficha Técnica #${fullProject.id}`, 20, 287)
+        doc.text(`Página ${i} de ${pageCount}`, 175, 287)
       }
 
-      doc.save(`Ficha_${project.id}_${project.title.replace(/\s+/g, '_')}.pdf`)
-    } catch(err) {
-      console.error(err)
-      alert("Error al generar PDF")
+      doc.save(`Ficha_Tecnica_${fullProject.id}_${fullProject.title.replace(/\s+/g, '_')}.pdf`)
+    } catch (err) {
+      console.error('Error generating project PDF:', err)
+      alert('Error al generar el PDF del proyecto')
+    } finally {
+      setIsDownloadingPdf(false)
     }
   }
 
@@ -1414,8 +1498,6 @@ export default function ProjectExecutionClient({
     }
   }
 
-  if (!mounted) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: '#0b141a', color: 'white' }}>Cargando...</div>;
-
   return (
     <div className="project-execution-container" style={{ 
       display: 'flex', 
@@ -1434,7 +1516,7 @@ export default function ProjectExecutionClient({
         backdropFilter: 'blur(20px)',
         flexShrink: 0
       }}>
-        <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', marginBottom: '8px' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
           <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
             <span style={{ 
               fontSize: '0.7rem', 
@@ -1463,6 +1545,99 @@ export default function ProjectExecutionClient({
           <h2 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{project.title}</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
             <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{clientName}</span>
+          </div>
+        </div>
+      </div>
+
+      {/* ═══════ FICHA COMPLETA DEL PROYECTO (IGUAL A ADMIN) ═══════ */}
+      <div className="card" style={{ marginBottom: '20px', padding: '0', overflow: 'hidden', border: '1px solid rgba(56, 189, 248, 0.1)', borderRadius: '0' }}>
+        <div 
+          onClick={() => setIsFichaOpen(!isFichaOpen)}
+          style={{ 
+            padding: '16px 20px', 
+            background: 'linear-gradient(135deg, rgba(56, 189, 248, 0.05), rgba(12, 26, 42, 0.3))',
+            borderBottom: isFichaOpen ? '1px solid var(--border-color)' : 'none',
+            display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: '10px',
+            cursor: 'pointer'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div style={{ width: '36px', height: '36px', borderRadius: '10px', backgroundColor: 'rgba(56, 189, 248, 0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+            </div>
+            <div>
+              <h3 style={{ margin: 0, fontSize: '1rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                Ficha del Proyecto
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: isFichaOpen ? 'rotate(180deg)' : 'rotate(0)', transition: 'transform 0.3s', opacity: 0.5 }}><path d="M6 9l6 6 6-6"/></svg>
+              </h3>
+            </div>
+          </div>
+          <div onClick={(e) => e.stopPropagation()}>
+            <button 
+              className="btn btn-secondary" 
+              onClick={generateProjectPDF}
+              disabled={isDownloadingPdf}
+              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '0.75rem' }}
+            >
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/></svg>
+              {isDownloadingPdf ? 'Generando...' : 'Descargar Ficha Técnica'}
+            </button>
+          </div>
+        </div>
+
+        <div style={{ 
+          maxHeight: isFichaOpen ? '2000px' : '0', 
+          overflow: 'hidden', 
+          transition: 'max-height 0.4s ease-out, opacity 0.3s',
+          opacity: isFichaOpen ? 1 : 0
+        }}>
+          <div style={{ padding: '20px', borderTop: '1px solid var(--border-color)', backgroundColor: 'rgba(0,0,0,0.2)' }}>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(250px, 1fr))', gap: '15px' }}>
+              
+              {/* Datos Generales */}
+              <div style={{ padding: '15px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <h4 style={{ fontSize: '0.8rem', color: 'var(--primary)', marginBottom: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>Datos Generales</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {[
+                    ['Tipo', translateType(project.type)],
+                    ['Contrato', (project.contractTypeList || []).join(', ') || 'N/A'],
+                    ['Ciudad', projectCity || 'N/A'],
+                    ['Inicio', formatDate(project.startDate)],
+                    ['Fin Est.', formatDate(project.endDate)]
+                  ].map(([label, val]) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>{label}</span>
+                      <span style={{ fontWeight: '500' }}>{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Cliente */}
+              <div style={{ padding: '15px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
+                <h4 style={{ fontSize: '0.8rem', color: 'var(--primary)', marginBottom: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>Cliente</h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                  {[
+                    ['Nombre', clientName || 'N/A'],
+                    ['Ubicación', projectAddress || 'N/A']
+                  ].map(([label, val]) => (
+                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', gap: '10px' }}>
+                      <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
+                      <span style={{ fontWeight: '500', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Especificaciones Técnicas */}
+              <div style={{ padding: '15px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)', gridColumn: '1 / -1' }}>
+                <h4 style={{ fontSize: '0.8rem', color: 'var(--primary)', marginBottom: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>Especificaciones Técnicas</h4>
+                <div style={{ fontSize: '0.85rem', lineHeight: '1.5', whiteSpace: 'pre-wrap', color: 'var(--text-muted)' }}>
+                  {project.specsTranscription || 'Sin especificaciones detalladas.'}
+                </div>
+              </div>
+
+            </div>
           </div>
         </div>
       </div>
@@ -1918,7 +2093,7 @@ export default function ProjectExecutionClient({
                   } else if (type === 'FILE' || type === 'IMAGE' || type === 'VIDEO' || type === 'AUDIO') {
                      handleSendMessage(null as any, content || '', activePhase || undefined, extraData?.file, null, type);
                   } else {
-                     handleSendMessage(null as any, content, activePhase || undefined, undefined, undefined, type);
+                     handleSendMessage(null as any, content, activePhase || undefined, undefined, extraData, type);
                   }
                 }}
               />

@@ -174,7 +174,7 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       projectId, userId,
       `💬 ${projectTitle} - ${session.user.name}`,
       pushBody,
-      `/admin/operador/proyecto/${projectId}?view=chat`,
+      `URL_PROJECT_CHAT:${projectId}`,
       `chat-${projectId}`
     )
 

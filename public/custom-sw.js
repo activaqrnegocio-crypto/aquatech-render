@@ -342,48 +342,14 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   const isOperator = pathname.includes('/operador');
   const isSubcon = pathname.includes('/subcontratista');
   
-  // Base shells based on path
-  let shells = isOperator 
-    ? ['/admin/operador', '/admin/operador/'] 
-    : isSubcon 
-      ? ['/admin/subcontratista', '/admin/subcontratista/']
-      : ['/admin', '/admin/'];
-  
-  // Universal fallbacks: if we are at root or admin entry, try ALL roles
-  if (pathname === '/' || pathname === '/admin' || pathname === '/admin/') {
-    try {
-      const auth = await getAuthFromIndexedDB();
-      const role = auth?.role?.toUpperCase();
-      if (role === 'OPERATOR' || role === 'OPERADOR') {
-        shells = ['/admin/operador', '/admin/operador/', '/admin', '/admin/'];
-      } else if (role === 'SUBCONTRATISTA') {
-        shells = ['/admin/subcontratista', '/admin/subcontratista/', '/admin', '/admin/'];
-      } else {
-        shells = ['/admin', '/admin/', '/admin/operador', '/admin/operador/'];
-      }
-    } catch (e) {
-      // Fallback to trying everything if auth check fails
-      shells = ['/admin', '/admin/', '/admin/operador', '/admin/operador/', '/admin/subcontratista', '/admin/subcontratista/'];
-    }
-  }
+  // universal fallbacks moved to end
+  const shells = [];
+  if (isOperator) shells.push('/admin/operador', '/admin/operador/');
+  if (isSubcon) shells.push('/admin/subcontratista', '/admin/subcontratista/');
+  shells.push('/admin', '/admin/');
 
-  // Ensure /admin is always in the list as a catch-all for any admin path
-  if (pathname.startsWith('/admin') && !shells.includes('/admin')) {
-    shells.push('/admin', '/admin/');
-  }
   
-  for (const shell of shells) {
-    // FIX: Use full URL for matching to ensure consistency
-    const shellUrl = new URL(shell, self.location.origin).href;
-    cached = await caches.match(shellUrl, { ignoreVary: true, ignoreSearch: true });
-    if (isValidHTMLResponse(cached)) {
-       if (!forceServe && !pathname.includes('/login') && (cached.url || '').includes('/login')) {
-          // skip
-       } else {
-          return cached;
-       }
-    }
-  }
+
 
   // Try by pathname across all caches (Deep search)
   const allCacheNames = await caches.keys();
@@ -844,18 +810,41 @@ self.addEventListener('notificationclick', (event) => {
 
   if (event.action === 'close') return;
 
-  const targetUrl = event.notification.data?.url || '/admin/operador';
+  const rawUrl = event.notification.data?.url || '/admin/operador';
 
-  event.waitUntil(
-    clients.matchAll({ type: 'window', includeUncontrolled: true })
-      .then((windowClients) => {
-        for (const client of windowClients) {
-          if (client.url.includes('/admin/') && 'focus' in client) {
-            client.navigate(targetUrl);
-            return client.focus();
-          }
-        }
-        return clients.openWindow(targetUrl);
-      })
-  );
+  event.waitUntil((async function() {
+    let targetUrl = rawUrl;
+    
+    try {
+      const auth = await getAuthFromIndexedDB();
+      const role = auth?.role?.toUpperCase() || '';
+      const isAdmin = role === 'ADMIN' || role === 'ADMINISTRADORA' || role === 'SUPERADMIN';
+
+      if (rawUrl.startsWith('URL_PROJECT_CHAT:')) {
+         const projectId = rawUrl.split(':')[1];
+         if (isAdmin) {
+           targetUrl = `/admin/proyectos/${projectId}?view=chat`;
+         } else {
+           targetUrl = `/admin/operador/proyecto/${projectId}?view=chat`;
+         }
+      } else if (rawUrl === 'URL_CALENDAR') {
+         if (isAdmin) {
+           targetUrl = `/admin/calendario`;
+         } else {
+           targetUrl = `/admin/operador`;
+         }
+      }
+    } catch (e) {
+      console.warn('[SW] Error resolving dynamic url', e);
+    }
+
+    const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of windowClients) {
+      if (client.url.includes('/admin/') && 'focus' in client) {
+        await client.navigate(targetUrl);
+        return client.focus();
+      }
+    }
+    return clients.openWindow(targetUrl);
+  })());
 });

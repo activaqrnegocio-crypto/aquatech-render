@@ -26,7 +26,8 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
       chatMessages: {
         take: 1
       },
-      gallery: { orderBy: { createdAt: 'desc' } }
+      gallery: { orderBy: { createdAt: 'desc' } },
+      budgetItems: true
     }
   })
 
@@ -91,17 +92,33 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
     id: project.id,
     title: project.title,
     status: project.status,
+    type: project.type,
+    subtype: project.subtype,
+    startDate: project.startDate?.toISOString(),
+    endDate: project.endDate?.toISOString(),
+    categoryList: project.categoryList ? JSON.parse(project.categoryList) : [],
+    technicalSpecs: project.technicalSpecs ? JSON.parse(project.technicalSpecs) : {},
+    specsTranscription: project.specsTranscription,
+    contractTypeList: project.contractTypeList ? JSON.parse(project.contractTypeList) : [],
     address: project.address || project.client?.address,
     phases: project.phases.map(p => ({
       id: p.id,
       title: p.title,
       status: p.status,
-      description: p.description
+      description: p.description,
+      estimatedDays: p.estimatedDays
     })),
     team: project.team.map(t => ({
       id: t.userId,
       name: t.user.name,
       role: t.user.role
+    })),
+    budgetItems: project.budgetItems.map(bi => ({
+      id: bi.id,
+      name: bi.name,
+      quantity: Number(bi.quantity),
+      estimatedCost: Number(bi.estimatedCost),
+      unit: bi.unit
     })),
     gallery: unifiedGallery.map(g => ({ 
       id: (g as any).isFromChat ? `chat-${g.id}` : `gal-${g.id}`, 

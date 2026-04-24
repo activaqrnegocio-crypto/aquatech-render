@@ -133,7 +133,7 @@ export async function POST(request: Request) {
           appointment.userId,
           '📌 Nueva Tarea Asignada',
           `${title} — ${startLocale}`,
-          `/admin/operador`,
+          `URL_CALENDAR`,
           `task-${appointment.id}`
         )
 

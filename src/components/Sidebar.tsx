@@ -240,7 +240,7 @@ export default function Sidebar() {
   const isAdmin = effectiveRole.includes('ADMIN') || effectiveRole === 'SUPERADMIN'
   const isSuperAdmin = effectiveRole === 'SUPERADMIN'
   const isSubcontratista = effectiveRole === 'SUBCONTRATISTA'
-  const userPermissions = (session?.user as any)?.permissions || null
+  const userPermissions = (session?.user as any)?.permissions || offlineUser?.permissions || null
 
   const projectIdMatch = pathname.match(/\/admin\/(operador|subcontratista)\/proyecto\/(\d+)/)
   const projectId = projectIdMatch ? projectIdMatch[2] : null
@@ -280,6 +280,18 @@ export default function Sidebar() {
     ...(!isSubcontratista ? [{
       section: 'Herramientas y Recursos',
       items: [
+        ...(hasModuleAccess({ permissions: userPermissions, role: effectiveRole }, 'calendario') ? [{
+          label: 'Calendario Maestro',
+          href: '/admin/calendario',
+          icon: (
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+              <line x1="16" y1="2" x2="16" y2="6" />
+              <line x1="8" y1="2" x2="8" y2="6" />
+              <line x1="3" y1="10" x2="21" y2="10" />
+            </svg>
+          ),
+        }] : []),
         {
           label: 'Cotizaciones',
           href: '/admin/cotizaciones',

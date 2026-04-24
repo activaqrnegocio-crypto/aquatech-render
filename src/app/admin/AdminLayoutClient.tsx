@@ -6,11 +6,29 @@ import GlobalSyncWorker from '@/components/GlobalSyncWorker'
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration'
 import { Suspense } from 'react'
 
+import { useSession } from 'next-auth/react'
+import OfflinePrefetcher from '@/components/OfflinePrefetcher'
+
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
+  const { data: session } = useSession()
   const pathname = usePathname()
   const router = useRouter()
   const isLoginPage = pathname === '/admin/login'
   const isDashboard = pathname === '/admin' || pathname === '/admin/' || pathname === '/admin/operador' || pathname === '/admin/operador/'
+
+  // Determine pages to pre-cache for offline availability
+  const getPagesToPrefetch = () => {
+    if (!session?.user) return []
+    const role = (session.user as any).role
+    const isOp = role === 'OPERATOR' || role === 'OPERADOR' || role === 'SUBCONTRATISTA'
+    
+    if (isOp) {
+      return ['/admin/operador/proyectos', '/admin/calendario', '/admin/inventario']
+    }
+    return ['/admin/proyectos', '/admin/calendario', '/admin/equipo', '/admin/reportes', '/admin/cotizaciones']
+  }
+
+  const pagesToPrefetch = getPagesToPrefetch()
 
   if (isLoginPage) {
     return <main>{children}</main>
@@ -20,6 +38,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     <div className="admin-layout">
       <ServiceWorkerRegistration />
       <GlobalSyncWorker />
+      <OfflinePrefetcher urls={pagesToPrefetch} />
       <Suspense fallback={<div style={{ width: '260px', height: '100vh', background: 'var(--bg-card)' }} />}>
         <Sidebar />
       </Suspense>

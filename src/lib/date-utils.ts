@@ -47,6 +47,8 @@ export function formatDateEcuador(date: Date | string | number | null | undefine
   return formatToEcuador(date, { day: '2-digit', month: '2-digit', year: 'numeric' });
 }
 
+export const formatDate = formatDateEcuador;
+
 /**
  * Helper para mostrar fecha larga (D de mes de YYYY) en Ecuador
  */

@@ -108,7 +108,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
     address: '',
     notes: ''
   })
-  const [clients, setClients] = useState<any[]>([])
+  const [clients, setClients] = useLocalStorage<any[]>('project_draft_available_clients', [])
   const [clientSearchText, setClientSearchText] = useState('')
   const [showClientDropdown, setShowClientDropdown] = useState(false)
   const clientDropdownRef = useRef<HTMLDivElement>(null)
@@ -131,22 +131,33 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
   ])
 
   // Step 4: Equipo
-  const [availableTeam, setAvailableTeam] = useState<any[]>([])
+  const [availableTeam, setAvailableTeam] = useLocalStorage<any[]>('project_draft_available_team', [])
   const [selectedTeam, setSelectedTeam, removeTeam] = useLocalStorage<string[]>('project_draft_team', [])
+
+  const [offlineUser, setOfflineUser] = useState<any>(null)
+  useEffect(() => {
+    if (status === 'unauthenticated' || (!session && status !== 'loading')) {
+      db.auth.get('last_session').then(u => {
+        if (u) setOfflineUser(u)
+      }).catch(() => {})
+    }
+  }, [session, status])
 
   // Auto-add operator to team if not already there
   useEffect(() => {
-    if (session?.user?.id && !selectedTeam.includes(String(session.user.id))) {
-      const userRole = (session.user as any).role;
-      if (userRole === 'OPERATOR' || userRole === 'OPERADOR') {
-         setSelectedTeam(prev => [...prev, String(session.user.id)])
+    const activeUserId = session?.user?.id || offlineUser?.id;
+    const activeUserRole = (session?.user as any)?.role || offlineUser?.role;
+    
+    if (activeUserId && !selectedTeam.includes(String(activeUserId))) {
+      if (activeUserRole === 'OPERATOR' || activeUserRole === 'OPERADOR') {
+         setSelectedTeam(prev => [...prev, String(activeUserId)])
       }
     }
-  }, [session?.user?.id])
+  }, [session?.user?.id, offlineUser?.id])
 
   // Step 6: Presupuesto
   const [budgetItems, setBudgetItems, removeBudgetItems] = useLocalStorage<BudgetItem[]>('project_draft_budget', [])
-  const [materials, setMaterials] = useState<any[]>([])
+  const [materials, setMaterials] = useLocalStorage<any[]>('project_draft_available_materials', [])
   const [budgetCalculations, setBudgetCalculations] = useState<any>({
     subtotal: 0,
     subtotal0: 0,
@@ -266,7 +277,7 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
       subtype: projectData.type === 'OTHER' ? projectData.subtype : '',
       client: clientData,
       phases: phases.length > 0 ? phases : [{ title: 'Fase Inicial', description: 'Levantamiento general', estimatedDays: 1 }],
-      team: selectedTeam.length > 0 ? selectedTeam : [String(session?.user?.id)],
+      team: selectedTeam.length > 0 ? selectedTeam : [String(session?.user?.id || offlineUser?.id)],
       budgetItems: finalBudgetItems,
       categoryList: projectData.categoryList.map(c => c === 'OTRO' ? (projectData.otherCategory || 'OTRO') : c),
       contractTypeList: projectData.contractTypeList.map(c => c === 'OTHER' ? (projectData.otherContractType || 'OTHER') : c),
