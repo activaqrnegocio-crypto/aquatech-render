@@ -229,8 +229,15 @@ async function navigationHandler(request) {
     // Validate: don't serve cached login pages for non-login URLs
     const cachedUrl = cached.url || '';
     if (!url.pathname.includes('/login') && cachedUrl.includes('/login')) {
-      console.log('[SW] Cached response is login redirect, skipping');
-      cached = null;
+      console.log('[SW] Cached response is login redirect, checking network...');
+      // If we are online, we skip cache and try network (to get the real page)
+      // If we are offline, we MIGHT have to serve it or fallback to a shell
+      if (navigator.onLine) {
+        cached = null;
+      } else {
+        console.log('[SW] Offline and only have redirect, trying shells...');
+        // Fallback to shells before giving up
+      }
     }
   }
 
@@ -256,11 +263,10 @@ async function navigationHandler(request) {
         cache.put(request.url, response.clone());
         const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
         cache.put(alt, response.clone());
-        // If redirected, also cache under final URL
         if (response.redirected && finalUrl) {
           cache.put(finalUrl, response.clone());
         }
-        console.log('[SW] Cached page:', url.pathname, response.redirected ? `→ ${new URL(finalUrl).pathname}` : '');
+        console.log('[SW] Cached page:', url.pathname);
       }
     }
     return response;
@@ -268,11 +274,17 @@ async function navigationHandler(request) {
     console.warn('[SW] Navigation network failed:', url.pathname);
   }
 
-  // ── STEP 3: Try offline.html
+  // ── STEP 3: Last chance — Try shells one last time even if they look like redirects (for Offline)
+  if (!navigator.onLine) {
+     const shell = await findCachedPage(request.url, url.pathname, true); // true = force serve
+     if (shell) return shell;
+  }
+
+  // ── STEP 4: Try offline.html
   const offlinePage = await caches.match('/offline.html');
   if (offlinePage) return offlinePage;
 
-  // ── STEP 4: Inline fallback (absolute last resort)
+  // ── STEP 5: Inline fallback (absolute last resort)
   return new Response(
     '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
     '<title>Sin conexión</title></head>' +
@@ -297,30 +309,25 @@ function isValidHTMLResponse(response) {
 /**
  * Find a cached page by URL, with multiple fallback strategies
  */
-async function findCachedPage(requestUrl, pathname) {
+async function findCachedPage(requestUrl, pathname, forceServe = false) {
   // Try exact URL
   let cached = await caches.match(requestUrl, { ignoreVary: true, ignoreSearch: true });
-  if (isValidHTMLResponse(cached)) return cached;
+  if (isValidHTMLResponse(cached)) {
+    if (!forceServe && !pathname.includes('/login') && (cached.url || '').includes('/login')) {
+       // skip
+    } else {
+       return cached;
+    }
+  }
 
   // Try slash variant
   const alt = requestUrl.endsWith('/') ? requestUrl.slice(0, -1) : requestUrl + '/';
   cached = await caches.match(alt, { ignoreVary: true, ignoreSearch: true });
-  if (isValidHTMLResponse(cached)) return cached;
-
-  // Try by pathname across all caches
-  const allCacheNames = await caches.keys();
-  for (const cacheName of allCacheNames) {
-    if (cacheName.includes('rsc') || cacheName.includes('fonts')) continue;
-    const cache = await caches.open(cacheName);
-    const keys = await cache.keys();
-    for (const key of keys) {
-      try {
-        const keyUrl = new URL(key.url);
-        if (keyUrl.pathname === pathname || keyUrl.pathname === pathname + '/' || keyUrl.pathname + '/' === pathname) {
-          const match = await cache.match(key);
-          if (isValidHTMLResponse(match)) return match;
-        }
-      } catch (e) { /* skip invalid URLs */ }
+  if (isValidHTMLResponse(cached)) {
+    if (!forceServe && !pathname.includes('/login') && (cached.url || '').includes('/login')) {
+       // skip
+    } else {
+       return cached;
     }
   }
 
@@ -335,7 +342,36 @@ async function findCachedPage(requestUrl, pathname) {
   
   for (const shell of shells) {
     cached = await caches.match(shell, { ignoreVary: true, ignoreSearch: true });
-    if (isValidHTMLResponse(cached)) return cached;
+    if (isValidHTMLResponse(cached)) {
+       if (!forceServe && !pathname.includes('/login') && (cached.url || '').includes('/login')) {
+          // skip
+       } else {
+          return cached;
+       }
+    }
+  }
+
+  // Try by pathname across all caches (Deep search)
+  const allCacheNames = await caches.keys();
+  for (const cacheName of allCacheNames) {
+    if (cacheName.includes('rsc') || cacheName.includes('fonts')) continue;
+    const cache = await caches.open(cacheName);
+    const keys = await cache.keys();
+    for (const key of keys) {
+      try {
+        const keyUrl = new URL(key.url);
+        if (keyUrl.pathname === pathname || keyUrl.pathname === pathname + '/' || keyUrl.pathname + '/' === pathname) {
+          const match = await cache.match(key);
+          if (isValidHTMLResponse(match)) {
+             if (!forceServe && !pathname.includes('/login') && (match.url || '').includes('/login')) {
+                // skip
+             } else {
+                return match;
+             }
+          }
+        }
+      } catch (e) { /* skip invalid URLs */ }
+    }
   }
 
   return null;

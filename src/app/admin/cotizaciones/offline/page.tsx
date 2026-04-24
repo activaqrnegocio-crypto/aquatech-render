@@ -41,6 +41,10 @@ function OfflineQuoteContent() {
             validUntil: q.validUntil,
             createdAt: q.createdAt || new Date(),
             items: q.items || [],
+            optionalTitle: q.optionalTitle || '',
+            optionalDescription: q.optionalDescription || '',
+            optionalImage: q.optionalImage || '',
+            optionalImage2: q.optionalImage2 || '',
             project: q.projectId ? { title: 'Proyecto Vinculado (Offline)' } : null
           })
         } else {
