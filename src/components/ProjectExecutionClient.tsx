@@ -1108,19 +1108,12 @@ export default function ProjectExecutionClient({
 
       let processedBase64 = isBase64 ? file.url : null
 
-      const payload = { 
-        phaseId: activePhase, 
-        content: '', 
-        type: file.type,
-        media: isBase64 ? {
-          base64: processedBase64,
-          filename: file.filename,
-          mimeType: file.mimeType
-        } : {
-          url: file.url,
-          filename: file.filename,
-          mimeType: file.mimeType
-        }
+      const galleryPayload = {
+        url: file.url,
+        filename: file.filename,
+        mimeType: file.mimeType,
+        category: file.category || 'EVIDENCE',
+        phaseId: activePhase
       }
 
       // Explicit offline check
@@ -1128,12 +1121,7 @@ export default function ProjectExecutionClient({
         await db.outbox.add({
           type: 'GALLERY_UPLOAD',
           projectId: project.id,
-          payload: {
-            url: file.url,
-            filename: file.filename,
-            mimeType: file.mimeType,
-            category: file.category || 'EVIDENCE'
-          },
+          payload: galleryPayload,
           timestamp: Date.now(),
           lat: location?.lat,
           lng: location?.lng,
@@ -1148,10 +1136,7 @@ export default function ProjectExecutionClient({
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ 
-            url: file.url,
-            filename: file.filename,
-            mimeType: file.mimeType,
-            category: 'EVIDENCE', // STICK TO EVIDENCE FOR THIS COMPONENT
+            ...galleryPayload,
             lat: location?.lat,
             lng: location?.lng
           })
@@ -1161,9 +1146,9 @@ export default function ProjectExecutionClient({
       } catch (err) {
         // Silent fallback to outbox
         await db.outbox.add({
-          type: 'MEDIA_UPLOAD',
+          type: 'GALLERY_UPLOAD',
           projectId: project.id,
-          payload,
+          payload: galleryPayload,
           timestamp: Date.now(),
           lat: location?.lat,
           lng: location?.lng,

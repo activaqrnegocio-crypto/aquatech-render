@@ -274,10 +274,11 @@ async function navigationHandler(request) {
     console.warn('[SW] Navigation network failed:', url.pathname);
   }
 
-  // ── STEP 3: Last chance — Try shells one last time even if they look like redirects (for Offline)
-  if (!navigator.onLine) {
-     const shell = await findCachedPage(request.url, url.pathname, true); // true = force serve
-     if (shell) return shell;
+  // ── STEP 3: Last chance — Try shells if network failed or we are offline
+  const shell = await findCachedPage(request.url, url.pathname, true); // true = force serve
+  if (shell) {
+    console.log('[SW] Network failed, serving shell as fallback');
+    return shell;
   }
 
   // ── STEP 4: Try offline.html
