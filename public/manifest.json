@@ -2,7 +2,7 @@
   "name": "Aquatech CRM — Innovación Hidráulica",
   "short_name": "Aquatech",
   "description": "Sistema de gestión y seguimiento de proyectos en campo para Aquatech Loja",
-  "start_url": "/admin",
+  "start_url": "/app-start.html",
   "scope": "/",
   "id": "/admin/operador",
   "display": "standalone",

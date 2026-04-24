@@ -11,6 +11,7 @@ const RSC_CACHE    = 'aquatech-rsc';
 // Only pre-cache truly PUBLIC files (no auth required)
 const PRE_CACHE = [
   '/offline.html',
+  '/app-start.html',
   '/manifest.json',
   '/favicon.ico',
   '/logo.jpg',
@@ -19,12 +20,9 @@ const PRE_CACHE = [
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  console.log('[SW v45] Installing...');
+  console.log('[SW v46] Installing...');
   event.waitUntil(
-    // PURGE pages cache to wipe any corrupt RSC data from previous version
-    caches.delete(PAGES_CACHE)
-      .then(() => caches.delete(RSC_CACHE))
-      .then(() => caches.open(STATIC_CACHE))
+    caches.open(STATIC_CACHE)
       .then(async (cache) => {
         for (const url of PRE_CACHE) {
           try {
@@ -33,6 +31,7 @@ self.addEventListener('install', (event) => {
               await cache.put(url, response);
             }
           } catch (err) {
+            // Offline install — skip, existing cache survives
             console.warn(`[SW] Pre-cache skipped (offline?): ${url}`);
           }
         }
