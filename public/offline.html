@@ -282,7 +282,7 @@
         </svg>
         <span id="retryText">Reintentar conexión</span>
       </button>
-      <button class="btn btn-ghost" onclick="window.location.href='/admin/operador'">
+      <button class="btn btn-ghost" onclick="window.location.href=localStorage.getItem('aq_role')==='admin'?'/admin':window.location.pathname.includes('/subcontratista')?'/admin/subcontratista':'/admin/operador'">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
           <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
           <polyline points="9 22 9 12 15 12 15 22"/>
@@ -326,7 +326,7 @@
       fetch('/api/auth/session', { cache: 'no-store' })
         .then(r => {
           if (r.ok) {
-            window.location.href = '/admin/operador';
+            window.location.href = localStorage.getItem('aq_role')==='admin'?'/admin':window.location.pathname.includes('/subcontratista')?'/admin/subcontratista':'/admin/operador';
           } else {
             throw new Error('No hay red');
           }

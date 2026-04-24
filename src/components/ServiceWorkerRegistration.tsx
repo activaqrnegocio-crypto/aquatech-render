@@ -2,31 +2,30 @@
 
 import { useEffect } from 'react'
 
-/**
- * Service Worker Registration — TEMPORARILY DISABLED.
- * This component now acts as a "kill switch" to unregister all active service workers
- * and prevent the sticky ERR_FAILED issue on Android WebAPK.
- */
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
-    if (!('serviceWorker' in navigator)) return;
+    if (!('serviceWorker' in navigator)) return
+    if (!window.location.pathname.startsWith('/admin')) return
 
-    // Unregister any existing service workers to clean up the browser state
-    navigator.serviceWorker.getRegistrations().then((registrations) => {
-      for (const registration of registrations) {
-        registration.unregister().then((success) => {
-          if (success) {
-            console.log('[App] Successfully unregistered service worker:', registration.scope);
-          }
-        });
-      }
-    }).catch((err) => {
-      console.warn('[App] Failed to unregister service workers:', err);
-    });
+    navigator.serviceWorker.register('/custom-sw.js', { scope: '/' })
+      .then((registration) => {
+        console.log('[App] SW registrado:', registration.scope)
 
-    // We do NOT register any new service workers.
-  }, []);
+        navigator.serviceWorker.ready.then((reg) => {
+          const isOperador = window.location.pathname.includes('/operador')
+          const isSubcon = window.location.pathname.includes('/subcontratista')
 
-  return null;
+          const urlsToCache = isOperador
+            ? ['/admin/operador', '/offline.html']
+            : isSubcon
+            ? ['/admin/subcontratista', '/offline.html']
+            : ['/admin', '/offline.html']
+
+          reg.active?.postMessage({ type: 'PRECACHE_URLS', urls: urlsToCache })
+        })
+      })
+      .catch((err) => console.error('[App] Error registrando SW:', err))
+  }, [])
+
+  return null
 }
-

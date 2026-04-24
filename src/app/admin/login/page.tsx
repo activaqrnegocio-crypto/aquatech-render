@@ -66,20 +66,38 @@ export default function LoginPage() {
         const session = await getSession()
         
         if (session?.user) {
-          // Store this successful login for future offline access
-          await db.auth.put({
-            id: 'last_session',
-            username: username,
-            name: session.user.name || '',
-            role: session.user.role as any || 'OPERATOR',
-            userId: (session.user as any).id || '',
-            lastLogin: Date.now()
-          })
-
+          const userRole = (session.user as any).role || 'OPERATOR'
+          const userId = (session.user as any).id || ''
+          
+          // Guardar rol para acceso offline y redirección
+          localStorage.setItem('aq_role', userRole.toLowerCase())
           localStorage.removeItem('auth_shadow_active')
 
+          // Guardar en IndexedDB para que el SW pueda leerlo offline
+          try {
+            await db.authShadow.put({
+              id: 'current',
+              name: session.user.name || '',
+              username: session.user.email || '',
+              role: userRole,
+              userId: userId
+            })
+            
+            // También mantenemos el formato anterior por compatibilidad
+            await db.auth.put({
+              id: 'last_session',
+              username: username,
+              name: session.user.name || '',
+              role: userRole as any,
+              userId: userId,
+              lastLogin: Date.now()
+            })
+          } catch (dbErr) {
+            console.error('Error saving to IndexedDB:', dbErr)
+          }
+
           // Pre-fetch the target dashboard to warm up the cache
-          const target = session.user.role === 'OPERATOR' ? '/admin/operador' : session.user.role === 'SUBCONTRATISTA' ? '/admin/subcontratista' : '/admin'
+          const target = userRole === 'OPERATOR' ? '/admin/operador' : userRole === 'SUBCONTRATISTA' ? '/admin/subcontratista' : '/admin'
           try {
             await fetch(target, { priority: 'high' })
           } catch (e) {}

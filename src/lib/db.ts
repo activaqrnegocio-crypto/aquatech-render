@@ -12,7 +12,7 @@ export interface OutboxItem {
 }
 
 export interface AuthCache {
-  id: string; // 'last_session'
+  id: string; // 'last_session' or 'current'
   username: string;
   name: string;
   role: 'ADMIN' | 'OPERATOR' | 'SUBCONTRATISTA';
@@ -42,6 +42,7 @@ export interface ClientCache {
 export class OfflineDatabase extends Dexie {
   outbox!: Table<OutboxItem>;
   auth!: Table<AuthCache>;
+  authShadow!: Table<any>; // For the Service Worker fallback
   materialsCache!: Table<MaterialCache>;
   clientsCache!: Table<ClientCache>;
 
@@ -62,8 +63,14 @@ export class OfflineDatabase extends Dexie {
       materialsCache: 'id, code, name, category',
       clientsCache: 'id, name, ruc'
     });
+    this.version(7).stores({
+      outbox: '++id, projectId, status, timestamp, type',
+      auth: 'id',
+      authShadow: 'id',
+      materialsCache: 'id, code, name, category',
+      clientsCache: 'id, name, ruc'
+    });
   }
 }
 
 export const db = new OfflineDatabase();
-
