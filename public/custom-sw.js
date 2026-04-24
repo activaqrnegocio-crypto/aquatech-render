@@ -226,12 +226,26 @@ async function navigationHandler(request) {
   // ── STEP 2: Cache miss → try network with SHORT timeout (3s)
   try {
     const response = await fetchWithTimeout(request.clone(), 3000);
-    if (response.ok && !response.redirected) {
-      const cache = await caches.open(PAGES_CACHE);
-      cache.put(request.url, response.clone());
-      // Also cache slash variant
-      const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
-      cache.put(alt, response.clone());
+    if (response.ok) {
+      // Cache the response EVEN if redirected — EXCEPT login redirects
+      const finalUrl = response.url || '';
+      const isLoginRedirect = finalUrl.includes('/login');
+      
+      if (!isLoginRedirect) {
+        const cache = await caches.open(PAGES_CACHE);
+        // Cache under original URL (so /admin is found later)
+        cache.put(request.url, response.clone());
+        // Also cache slash variant
+        const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
+        cache.put(alt, response.clone());
+        // If redirected, also cache under final URL
+        if (response.redirected && finalUrl) {
+          cache.put(finalUrl, response.clone());
+          console.log('[SW] Cached redirect:', url.pathname, '→', new URL(finalUrl).pathname);
+        }
+      } else {
+        console.log('[SW] Skipped caching login redirect:', url.pathname);
+      }
     }
     return response;
   } catch (e) {
@@ -442,7 +456,7 @@ self.addEventListener('message', (event) => {
     });
   }
 
-  // Warm-up pre-caching — ONLY caches non-redirected responses
+  // Warm-up pre-caching — caches responses INCLUDING redirects (except login)
   if (event.data && event.data.type === 'PRECACHE_URLS') {
     const urls = event.data.urls || [];
     console.log('[SW] Warm-up pre-caching', urls.length, 'URLs');
@@ -454,14 +468,22 @@ self.addEventListener('message', (event) => {
               credentials: 'same-origin',
               redirect: 'follow'
             });
-            // CRITICAL: Skip redirected responses (login page redirects)
-            if (response.ok && !response.redirected) {
-              await cache.put(url, response.clone());
-              const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
-              await cache.put(alt, response.clone());
-              console.log('[SW] Warm-cached:', url);
-            } else if (response.redirected) {
-              console.warn('[SW] Skipped redirect for:', url, '→', response.url);
+            if (response.ok) {
+              const finalUrl = response.url || '';
+              const isLoginRedirect = finalUrl.includes('/login');
+              
+              if (!isLoginRedirect) {
+                await cache.put(url, response.clone());
+                const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
+                await cache.put(alt, response.clone());
+                // Also cache the final redirect URL
+                if (response.redirected && finalUrl) {
+                  await cache.put(finalUrl, response.clone());
+                }
+                console.log('[SW] Warm-cached:', url, response.redirected ? `→ ${new URL(finalUrl).pathname}` : '');
+              } else {
+                console.warn('[SW] Skipped login redirect for:', url);
+              }
             }
           } catch (e) {
             console.warn('[SW] Warm-cache failed for:', url);
