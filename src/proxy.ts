@@ -13,6 +13,7 @@ export default withAuth(
         // 🔏 PUBLIC PATHS — Always allowed without session
         if (
           pathname === "/admin/login" ||
+          pathname === "/admin/sw-test" ||
           pathname.startsWith("/api/auth") ||
           pathname.startsWith("/api/upload") ||
           pathname.startsWith("/api/cron") ||
