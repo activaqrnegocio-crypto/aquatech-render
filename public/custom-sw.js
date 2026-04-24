@@ -1,6 +1,6 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker (Standalone Offline-First) v44
-// FIX: Fixed cache names — survive across SW updates even when offline
+// Aquatech CRM — Custom Service Worker (Standalone Offline-First) v45
+// FIX: Content-Type validation — only cache HTML for navigation
 // ============================================================
 const STATIC_CACHE = 'aquatech-static';
 const PAGES_CACHE  = 'aquatech-pages';
@@ -19,9 +19,12 @@ const PRE_CACHE = [
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  console.log('[SW] Installing...');
+  console.log('[SW v45] Installing...');
   event.waitUntil(
-    caches.open(STATIC_CACHE)
+    // PURGE pages cache to wipe any corrupt RSC data from previous version
+    caches.delete(PAGES_CACHE)
+      .then(() => caches.delete(RSC_CACHE))
+      .then(() => caches.open(STATIC_CACHE))
       .then(async (cache) => {
         for (const url of PRE_CACHE) {
           try {
@@ -30,7 +33,6 @@ self.addEventListener('install', (event) => {
               await cache.put(url, response);
             }
           } catch (err) {
-            // Offline install — skip, existing cache survives
             console.warn(`[SW] Pre-cache skipped (offline?): ${url}`);
           }
         }
@@ -227,24 +229,22 @@ async function navigationHandler(request) {
   try {
     const response = await fetchWithTimeout(request.clone(), 3000);
     if (response.ok) {
-      // Cache the response EVEN if redirected — EXCEPT login redirects
+      const contentType = response.headers.get('Content-Type') || '';
+      const isHTML = contentType.includes('text/html');
       const finalUrl = response.url || '';
       const isLoginRedirect = finalUrl.includes('/login');
       
-      if (!isLoginRedirect) {
+      // ONLY cache actual HTML responses, never RSC payloads or JSON
+      if (isHTML && !isLoginRedirect) {
         const cache = await caches.open(PAGES_CACHE);
-        // Cache under original URL (so /admin is found later)
         cache.put(request.url, response.clone());
-        // Also cache slash variant
         const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
         cache.put(alt, response.clone());
         // If redirected, also cache under final URL
         if (response.redirected && finalUrl) {
           cache.put(finalUrl, response.clone());
-          console.log('[SW] Cached redirect:', url.pathname, '→', new URL(finalUrl).pathname);
         }
-      } else {
-        console.log('[SW] Skipped caching login redirect:', url.pathname);
+        console.log('[SW] Cached page:', url.pathname, response.redirected ? `→ ${new URL(finalUrl).pathname}` : '');
       }
     }
     return response;
@@ -270,17 +270,26 @@ async function navigationHandler(request) {
 }
 
 /**
+ * Validate a cached response is actual HTML (not RSC or JSON)
+ */
+function isValidHTMLResponse(response) {
+  if (!response) return false;
+  const ct = response.headers.get('Content-Type') || '';
+  return ct.includes('text/html');
+}
+
+/**
  * Find a cached page by URL, with multiple fallback strategies
  */
 async function findCachedPage(requestUrl, pathname) {
   // Try exact URL
   let cached = await caches.match(requestUrl, { ignoreVary: true, ignoreSearch: true });
-  if (cached) return cached;
+  if (isValidHTMLResponse(cached)) return cached;
 
   // Try slash variant
   const alt = requestUrl.endsWith('/') ? requestUrl.slice(0, -1) : requestUrl + '/';
   cached = await caches.match(alt, { ignoreVary: true, ignoreSearch: true });
-  if (cached) return cached;
+  if (isValidHTMLResponse(cached)) return cached;
 
   // Try by pathname across all caches
   const allCacheNames = await caches.keys();
@@ -293,7 +302,7 @@ async function findCachedPage(requestUrl, pathname) {
         const keyUrl = new URL(key.url);
         if (keyUrl.pathname === pathname || keyUrl.pathname === pathname + '/' || keyUrl.pathname + '/' === pathname) {
           const match = await cache.match(key);
-          if (match) return match;
+          if (isValidHTMLResponse(match)) return match;
         }
       } catch (e) { /* skip invalid URLs */ }
     }
@@ -310,7 +319,7 @@ async function findCachedPage(requestUrl, pathname) {
   
   for (const shell of shells) {
     cached = await caches.match(shell, { ignoreVary: true, ignoreSearch: true });
-    if (cached) return cached;
+    if (isValidHTMLResponse(cached)) return cached;
   }
 
   return null;
@@ -469,20 +478,20 @@ self.addEventListener('message', (event) => {
               redirect: 'follow'
             });
             if (response.ok) {
+              const contentType = response.headers.get('Content-Type') || '';
+              const isHTML = contentType.includes('text/html');
               const finalUrl = response.url || '';
               const isLoginRedirect = finalUrl.includes('/login');
               
-              if (!isLoginRedirect) {
+              // ONLY cache HTML — never RSC/JSON payloads
+              if (isHTML && !isLoginRedirect) {
                 await cache.put(url, response.clone());
                 const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
                 await cache.put(alt, response.clone());
-                // Also cache the final redirect URL
                 if (response.redirected && finalUrl) {
                   await cache.put(finalUrl, response.clone());
                 }
-                console.log('[SW] Warm-cached:', url, response.redirected ? `→ ${new URL(finalUrl).pathname}` : '');
-              } else {
-                console.warn('[SW] Skipped login redirect for:', url);
+                console.log('[SW] Warm-cached:', url);
               }
             }
           } catch (e) {
