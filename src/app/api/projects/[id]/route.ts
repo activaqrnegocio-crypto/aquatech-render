@@ -17,10 +17,25 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
         client: true,
         phases: { orderBy: { displayOrder: 'asc' } },
         team: { include: { user: true } },
-        gallery: { orderBy: { createdAt: 'desc' } },
-        expenses: { include: { user: true }, orderBy: { date: 'desc' } },
-        chatMessages: { include: { user: true, phase: true, media: true }, orderBy: { createdAt: 'desc' } },
-        dayRecords: { include: { user: true }, orderBy: { createdAt: 'desc' } }
+        gallery: { 
+          orderBy: { createdAt: 'desc' },
+          take: 30 // Initial limit for speed
+        },
+        expenses: { 
+          include: { user: true }, 
+          orderBy: { date: 'desc' },
+          take: 20 // Initial limit for speed
+        },
+        chatMessages: { 
+          include: { user: true, phase: true, media: true }, 
+          orderBy: { createdAt: 'desc' },
+          take: 50 // Initial limit for speed
+        },
+        dayRecords: { 
+          include: { user: true }, 
+          orderBy: { createdAt: 'desc' },
+          take: 10
+        }
       }
     })
 

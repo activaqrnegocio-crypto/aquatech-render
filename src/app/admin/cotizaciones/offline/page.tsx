@@ -8,23 +8,34 @@ import QuoteDetailClient from '../compuesto/[id]/QuoteDetailClient'
 function OfflineQuoteContent() {
   const searchParams = useSearchParams()
   const id = searchParams.get('id')
+  const cachedId = searchParams.get('cachedId')
   const [quotePayload, setQuotePayload] = useState<any>(null)
   const [error, setError] = useState(false)
 
   useEffect(() => {
     async function load() {
       try {
-        if (!id) {
+        if (!id && !cachedId) {
           setError(true)
           return
         }
-        const item = await db.outbox.get(Number(id))
-        if (item && item.type === 'QUOTE') {
+
+        let q: any = null;
+
+        if (id) {
+          const item = await db.outbox.get(Number(id))
+          if (item && item.type === 'QUOTE') {
+            q = item.payload
+          }
+        } else if (cachedId) {
+          q = await db.quotesCache.get(Number(cachedId))
+        }
+
+        if (q) {
           // Convert the payload to match what QuoteDetailClient expects from Prisma
-          const q = item.payload
           setQuotePayload({
-            id: '(PENDIENTE)',
-            status: 'BORRADOR', // Offline quotes are always drafts
+            id: q.id || '(PENDIENTE)',
+            status: q.status || 'BORRADOR', 
             clientId: q.clientId,
             clientName: q.clientName,
             clientRuc: q.clientRuc,
@@ -45,7 +56,7 @@ function OfflineQuoteContent() {
             optionalDescription: q.optionalDescription || '',
             optionalImage: q.optionalImage || '',
             optionalImage2: q.optionalImage2 || '',
-            project: q.projectId ? { title: 'Proyecto Vinculado (Offline)' } : null
+            project: q.projectId ? { title: 'Proyecto Vinculado (Local)' } : null
           })
         } else {
           setError(true)
@@ -55,7 +66,7 @@ function OfflineQuoteContent() {
       }
     }
     load()
-  }, [id])
+  }, [id, cachedId])
 
   if (error) {
     return (

@@ -40,6 +40,7 @@ export default async function OperatorDashboard() {
           team: { some: { userId } },
           status: { in: ['LEAD', 'ACTIVO', 'PENDIENTE'] }
         },
+        take: 20, // Only show recent active projects for speed
         orderBy: { updatedAt: 'desc' },
         select: {
           id: true,
@@ -58,8 +59,12 @@ export default async function OperatorDashboard() {
           include: { project: { select: { title: true } } }
       }),
       prisma.appointment.findMany({
-          where: { userId },
+          where: { 
+            userId,
+            startTime: { gte: new Date(new Date().setDate(new Date().getDate() - 7)) } // Last 7 days and future
+          },
           orderBy: { startTime: 'asc' },
+          take: 30,
           include: { project: { select: { title: true } } }
       }),
       prisma.projectView.findMany({

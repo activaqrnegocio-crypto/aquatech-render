@@ -21,6 +21,30 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
   const [editingEvent, setEditingEvent] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
+  useEffect(() => {
+    async function initCache() {
+      // Handle Operators Cache
+      if (operators.length > 0) {
+        setCachedOperators(operators)
+        localStorage.setItem('admin_calendar_operators', JSON.stringify(operators))
+      } else {
+        const cached = localStorage.getItem('admin_calendar_operators')
+        if (cached) { try { setCachedOperators(JSON.parse(cached)) } catch(e){} }
+      }
+
+      // Handle Projects Cache (Dexie)
+      if (projects.length > 0) {
+        setCachedProjects(projects)
+        await db.projectsCache.clear()
+        await db.projectsCache.bulkPut(projects)
+      } else {
+        const cached = await db.projectsCache.toArray()
+        if (cached.length > 0) setCachedProjects(cached)
+      }
+    }
+    initCache()
+  }, [operators, projects])
+
   const fetchAppointments = async (silent = false) => {
     if (!silent) setLoading(true)
     try {
@@ -29,40 +53,22 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
       if (res.ok) {
         const data = await res.json()
         setAppointments(data)
-        localStorage.setItem(`calendar_appointments_${selectedOperatorId}`, JSON.stringify(data))
+        // Cache to Dexie
+        if (selectedOperatorId === 'all') {
+          await db.appointmentsCache.clear()
+          await db.appointmentsCache.bulkPut(data)
+        }
       }
     } catch (error) {
       console.error('Error fetching appointments:', error)
-      const cached = localStorage.getItem(`calendar_appointments_${selectedOperatorId}`)
-      if (cached) {
-        try { setAppointments(JSON.parse(cached)) } catch(e){}
+      if (selectedOperatorId === 'all') {
+        const cached = await db.appointmentsCache.toArray()
+        if (cached.length > 0) setAppointments(cached)
       }
     } finally {
       if (!silent) setLoading(false)
     }
   }
-
-  useEffect(() => {
-    if (operators.length > 0) {
-      localStorage.setItem('admin_calendar_operators', JSON.stringify(operators))
-      setCachedOperators(operators)
-    } else {
-      const cached = localStorage.getItem('admin_calendar_operators')
-      if (cached) {
-        try { setCachedOperators(JSON.parse(cached)) } catch(e){}
-      }
-    }
-
-    if (projects.length > 0) {
-      localStorage.setItem('admin_calendar_projects', JSON.stringify(projects))
-      setCachedProjects(projects)
-    } else {
-      const cached = localStorage.getItem('admin_calendar_projects')
-      if (cached) {
-        try { setCachedProjects(JSON.parse(cached)) } catch(e){}
-      }
-    }
-  }, [operators, projects])
 
   // --- OFFLINE SUPPORT ---
   const pendingTasks = useLiveQuery(

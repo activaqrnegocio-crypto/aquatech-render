@@ -18,8 +18,14 @@ export async function GET(req: Request) {
 
     const quotes = await prisma.quote.findMany({
       where: isOp ? { userId: userId } : {},
-      include: {
-        client: { select: { name: true } },
+      take: 200,
+      select: {
+        id: true,
+        clientName: true,
+        totalAmount: true,
+        status: true,
+        createdAt: true,
+        projectId: true,
         project: { select: { title: true } }
       },
       orderBy: { createdAt: 'desc' }

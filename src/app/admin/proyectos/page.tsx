@@ -59,9 +59,21 @@ export default function ProyectosPage() {
     try {
       const res = await fetch('/api/projects')
       const data = await res.json()
-      if (Array.isArray(data)) setProjects(data)
+      if (Array.isArray(data)) {
+        setProjects(data)
+        
+        // Cache to Dexie when online
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          db.projectsCache.clear().then(() => {
+            db.projectsCache.bulkPut(data).catch(err => console.error('Error caching projects:', err))
+          })
+        }
+      }
     } catch (e) {
       console.error(e)
+      // Load from cache if offline
+      const cached = await db.projectsCache.toArray()
+      if (cached.length > 0) setProjects(cached)
     } finally {
       setLoading(false)
     }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db'
@@ -13,6 +13,25 @@ export default function QuotesListClient({ initialQuotes, activeProjects = [] }:
   const [quotes, setQuotes] = useState(initialQuotes)
   const [filter, setFilter] = useState('ALL')
   
+  // --- OFFLINE CACHE LOGIC ---
+  useEffect(() => {
+    // Save to cache when online
+    if (typeof navigator !== 'undefined' && navigator.onLine && initialQuotes.length > 0) {
+      db.quotesCache.clear().then(() => {
+        db.quotesCache.bulkPut(initialQuotes).catch(err => console.error('Error caching quotes:', err))
+      })
+    }
+  }, [initialQuotes])
+
+  // Load from cache if offline and initialQuotes is empty
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine && quotes.length === 0) {
+      db.quotesCache.toArray().then(cached => {
+        if (cached.length > 0) setQuotes(cached)
+      })
+    }
+  }, [quotes.length])
+
   // Modal State
   const [modalMode, setModalMode] = useState<'LINK' | 'SHARE' | null>(null)
   const [selectedQuoteId, setSelectedQuoteId] = useState<number | null>(null)
@@ -204,7 +223,14 @@ export default function QuotesListClient({ initialQuotes, activeProjects = [] }:
                 <td style={{ padding: '15px', textAlign: 'center', display: 'flex', gap: '8px', justifyContent: 'center' }}>
                   {!quote.isPending && (
                     <>
-                      <Link href={`/admin/cotizaciones/compuesto/${quote.id}`} className="btn btn-ghost btn-sm" title="Ver PDF" style={{ border: '1px solid var(--border)' }}>PDF</Link>
+                      <Link 
+                        href={typeof navigator !== 'undefined' && !navigator.onLine ? `/admin/cotizaciones/offline?cachedId=${quote.id}` : `/admin/cotizaciones/compuesto/${quote.id}`} 
+                        className="btn btn-ghost btn-sm" 
+                        title="Ver PDF" 
+                        style={{ border: '1px solid var(--border)' }}
+                      >
+                        PDF
+                      </Link>
                       <Link href={`/admin/cotizaciones/${quote.id}/edit`} className="btn btn-ghost btn-sm" title="Editar" style={{ border: '1px solid var(--border)' }}>
                         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                       </Link>
@@ -214,7 +240,16 @@ export default function QuotesListClient({ initialQuotes, activeProjects = [] }:
                     </>
                   )}
                   {quote.isPending && (
-                    <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)' }}>Sincronizando...</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', alignItems: 'center' }}>
+                      <Link 
+                        href={`/admin/cotizaciones/offline?id=${quote.id.replace('pending-', '')}`} 
+                        className="btn btn-primary btn-xs"
+                        style={{ fontSize: '0.65rem', padding: '4px 8px' }}
+                      >
+                        Ver Offline
+                      </Link>
+                      <span style={{ fontSize: '0.6rem', color: 'var(--text-muted)' }}>Sincronizando...</span>
+                    </div>
                   )}
                 </td>
               </tr>

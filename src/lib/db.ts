@@ -45,6 +45,10 @@ export class OfflineDatabase extends Dexie {
   authShadow!: Table<any>; // For the Service Worker fallback
   materialsCache!: Table<MaterialCache>;
   clientsCache!: Table<ClientCache>;
+  quotesCache!: Table<any>;
+  projectsCache!: Table<any>;
+  appointmentsCache!: Table<any>;
+  chatCache!: Table<any>;
 
   constructor() {
     super('AquatechOfflineDB');
@@ -69,6 +73,17 @@ export class OfflineDatabase extends Dexie {
       authShadow: 'id',
       materialsCache: 'id, code, name, category',
       clientsCache: 'id, name, ruc'
+    });
+    this.version(8).stores({
+      outbox: '++id, projectId, status, timestamp, type',
+      auth: 'id',
+      authShadow: 'id',
+      materialsCache: 'id, code, name, category',
+      clientsCache: 'id, name, ruc',
+      quotesCache: 'id, clientName, projectId',
+      projectsCache: 'id, title',
+      appointmentsCache: 'id, projectId',
+      chatCache: 'projectId'
     });
   }
 }

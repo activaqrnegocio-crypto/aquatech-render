@@ -58,10 +58,63 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       setActiveTab(view === 'EXPENSES' ? 'EVIDENCE' : view as any)
     }
   }, [searchParams])
-  
+
+  // --- OFFLINE STATE RECOVERY ---
+  const [localProject, setLocalProject] = useState(project)
+  const [localChat, setLocalChat] = useState<any[]>(project.chatMessages || [])
+  const [isOfflineMode, setIsOfflineMode] = useState(false)
+
+  const id = project.id
+
+  useEffect(() => {
+    async function handleOffline() {
+      const offline = typeof navigator !== 'undefined' && !navigator.onLine
+      setIsOfflineMode(offline)
+
+      if (offline) {
+        // Try to load project from cache
+        const cachedProject = await db.projectsCache.get(Number(id))
+        if (cachedProject) {
+          setLocalProject(cachedProject)
+        }
+        // Load chat from cache
+        const cachedChat = await db.chatCache.get(Number(id))
+        if (cachedChat) {
+          setLocalChat(cachedChat.messages)
+        }
+      } else if (project) {
+        // Update cache when online
+        setLocalProject(project)
+        setLocalChat(project.chatMessages || [])
+        db.projectsCache.put(project).catch(err => console.error('Error caching project:', err))
+        if (project.chatMessages && project.chatMessages.length > 0) {
+          db.chatCache.put({ projectId: project.id, messages: project.chatMessages })
+            .catch(err => console.error('Error caching chat:', err))
+        }
+      }
+    }
+    handleOffline()
+  }, [project, id])
+
   // --- CHAT STATE ---
-  const [chatMessages, setChatMessages] = useState(project.chatMessages || [])
+  const [chatMessages, setChatMessages] = useState(localChat)
   const [liveChat, setLiveChat] = useState<any[]>([])
+
+  useEffect(() => {
+    setChatMessages(localChat)
+  }, [localChat])
+
+  // Sync all sub-states when localProject updates (e.g. from offline cache)
+  useEffect(() => {
+    if (localProject) {
+      setGallery((localProject.gallery || []).sort((a: any, b: any) => 
+        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+      ))
+      setExpenses(localProject.expenses || [])
+      setCurrentStatus(localProject.status)
+      setEditBudget(localProject.estimatedBudget || 0)
+    }
+  }, [localProject])
   
   // Pending items from Dexie Outbox
   const pendingItems = useLiveQuery(
@@ -1559,9 +1612,16 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
               )}
             </div>
           </div>
-          <h2 style={{ fontSize: '2rem', margin: 0 }}>{project.title}</h2>
+          <h2 style={{ fontSize: '2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {localProject.title}
+            {isOfflineMode && (
+              <span style={{ fontSize: '0.7rem', padding: '2px 8px', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '10px', border: '1px solid #ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                Offline
+              </span>
+            )}
+          </h2>
           <p style={{ color: 'var(--text-muted)', marginTop: '5px', fontSize: '1.1rem' }}>
-            {translateType(project.type)} {project.subtype ? `— ${project.subtype}` : ''}
+            {translateType(localProject.type)} {localProject.subtype ? `— ${localProject.subtype}` : ''}
           </p>
         </div>
         <div style={{ textAlign: 'right', display: 'none' }}>
