@@ -227,6 +227,56 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
     setCalculations(newCalculations)
   }, [])
 
+  const generatePreviewPDF = () => {
+    if ((clientMode === 'NEW' || clientMode === 'CF') && !clientData.name && clientMode !== 'CF') {
+       alert("Ingresa al menos el nombre del cliente para previsualizar.");
+       return;
+    }
+
+    const clientInfo = {
+      name: clientMode === 'CF' ? 'CONSUMIDOR FINAL' : clientData.name || 'Cliente Nuevo',
+      ruc: clientMode === 'CF' ? '9999999999999' : clientData.ruc,
+      address: clientData.address,
+      phone: clientData.phone,
+      date: new Date()
+    }
+    
+    const pdfTotals = {
+      subtotal: Number(calculations.totalBudget || 0),
+      subtotal0: Number(calculations.subtotal0 || 0),
+      subtotal15: Number(calculations.subtotal15 || 0),
+      discountTotal: Number(calculations.discountTotal || 0),
+      ivaAmount: Number(calculations.ivaAmount || 0),
+      totalAmount: Number(calculations.grandTotal || 0)
+    }
+
+    const formattedItems = calculations.processed.map((p: any) => ({
+      ...p,
+      unitPrice: p.estimatedCost, 
+      description: p.name,
+      total: p.lineTotal,
+      discountPct: p.discountPct || 0
+    }))
+
+    const result = generateProfessionalPDF(clientInfo, formattedItems, pdfTotals, {
+      docType: 'COTIZACIÓN',
+      docId: initialQuote?.id ? String(initialQuote.id) : 'VISTA-PREVIA',
+      notes: notes,
+      sellerName: session?.user?.name || 'Aquatech',
+      action: 'preview',
+      optionalSection: {
+        title: optionalTitle,
+        description: optionalDescription,
+        imageBase64: optionalImageBase64,
+        image2Base64: optionalImage2Base64
+      }
+    })
+
+    if (typeof result === 'string') {
+      window.open(result, '_blank')
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (clientMode === 'EXISTING' && !selectedClientId) return alert("Selecciona un cliente existente")
@@ -311,6 +361,9 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
     // Offline interceptor
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
        try {
+          // Generamos el PDF y lo abrimos en pestaña nueva para el administrador
+          generatePreviewPDF()
+
           const { db } = await import('@/lib/db')
           const tempId = Date.now()
           const actualId = await db.outbox.add({
@@ -328,12 +381,12 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
             } catch (ignored) { }
           }
 
-          alert("Cotización guardada sin conexión. Se sincronizará en segundo plano cuando regreses a un área con cobertura.")
+          alert("Cotización guardada sin conexión.\nSe ha abierto la vista previa del PDF en una nueva pestaña para su descarga inmediata.\nEl documento se sincronizará automáticamente cuando regreses a un área con cobertura.")
           removeItems()
           removeClientData()
           removeNotes()
           removeDate()
-          router.push(`/admin/cotizaciones/offline?id=${actualId}`)
+          router.push(`/admin/cotizaciones`)
        } catch (error) {
           alert("Error crítico accediendo a la base de datos local.")
        } finally { setLoading(false) }
@@ -606,9 +659,14 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
             </div>
           </div>
 
-          <button type="submit" className="btn btn-primary" style={{ width: '100%', marginTop: '25px', padding: '15px', fontWeight: 'bold' }} disabled={loading}>
-            {loading ? 'Guardando...' : (initialQuote ? 'ACTUALIZAR COTIZACIÓN' : 'CREAR COTIZACIÓN')}
-          </button>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '25px' }}>
+            <button type="button" onClick={generatePreviewPDF} className="btn btn-secondary" style={{ width: '100%', padding: '15px', fontWeight: 'bold' }}>
+              Generar Vista Previa
+            </button>
+            <button type="submit" className="btn btn-primary" style={{ width: '100%', padding: '15px', fontWeight: 'bold' }} disabled={loading}>
+              {loading ? 'Guardando...' : (initialQuote ? 'ACTUALIZAR COTIZACIÓN' : 'CREAR COTIZACIÓN')}
+            </button>
+          </div>
         </div>
       </div>
 
