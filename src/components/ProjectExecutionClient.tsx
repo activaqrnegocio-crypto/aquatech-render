@@ -1401,7 +1401,13 @@ export default function ProjectExecutionClient({
         ['Tipo de Proyecto', translateType(fullProject.type)],
         ['Tipo de Contrato', contracts.map(c => translateType(c)).join(', ') || 'N/A'],
         ['Categorías', categories.map(c => translateCategory(c)).join(', ') || 'N/A'],
-        ['Ubicación', `${fullProject.city || ''} ${fullProject.address || ''}`.trim() || 'N/A'],
+        ['Dirección', `${fullProject.city || ''} ${fullProject.address || ''}`.trim() || 'N/A'],
+        ['Ubicación GPS', (() => {
+          try {
+            const specs = JSON.parse(fullProject.technicalSpecs || '{}');
+            return specs.locationLink || fullProject.locationLink || 'N/A';
+          } catch { return fullProject.locationLink || 'N/A'; }
+        })()],
         ['Fecha Inicio', formatDate(fullProject.startDate)],
         ['Fecha Fin (Est.)', formatDate(fullProject.endDate)],
         ['Estado Actual', fullProject.status === 'ACTIVO' ? 'En Ejecución' : fullProject.status],
@@ -1665,15 +1671,38 @@ export default function ProjectExecutionClient({
               <div style={{ padding: '15px', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.05)' }}>
                 <h4 style={{ fontSize: '0.8rem', color: 'var(--primary)', marginBottom: '12px', fontWeight: 'bold', textTransform: 'uppercase' }}>Cliente</h4>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-                  {[
-                    ['Nombre', clientName || 'N/A'],
-                    ['Ubicación', projectAddress || 'N/A']
-                  ].map(([label, val]) => (
-                    <div key={label} style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', gap: '10px' }}>
-                      <span style={{ color: 'var(--text-muted)', flexShrink: 0 }}>{label}</span>
-                      <span style={{ fontWeight: '500', textAlign: 'right', overflow: 'hidden', textOverflow: 'ellipsis' }}>{val}</span>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Nombre</span>
+                    <span style={{ fontWeight: '500' }}>{clientName || 'N/A'}</span>
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', alignItems: 'center' }}>
+                    <span style={{ color: 'var(--text-muted)' }}>Ubicación</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                      {(() => {
+                        let locLink = project.locationLink;
+                        try {
+                          const specs = JSON.parse(project.technicalSpecs || '{}');
+                          if (specs.locationLink) locLink = specs.locationLink;
+                        } catch {}
+
+                        if (locLink && (locLink.includes('google.com/maps') || locLink.includes('maps.app.goo.gl') || locLink.startsWith('http'))) {
+                          return (
+                            <a 
+                              href={locLink} 
+                              target="_blank" 
+                              rel="noreferrer"
+                              className="btn btn-primary btn-sm"
+                              style={{ padding: '4px 12px', fontSize: '0.75rem', borderRadius: '15px', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            >
+                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                              Abrir GPS
+                            </a>
+                          );
+                        }
+                        return <span style={{ fontWeight: '500' }}>{projectAddress || 'N/A'}</span>;
+                      })()}
                     </div>
-                  ))}
+                  </div>
                 </div>
               </div>
 

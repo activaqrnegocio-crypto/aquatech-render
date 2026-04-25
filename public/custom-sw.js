@@ -259,7 +259,8 @@ async function navigationHandler(request) {
         const isLoginRedirect = finalUrl.includes('/login');
         
         // ONLY cache actual HTML responses, never RSC payloads or JSON
-        if (isHTML && !isLoginRedirect) {
+        // Exclude /admin/recursos to save memory and avoid massive caching of that page
+        if (isHTML && !isLoginRedirect && !url.pathname.includes('/admin/recursos')) {
           const cache = await caches.open(PAGES_CACHE);
           cache.put(request.url, response.clone());
           const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
@@ -680,6 +681,9 @@ async function processOutboxSync() {
             endpoint = `/api/projects/${item.projectId}/messages`;
           } else if (item.type === 'GALLERY_UPLOAD') {
             endpoint = `/api/projects/${item.projectId}/gallery`;
+          } else if (item.type === 'GALLERY_DELETE') {
+            endpoint = `/api/projects/${item.projectId}/gallery/${item.payload.itemId}`;
+            method = 'DELETE';
           } else if (item.type === 'EXPENSE') {
             endpoint = `/api/projects/${item.projectId}/expenses`;
           } else if (item.type === 'DAY_START') {

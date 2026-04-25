@@ -481,6 +481,24 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const handleDeleteGalleryItem = async (itemId: number) => {
     if (!confirm('¿Estás seguro de que deseas eliminar este archivo de la galería?')) return
     
+    // Offline support
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        await db.outbox.add({
+          type: 'GALLERY_DELETE',
+          projectId: project.id,
+          payload: { itemId },
+          timestamp: Date.now(),
+          status: 'pending'
+        })
+        // Optimistic UI update
+        setGallery((prev: any[]) => prev.filter((item: any) => item.id !== itemId))
+        return
+      } catch (e) {
+        console.error('Error saving offline deletion:', e)
+      }
+    }
+
     try {
       const resp = await fetch(`/api/projects/${project.id}/gallery/${itemId}`, {
         method: 'DELETE'
@@ -746,18 +764,6 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
              status: 'pending'
           })
           
-          // Optimistic update for local UI
-          const pendingItem = {
-            id: `pending-${Date.now()}`,
-            url: processedUrl,
-            filename: file.filename,
-            mimeType: file.mimeType,
-            category: category,
-            isPending: true,
-            createdAt: new Date().toISOString()
-          }
-          setGallery((prev: any[]) => [pendingItem, ...prev])
-
           setIsUploading(false)
           return
        } catch (e) {
@@ -766,15 +772,18 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     }
 
     try {
-      const resp = await fetch(`/api/projects/${project.id}/gallery`, {
+      // For online mode, we don't manually setGallery because the Service Worker 
+      // or the list polling/refresh will handle the state update once the upload is synced.
+      // This PREVENTS THE DOUBLE UPLOAD BUG (one local, one from synced fetch).
+      await fetch(`/api/projects/${project.id}/gallery`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ ...file, category })
       })
-      if (resp.ok) {
-        const newItem = await resp.json()
-        setGallery(prev => [newItem, ...prev])
-      }
+      
+      // We don't call setGallery here anymore. 
+      // Instead we rely on the router.refresh() that might happen elsewhere or 
+      // the fact that the Service Worker is proxying these requests.
     } catch (e) {
       console.error('Error uploading to gallery:', e)
     } finally {
@@ -1410,6 +1419,12 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         ['Tipo', translateType(fullProject.type)],
         ['Ciudad', fullProject.city || 'N/A'],
         ['Dirección', fullProject.address || 'N/A'],
+        ['Ubicación GPS', (() => {
+          try {
+            const specs = JSON.parse(fullProject.technicalSpecs || '{}');
+            return specs.locationLink || fullProject.locationLink || 'N/A';
+          } catch { return fullProject.locationLink || 'N/A'; }
+        })()],
         ['Fecha de Inicio', formatDate(fullProject.startDate)],
         ['Fecha Fin (Est.)', formatDate(fullProject.endDate)],
         ['Creado por', fullProject.creator?.name || 'Admin'],
@@ -1956,6 +1971,35 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                   )}
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
+                  <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Ubicación Proyecto</span>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', maxWidth: '60%' }}>
+                    {(() => {
+                      let locLink = project.locationLink;
+                      try {
+                        const specs = JSON.parse(project.technicalSpecs || '{}');
+                        if (specs.locationLink) locLink = specs.locationLink;
+                      } catch {}
+
+                      if (locLink && (locLink.includes('google.com/maps') || locLink.includes('maps.app.goo.gl') || locLink.startsWith('http'))) {
+                        return (
+                          <a 
+                            href={locLink} 
+                            target="_blank" 
+                            rel="noreferrer"
+                            className="btn btn-primary btn-sm"
+                            style={{ padding: '6px 16px', fontSize: '0.85rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(56, 189, 248, 0.2)' }}
+                          >
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                            Abrir GPS Proyecto
+                          </a>
+                        );
+                      }
+                      return <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{project.address || 'N/A'}</span>;
+                    })()}
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Dirección Fiscal</span>
                   {!isEditingFicha ? (
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', maxWidth: '60%' }}>
@@ -1968,7 +2012,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                           style={{ padding: '6px 16px', fontSize: '0.85rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '8px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: 'var(--warning)', border: '1px solid var(--warning)', boxShadow: '0 4px 12px rgba(245, 158, 11, 0.15)' }}
                         >
                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                          Abrir Ubicación
+                          Abrir Ubicación Cliente
                         </a>
                       ) : (
                         <span style={{ color: 'var(--text)', fontSize: '0.9rem', textAlign: 'right' }}>{project.client?.address || 'N/A'}</span>
