@@ -36,7 +36,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
 
   return (
     <div className="admin-layout">
-      <ServiceWorkerRegistration />
+      {/* <ServiceWorkerRegistration /> */}
       <GlobalSyncWorker />
       <OfflinePrefetcher urls={pagesToPrefetch} />
       <Suspense fallback={<div style={{ width: '260px', height: '100vh', background: 'var(--bg-card)' }} />}>
