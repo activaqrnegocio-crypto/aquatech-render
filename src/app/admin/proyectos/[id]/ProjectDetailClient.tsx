@@ -36,12 +36,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     return () => window.removeEventListener('resize', check)
   }, [])
 
-  const [activeTab, setActiveTab] = useState<'CHAT' | 'GALLERY' | 'EVIDENCE'>(() => {
-    const view = searchParams.get('view')
-    if (view === 'CHAT' || view === 'GALLERY' || view === 'EVIDENCE') return view
-    if (view === 'EXPENSES') return 'EVIDENCE'
-    return 'CHAT'
-  })
+  const [activeTab, setActiveTab] = useState<'CHAT' | 'GALLERY' | 'EVIDENCE'>('CHAT')
 
   const GALLERY_LABEL = 'Planos y Referencias'
 
@@ -452,6 +447,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     }, 1000)
 
     const handleFocus = () => {
+       if (typeof navigator !== 'undefined' && !navigator.onLine) return
        fetchMessages().then(msgs => { if (msgs.length > 0) setChatMessages(msgs) })
        router.refresh() // También refresca datos del servidor como fotos y gastos
     }
@@ -535,7 +531,9 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       if (resp.ok) {
         setIsEditingFicha(false)
         startTransition(() => {
+          if (typeof navigator !== 'undefined' && navigator.onLine) {
           router.refresh()
+        }
         })
       } else {
         alert('Error al guardar los cambios')
@@ -563,7 +561,9 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       if (resp.ok) {
         router.push('/admin/proyectos')
         startTransition(() => {
+          if (typeof navigator !== 'undefined' && navigator.onLine) {
           router.refresh()
+        }
         })
       } else {
         const data = await resp.json()
@@ -682,7 +682,9 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         })
         setIsExpenseModalOpen(false)
         startTransition(() => {
+          if (typeof navigator !== 'undefined' && navigator.onLine) {
           router.refresh()
+        }
         })
       } else {
         const err = await resp.json()
@@ -743,6 +745,19 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
              timestamp: Date.now(),
              status: 'pending'
           })
+          
+          // Optimistic update for local UI
+          const pendingItem = {
+            id: `pending-${Date.now()}`,
+            url: processedUrl,
+            filename: file.filename,
+            mimeType: file.mimeType,
+            category: category,
+            isPending: true,
+            createdAt: new Date().toISOString()
+          }
+          setGallery((prev: any[]) => [pendingItem, ...prev])
+
           setIsUploading(false)
           return
        } catch (e) {

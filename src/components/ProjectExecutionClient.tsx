@@ -43,11 +43,7 @@ export default function ProjectExecutionClient({
   
   const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
-  const [activeTab, setActiveTab] = useState<'records' | 'chat' | 'gallery'>(() => {
-    const v = searchParams.get('view')
-    if (v === 'records' || v === 'chat' || v === 'gallery') return v
-    return 'records'
-  })
+  const [activeTab, setActiveTab] = useState<'records' | 'chat' | 'gallery'>('records')
   const pathname = usePathname()
   const [handleDownloadLoading, setHandleDownloadLoading] = useState<string | null>(null)
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<any>(null)
@@ -226,7 +222,9 @@ export default function ProjectExecutionClient({
       })
       if (res.ok) {
         startTransition(() => {
-          router.refresh()
+          if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
         })
       } else {
         alert('Error eliminando archivo')
@@ -436,9 +434,11 @@ export default function ProjectExecutionClient({
 
   const setActiveTabWithUrl = (tab: 'records' | 'chat' | 'gallery') => {
     setActiveTab(tab)
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('view', tab)
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('view', tab)
+      window.history.replaceState(null, '', url.toString())
+    }
   }
 
   useEffect(() => {
@@ -706,7 +706,9 @@ export default function ProjectExecutionClient({
         })
         if (!res.ok) throw new Error('Refresh needed')
         startTransition(() => {
-          router.refresh()
+          if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
         })
       } catch (err) {
         // Fallback to outbox if fetch fails
@@ -799,7 +801,9 @@ export default function ProjectExecutionClient({
           })
           if (res.ok) {
             startTransition(() => {
-              router.refresh()
+              if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
             })
           }
         } catch (err) {
@@ -843,7 +847,9 @@ export default function ProjectExecutionClient({
           lng: undefined,
           status: 'pending'
         })
-        router.refresh()
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
         setLoading(false)
         return
       }
@@ -854,7 +860,9 @@ export default function ProjectExecutionClient({
         body: JSON.stringify(payload)
       })
       startTransition(() => {
-        router.refresh()
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
       })
     } catch (e) {
       alert("Error completando fase")
@@ -874,7 +882,9 @@ export default function ProjectExecutionClient({
         setLiveChat(freshMsgs) // Complete replacement
       }
       // 2. Also refresh server component props
-      router.refresh()
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
     } catch (e) {
       console.error('[MANUAL SYNC] Error:', e)
     } finally {
@@ -1041,7 +1051,9 @@ export default function ProjectExecutionClient({
           } : m))
           
           if (payload.type === 'EXPENSE_LOG') {
-            router.refresh()
+            if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
           }
         }
       } catch (e) {
@@ -1088,7 +1100,9 @@ export default function ProjectExecutionClient({
       })
       if (resp.ok) {
         // Force refresh project data to update gallery
-        router.refresh()
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
       }
     } catch (e) {
       console.error('Error uploading to gallery:', e)
@@ -1105,7 +1119,9 @@ export default function ProjectExecutionClient({
         method: 'DELETE'
       })
       if (resp.ok) {
-        router.refresh()
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
       }
     } catch (e) {
       console.error('Error deleting from gallery:', e)
@@ -1186,7 +1202,9 @@ export default function ProjectExecutionClient({
           })
         })
         if (!res.ok) throw new Error('Refetch')
-        router.refresh()
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
       } catch (err) {
         // Silent fallback to outbox
         await db.outbox.add({
@@ -1492,7 +1510,9 @@ export default function ProjectExecutionClient({
         method: 'DELETE'
       })
       if (res.ok) {
-        router.refresh()
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
       }
     } catch (error) {
       console.error('Error deleting expense:', error)
@@ -1514,7 +1534,9 @@ export default function ProjectExecutionClient({
       if (res.ok) {
         setIsExpenseModalOpen(false)
         setEditingExpense(null)
-        router.refresh()
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+       router.refresh()
+     }
       }
     } catch (error) {
       console.error('Error updating expense:', error)

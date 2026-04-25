@@ -171,13 +171,22 @@ export default function GlobalSyncWorker() {
     const handleStatusChange = () => {
       setIsOnline(navigator.onLine)
       if (navigator.onLine) {
+        console.log('[Sync] Back online, triggering sync...')
         syncOutbox()
         refreshCaches()
       }
     }
     
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && navigator.onLine) {
+        console.log('[Sync] App visible, triggering sync...')
+        syncOutbox()
+      }
+    }
+    
     window.addEventListener('online', handleStatusChange)
     window.addEventListener('offline', handleStatusChange)
+    document.addEventListener('visibilitychange', handleVisibilityChange)
     
     // Initial sync and cache refresh
     if (navigator.onLine) {
@@ -188,13 +197,16 @@ export default function GlobalSyncWorker() {
     const interval = setInterval(() => {
         if (navigator.onLine) {
             syncOutbox()
-            refreshCaches() // Refresh caches every 5 mins or so to stay updated
+            // We can keep refreshCaches slower to save battery, 
+            // but syncOutbox should be fast
+            if (Math.random() > 0.9) refreshCaches() 
         }
-    }, 1000 * 60 * 5) // 5 minutes
-
+    }, 15000) // 15 seconds for more responsive background sync
+    
     return () => {
       window.removeEventListener('online', handleStatusChange)
       window.removeEventListener('offline', handleStatusChange)
+      document.removeEventListener('visibilitychange', handleVisibilityChange)
       clearInterval(interval)
     }
   }, [])

@@ -46,7 +46,7 @@ export async function POST(
 
     const { id } = await params
     const projectId = Number(id)
-    let { url, filename, mimeType, sizeBytes, category } = await request.json()
+    let { url, filename, mimeType, sizeBytes, category, createdAt } = await request.json()
 
     if (!url) {
       return NextResponse.json({ error: 'Faltan datos de la imagen' }, { status: 400 })
@@ -75,7 +75,8 @@ export async function POST(
         filename: filename || 'upload',
         mimeType: mimeType || 'image/jpeg',
         sizeBytes: sizeBytes || null,
-        category: category || 'MASTER'
+        category: category || 'MASTER',
+        createdAt: createdAt ? new Date(createdAt) : undefined
       }
     })
 
