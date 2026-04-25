@@ -97,7 +97,12 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   }, [project, id])
 
   // --- CHAT STATE ---
-  const [chatMessages, setChatMessages] = useState(localChat)
+  const [chatMessages, setChatMessages] = useState<any[]>([])
+  
+  // Keep chatMessages in sync with localChat (which comes from props or cache)
+  useEffect(() => {
+    setChatMessages(localChat)
+  }, [localChat])
   const [liveChat, setLiveChat] = useState<any[]>([])
 
   useEffect(() => {

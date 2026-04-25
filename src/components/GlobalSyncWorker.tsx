@@ -25,7 +25,7 @@ export default function GlobalSyncWorker() {
 
   const syncOutbox = async () => {
     if (typeof window === 'undefined' || !navigator.onLine) return
-    const items = await db.outbox.where('status').equals('pending').toArray()
+    const items = await db.outbox.where('status').anyOf(['pending', 'failed']).toArray()
     if (items.length === 0) return
 
     for (const item of items) {
@@ -52,7 +52,7 @@ export default function GlobalSyncWorker() {
           const hasFileData = item.payload.fileData?.buffer;
           const hasRawFile = item.payload.file;
           
-          if ((hasFileData || hasRawFile) && (item.type === 'MESSAGE' || item.type === 'EXPENSE' || item.type === 'MEDIA_UPLOAD')) {
+          if ((hasFileData || hasRawFile) && (item.type === 'MESSAGE' || item.type === 'EXPENSE' || item.type === 'MEDIA_UPLOAD' || item.type === 'TASK')) {
             try {
               const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
               
@@ -104,8 +104,17 @@ export default function GlobalSyncWorker() {
                    isOfflineSync: true 
                  })
              })
-             if (res.ok) await db.outbox.delete(item.id!)
-             else await db.outbox.update(item.id!, { status: 'failed' })
+             if (res.ok) {
+               await db.outbox.delete(item.id!)
+             } else {
+               const status = res.status
+               // If unauthorized, go back to pending so it retries when user logs in
+               if (status === 401) {
+                 await db.outbox.update(item.id!, { status: 'pending' })
+               } else {
+                 await db.outbox.update(item.id!, { status: 'failed' })
+               }
+             }
           }
        } catch (e) {
           await db.outbox.update(item.id!, { status: 'pending' })

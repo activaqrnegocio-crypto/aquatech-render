@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import QuotesListClient from './QuotesListClient'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import { db } from '@/lib/db'
 
 export default function CotizacionesPage() {
   const { data: session } = useSession()
@@ -11,10 +12,27 @@ export default function CotizacionesPage() {
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Authorization check that handles both online (session) and offline (cached session)
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
+
+  useEffect(() => {
+    async function checkAuth() {
+      // 1. Online session
+      if (session) {
+        setIsAuthorized(true)
+      } 
+      // 2. Offline cached session
+      else if (!navigator.onLine) {
+        const cached = await db.auth.get('last_session')
+        const authorized = cached && (cached.role === 'ADMIN' || cached.role === 'SUPERADMIN')
+        setIsAuthorized(!!authorized)
+      }
+    }
+    checkAuth()
+  }, [session])
+
   useEffect(() => {
     async function loadData() {
-      if (!session) return
-      
       try {
         const [quotesRes, projectsRes] = await Promise.all([
           fetch('/api/quotes'),
@@ -31,16 +49,23 @@ export default function CotizacionesPage() {
           setProjects(data)
         }
       } catch (err) {
-        console.error("Error loading cotizaciones data:", err)
+        console.error("Error loading cotizaciones data (offline fallback):", err)
+        // Load from cache
+        const [cachedQuotes, cachedProjects] = await Promise.all([
+          db.quotesCache.toArray(),
+          db.projectsCache.where('status').equals('ACTIVO').toArray()
+        ])
+        if (cachedQuotes.length > 0) setQuotes(cachedQuotes)
+        if (cachedProjects.length > 0) setProjects(cachedProjects)
       } finally {
         setLoading(false)
       }
     }
     
-    if (session) {
+    if (isAuthorized === true) {
       loadData()
     }
-  }, [session])
+  }, [isAuthorized])
 
   return (
     <div className="p-6">

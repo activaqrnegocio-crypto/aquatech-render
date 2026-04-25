@@ -20,31 +20,47 @@ export default function ProyectosPage() {
   const [statusFilter, setStatusFilter] = useState('ALL')
   const [updatingId, setUpdatingId] = useState<number | null>(null)
 
-  const userRole = (session?.user as any)?.role
-  const userPermissions = (session?.user as any)?.permissions
-  
-  // Strict authorization check: Only admins or users with explicit 'proyectos_admin' permission
-  const isAuthorized = userRole && (
-    userRole === 'SUPERADMIN' || 
-    userRole === 'ADMIN' || 
-    userRole === 'ADMINISTRADORA' || 
-    (userPermissions && userPermissions.includes('proyectos_admin'))
-  )
+  // Authorization check that handles both online (session) and offline (cached session)
+  const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
 
   useEffect(() => {
-    if (status === 'authenticated' && !isAuthorized) {
-      router.push('/admin')
+    async function checkAuth() {
+      // 1. Check online session first
+      if (status === 'authenticated') {
+        const role = (session?.user as any)?.role
+        const permissions = (session?.user as any)?.permissions
+        const authorized = role && (
+          role === 'SUPERADMIN' || 
+          role === 'ADMIN' || 
+          role === 'ADMINISTRADORA' || 
+          (permissions && permissions.includes('proyectos_admin'))
+        )
+        setIsAuthorized(!!authorized)
+        if (!authorized) router.push('/admin')
+      } 
+      // 2. If unauthenticated and offline, check cached session
+      else if (status === 'unauthenticated' && !navigator.onLine) {
+        const cached = await db.auth.get('last_session')
+        const authorized = cached && (
+          cached.role === 'ADMIN' || 
+          cached.role === 'SUPERADMIN'
+        )
+        setIsAuthorized(!!authorized)
+        if (!authorized) router.push('/admin/login')
+      }
+      // 3. If still loading session, wait
+      else if (status === 'unauthenticated' && navigator.onLine) {
+        router.push('/admin/login')
+      }
     }
-  }, [status, isAuthorized, router])
+    checkAuth()
+  }, [status, session, router])
 
   useEffect(() => {
-    if (isAuthorized) {
+    if (isAuthorized === true) {
       fetchProjects()
       
-      // Auto-refresh cada 30 segundos para ver nuevos proyectos "en vivo" pero reduciendo carga al servidor
       const interval = setInterval(fetchProjects, 30000)
-      
-      // Refrescar al volver a la pestaña
       const handleFocus = () => fetchProjects()
       window.addEventListener('focus', handleFocus)
       

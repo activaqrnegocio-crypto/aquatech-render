@@ -50,6 +50,7 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
     try {
       const url = `/api/appointments?userId=${selectedOperatorId}`
       const res = await fetch(url)
+      
       if (res.ok) {
         const data = await res.json()
         setAppointments(data)
@@ -58,9 +59,15 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
           await db.appointmentsCache.clear()
           await db.appointmentsCache.bulkPut(data)
         }
+      } else {
+        // Handle non-ok response (e.g. 500, 404) by falling back to cache
+        if (selectedOperatorId === 'all') {
+          const cached = await db.appointmentsCache.toArray()
+          if (cached.length > 0) setAppointments(cached)
+        }
       }
     } catch (error) {
-      console.error('Error fetching appointments:', error)
+      console.error('Error fetching appointments (falling back to cache):', error)
       if (selectedOperatorId === 'all') {
         const cached = await db.appointmentsCache.toArray()
         if (cached.length > 0) setAppointments(cached)
@@ -69,6 +76,18 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
       if (!silent) setLoading(false)
     }
   }
+
+  // Effect to load cache immediately if offline
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      db.appointmentsCache.toArray().then(cached => {
+        if (cached.length > 0 && appointments.length === 0) {
+          setAppointments(cached)
+          setLoading(false)
+        }
+      })
+    }
+  }, [])
 
   // --- OFFLINE SUPPORT ---
   const pendingTasks = useLiveQuery(
