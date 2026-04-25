@@ -7,7 +7,8 @@ export default function ServiceWorkerRegistration() {
     if (!('serviceWorker' in navigator)) return
     if (!window.location.pathname.startsWith('/admin')) return
 
-    navigator.serviceWorker.register('/custom-sw.js', { scope: '/' })
+    const swUrl = `/custom-sw.js?v=${new Date().getTime()}`
+    navigator.serviceWorker.register(swUrl, { scope: '/' })
       .then((registration) => {
         console.log('[App] SW registrado:', registration.scope)
 
