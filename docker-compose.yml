@@ -5,7 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: aquatech-crm
+    container_name: aquatech-crm-v2
     restart: always
     ports:
       - "3000:3000"
