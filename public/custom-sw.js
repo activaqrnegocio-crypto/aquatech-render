@@ -496,7 +496,8 @@ function isStaticAsset(pathname) {
 }
 
 /**
- * Helper to read shadow auth from IndexedDB inside a Service Worker.
+ * Helper to read shadow auth from IndexedDB inside
+ * Service Worker v100-STABLE
  */
 function getAuthFromIndexedDB() {
   return new Promise((resolve, reject) => {
