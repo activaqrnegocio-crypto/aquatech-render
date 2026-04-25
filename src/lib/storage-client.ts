@@ -49,13 +49,23 @@ export async function uploadToBunnyClientSide(
 
   // 4. Determine type for the frontend
   let type: 'IMAGE' | 'VIDEO' | 'DOCUMENT' = 'DOCUMENT';
-  if (file.type.startsWith('image/')) type = 'IMAGE';
-  else if (file.type.startsWith('video/')) type = 'VIDEO';
+  let mimeType = file.type;
+  
+  // Fallback check by extension if mime type is missing
+  const ext = originalName.split('.').pop()?.toLowerCase() || '';
+  if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
+    type = 'IMAGE';
+    if (!mimeType) mimeType = ext === 'webp' ? 'image/webp' : `image/${ext}`;
+  }
+  else if (mimeType.startsWith('video/') || ['mp4', 'mov', 'webm'].includes(ext)) {
+    type = 'VIDEO';
+    if (!mimeType) mimeType = `video/${ext}`;
+  }
 
   return {
     url: `${pullZoneUrl}/${folder}/${timestamp}-${safeName}`,
     filename: originalName,
-    mimeType: file.type || 'application/octet-stream',
+    mimeType: mimeType || 'application/octet-stream',
     type
   };
 }

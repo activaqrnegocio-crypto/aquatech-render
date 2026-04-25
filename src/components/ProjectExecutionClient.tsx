@@ -14,7 +14,7 @@ import {
 } from '@/lib/pdf-generator'
 import { useSession } from 'next-auth/react'
 import { formatToEcuador, ECUADOR_TIMEZONE, formatTimeEcuador, formatDateEcuador } from '@/lib/date-utils'
-import { compressImage as optimizedCompress } from '@/lib/image-optimization'
+import { compressImage as optimizedCompress, isCompressibleImage, blobToBase64 } from '@/lib/image-optimization'
 
 import Link from 'next/link'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
@@ -930,10 +930,8 @@ export default function ProjectExecutionClient({
           let uploadFile: File | Blob = mediaFile
 
           let finalFilename = mediaFile.name
-          if (mediaFile.type.startsWith('image/')) {
-            const compressedB64 = await optimizedCompress(mediaFile)
-            const resB64 = await fetch(compressedB64)
-            uploadFile = await resB64.blob()
+          if (isCompressibleImage(mediaFile)) {
+            uploadFile = await optimizedCompress(mediaFile)
             finalFilename = finalFilename.replace(/\.[^/.]+$/, "") + ".webp"
           }
 
@@ -967,15 +965,12 @@ export default function ProjectExecutionClient({
       if (!navigator.onLine || uploadErrorOccurred) {
          if (mediaFile) {
            try {
-             const base64 = await new Promise<string>((resolve) => {
-               const reader = new FileReader();
-               reader.onload = () => resolve(reader.result as string);
-               reader.readAsDataURL(mediaFile);
-             });
+             const fileToStore = isCompressibleImage(mediaFile) ? await optimizedCompress(mediaFile) : mediaFile;
+             const base64 = await blobToBase64(fileToStore);
               payload.media = {
                 base64: base64,
-                filename: mediaFile.name,
-                mimeType: mediaFile.type,
+                filename: mediaFile.name.replace(/\.[^/.]+$/, '') + (isCompressibleImage(mediaFile) ? '.webp' : ''),
+                mimeType: isCompressibleImage(mediaFile) ? 'image/webp' : mediaFile.type,
                 category: 'CHAT'
               };
            } catch (e) {

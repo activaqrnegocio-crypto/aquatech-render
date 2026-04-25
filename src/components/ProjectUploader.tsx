@@ -1,7 +1,7 @@
 'use client'
 
 import React, { useState, useRef, useMemo } from 'react'
-import { compressImage as optimizedCompress } from '@/lib/image-optimization'
+import { compressImage as optimizedCompress, blobToBase64 } from '@/lib/image-optimization'
 
 // Inline SVG icons to avoid lucide-react webpack bundling issues
 const svgProps = (size: number) => ({
@@ -109,7 +109,8 @@ export default function ProjectUploader({
           if (!isOnline) {
             let base64: string
             if (isImage) {
-              base64 = await optimizedCompress(file)
+              const blob = await optimizedCompress(file)
+              base64 = await blobToBase64(blob)
             } else {
               const reader = new FileReader()
               base64 = await new Promise((resolve, reject) => {
@@ -139,9 +140,7 @@ export default function ProjectUploader({
 
             if (isImage) {
               try {
-                const compressedB64 = await optimizedCompress(file)
-                const resB64 = await fetch(compressedB64)
-                uploadFile = await resB64.blob()
+                uploadFile = await optimizedCompress(file)
                 finalFilename = finalFilename.replace(/\.[^/.]+$/, "") + ".webp"
               } catch (err) {
                 console.error('Compression failed, falling back to original', err)

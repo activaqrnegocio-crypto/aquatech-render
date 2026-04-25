@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
 import { getLocalNow, formatForDateTimeInput, forceEcuadorTZ } from '@/lib/date-utils'
 import { uploadToBunnyClientSide } from '@/lib/storage-client'
+import { compressImage as optimizedCompress } from '@/lib/image-optimization'
 
 interface AppointmentModalProps {
   isOpen: boolean
@@ -253,28 +254,15 @@ export default function AppointmentModal({
   }
 
   // Helper para comprimir imágenes (mantener para ahorro de espacio en WA real)
-  const compressImage = (file: File): Promise<File> => {
-    return new Promise((resolve) => {
-      if (!file.type.startsWith('image/')) return resolve(file)
-      const reader = new FileReader()
-      reader.onload = (e) => {
-        const img = new Image()
-        img.onload = () => {
-          const canvas = document.createElement('canvas')
-          let width = img.width, height = img.height
-          const MAX_WIDTH = 1200
-          if (width > MAX_WIDTH) { height *= MAX_WIDTH / width; width = MAX_WIDTH; }
-          canvas.width = width; canvas.height = height
-          const ctx = canvas.getContext('2d')
-          ctx?.drawImage(img, 0, 0, width, height)
-          canvas.toBlob((blob) => {
-            resolve(blob ? new File([blob], file.name, { type: 'image/jpeg' }) : file)
-          }, 'image/jpeg', 0.6)
-        }
-        img.src = e.target?.result as string
-      }
-      reader.readAsDataURL(file)
-    })
+  const compressImage = async (file: File): Promise<File> => {
+    if (!file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.heic') && !file.name.toLowerCase().endsWith('.heif')) return file
+    try {
+      const blob = await optimizedCompress(file)
+      return new File([blob], file.name.replace(/\.[^/.]+$/, "") + ".webp", { type: 'image/webp' })
+    } catch (err) {
+      console.warn('[AppointmentModal] Centralized compression failed, falling back to original file', err)
+      return file
+    }
   }
 
   // Helper para procesar archivos usando subida directa (Bypass Vercel Limit)

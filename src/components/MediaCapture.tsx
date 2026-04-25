@@ -212,6 +212,8 @@ export default function MediaCapture({
     input.type = 'file'
     input.accept = 'image/*'
     input.capture = 'environment'
+    input.style.display = 'none'
+    document.body.appendChild(input)
     input.onchange = (e: any) => {
       const file = e.target.files?.[0]
       if (file) {
@@ -221,6 +223,7 @@ export default function MediaCapture({
         const type = file.type.startsWith('video/') ? 'video' : 'photo'
         onCapture(file, type, '')
       }
+      document.body.removeChild(input)
     }
     input.click()
   }

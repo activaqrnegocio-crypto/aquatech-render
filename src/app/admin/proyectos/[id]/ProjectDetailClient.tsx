@@ -13,6 +13,7 @@ import { PROJECT_TYPES, translateType, PROJECT_CATEGORIES, translateCategory } f
 import ProjectChatUnified from '@/components/chat/ProjectChatUnified'
 import { db } from '@/lib/db'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { compressImage as optimizedCompress, isCompressibleImage, blobToBase64 } from '@/lib/image-optimization'
 
 export default function ProjectDetailClient({ project, availableOperators = [] }: any) {
   const router = useRouter()
@@ -927,33 +928,43 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       if (extraData?.file) {
         const file = extraData.file as File
         
+        // Compress images (including HEIC/HEIF) before upload
+        let processedFile: File | Blob = file;
+        let processedName = file.name;
+        let processedMime = file.type;
+        if (isCompressibleImage(file)) {
+          try {
+            processedFile = await optimizedCompress(file);
+            processedName = file.name.replace(/\.[^/.]+$/, '') + '.webp';
+            processedMime = 'image/webp';
+          } catch (err) {
+            console.warn('[Admin Chat] Image compression failed, using original:', err);
+          }
+        }
+
         if (typeof navigator !== 'undefined' && !navigator.onLine) {
           // Offline: convert to base64
-          const base64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader()
-            reader.onload = () => resolve(reader.result as string)
-            reader.readAsDataURL(file)
-          })
+          const base64 = await blobToBase64(processedFile);
           payload.media = {
             base64,
-            filename: file.name,
-            mimeType: file.type
+            filename: processedName,
+            mimeType: processedMime
           }
         } else {
           // Online: upload to Bunny
           const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
-          const uploadResult = await uploadToBunnyClientSide(file, file.name, `projects/${project.id}/chat`)
+          const uploadResult = await uploadToBunnyClientSide(processedFile, processedName, `projects/${project.id}/chat`)
           payload.media = {
             url: uploadResult.url,
             filename: uploadResult.filename,
-            mimeType: file.type
+            mimeType: processedMime
           }
         }
         
         if (type === 'FILE') {
-          payload.type = file.type.startsWith('image/') ? 'IMAGE' : 
-                         file.type.startsWith('video/') ? 'VIDEO' : 
-                         file.type.startsWith('audio/') ? 'AUDIO' : 'DOCUMENT';
+          payload.type = processedMime.startsWith('image/') ? 'IMAGE' : 
+                         processedMime.startsWith('video/') ? 'VIDEO' : 
+                         processedMime.startsWith('audio/') ? 'AUDIO' : 'DOCUMENT';
         }
       }
 

@@ -2,6 +2,7 @@
 
 import React, { useState, useEffect } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { compressImage as optimizedCompress } from '@/lib/image-optimization'
 import './Resources.css'
 
 interface ResourceGridProps {
@@ -52,47 +53,13 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
   }, [selectedGallery]);
 
   const compressImage = async (file: File): Promise<Blob | File> => {
-    if (!file.type.startsWith('image/') || file.type.includes('gif') || file.type.includes('svg')) return file;
-
-    return new Promise((resolve) => {
-      const reader = new FileReader();
-      reader.readAsDataURL(file);
-      reader.onload = (event) => {
-        const img = new Image();
-        img.src = event.target?.result as string;
-        img.onload = () => {
-          const canvas = document.createElement('canvas');
-          let width = img.width;
-          let height = img.height;
-
-          const MAX_SIZE = 1600;
-          if (width > height) {
-            if (width > MAX_SIZE) {
-              height *= MAX_SIZE / width;
-              width = MAX_SIZE;
-            }
-          } else {
-            if (height > MAX_SIZE) {
-              width *= MAX_SIZE / height;
-              height = MAX_SIZE;
-            }
-          }
-
-          canvas.width = width;
-          canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-
-          canvas.toBlob(
-            (blob) => resolve(blob || file),
-            'image/webp',
-            0.82
-          );
-        };
-        img.onerror = () => resolve(file);
-      };
-      reader.onerror = () => resolve(file);
-    });
+    if (!file.type.startsWith('image/') && !file.name.toLowerCase().endsWith('.heic') && !file.name.toLowerCase().endsWith('.heif')) return file;
+    try {
+      return await optimizedCompress(file);
+    } catch (err) {
+      console.warn('[ResourceGrid] Centralized compression failed, falling back to original file', err);
+      return file;
+    }
   };
 
   const getImagesArray = (urlStr: string | null) => {

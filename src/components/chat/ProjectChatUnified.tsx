@@ -676,12 +676,15 @@ export default function ProjectChatUnified({
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = 'image/*,video/*';
+                input.style.display = 'none';
+                document.body.appendChild(input);
                 input.onchange = (e: any) => {
                   const file = e.target.files?.[0];
                   if (file) {
                     const type = file.type.startsWith('video/') ? 'VIDEO' : 'IMAGE';
                     onSendMessage('', type, { file });
                   }
+                  document.body.removeChild(input);
                 };
                 input.click();
               }} 
@@ -694,9 +697,12 @@ export default function ProjectChatUnified({
                 const input = document.createElement('input');
                 input.type = 'file';
                 input.accept = '.pdf,.doc,.docx,.xls,.xlsx';
+                input.style.display = 'none';
+                document.body.appendChild(input);
                 input.onchange = (e: any) => {
                   const file = e.target.files?.[0];
                   if (file) onSendMessage('', 'FILE', { file });
+                  document.body.removeChild(input);
                 };
                 input.click();
               }} 
@@ -1021,9 +1027,12 @@ export default function ProjectChatUnified({
                     input.type = 'file';
                     input.accept = 'image/*';
                     input.capture = 'environment';
+                    input.style.display = 'none';
+                    document.body.appendChild(input);
                     input.onchange = (e: any) => {
                       const file = e.target.files?.[0];
                       if (file) setExpenseForm({ ...expenseForm, file });
+                      document.body.removeChild(input);
                     };
                     input.click();
                   }}
@@ -1048,9 +1057,12 @@ export default function ProjectChatUnified({
                     const input = document.createElement('input');
                     input.type = 'file';
                     input.accept = 'image/*';
+                    input.style.display = 'none';
+                    document.body.appendChild(input);
                     input.onchange = (e: any) => {
                       const file = e.target.files?.[0];
                       if (file) setExpenseForm({ ...expenseForm, file });
+                      document.body.removeChild(input);
                     };
                     input.click();
                   }}
