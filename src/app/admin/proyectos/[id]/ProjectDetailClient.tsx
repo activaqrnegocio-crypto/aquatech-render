@@ -205,7 +205,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     // Only MASTER, PLANOS, LEVANTAMIENTO categories
     const baseFiles = gallery.filter((item: any) => {
       const cat = (item.category || 'MASTER').toUpperCase()
-      return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
+      return (cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO') && !item.isFromChat
     })
     const expenseFiles = (expenses || []).map((exp: any) => ({
       id: `exp-${exp.id}`,
@@ -240,7 +240,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
 
   const evidenceGallery = useMemo(() => {
     // Strictly ONLY EVIDENCE category (uploaded as finals)
-    const base = gallery.filter((item: any) => (item.category || '').toUpperCase() === 'EVIDENCE')
+    const base = gallery.filter((item: any) => (item.category || '').toUpperCase() === 'EVIDENCE' && !item.isFromChat)
     
     // Add pending evidence uploads
     const pendingEvidence = (pendingItems || [])
@@ -2107,6 +2107,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                   files={[]} 
                   onAddFile={handleUploadToGallery}
                   onRemoveFile={() => {}}
+                  title="🔼 SUBIR A: PLANOS Y REFERENCIAS"
                   minimal={true}
                   showGrid={false}
                   onFilterChange={(f) => setGalleryFilter(f)}
@@ -2289,6 +2290,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                   files={[]} 
                   onAddFile={(file) => handleUploadToGallery(file, 'EVIDENCE')}
                   onRemoveFile={() => {}}
+                  title="🔼 SUBIR A: ARCHIVOS FINALES"
                   minimal={true}
                   showGrid={false}
                   onFilterChange={(f) => setEvidenceFilter(f)}

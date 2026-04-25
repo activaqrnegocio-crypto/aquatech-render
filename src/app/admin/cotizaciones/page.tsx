@@ -17,15 +17,14 @@ export default function CotizacionesPage() {
 
   useEffect(() => {
     async function checkAuth() {
-      // 1. Online session
+      // 1. Online session — any authenticated user can view quotations
       if (session) {
         setIsAuthorized(true)
       } 
-      // 2. Offline cached session
+      // 2. Offline cached session (if offline, don't wait for session)
       else if (!navigator.onLine) {
         const cached = await db.auth.get('last_session')
-        const authorized = cached && (cached.role === 'ADMIN' || cached.role === 'SUPERADMIN')
-        setIsAuthorized(!!authorized)
+        setIsAuthorized(!!cached)
       }
     }
     checkAuth()

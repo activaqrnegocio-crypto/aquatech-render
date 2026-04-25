@@ -35,7 +35,7 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
       // Handle Projects Cache (Dexie)
       if (projects.length > 0) {
         setCachedProjects(projects)
-        await db.projectsCache.clear()
+        // Update cache without clearing to preserve full data from other pages
         await db.projectsCache.bulkPut(projects)
       } else {
         const cached = await db.projectsCache.toArray()
@@ -54,23 +54,29 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
       if (res.ok) {
         const data = await res.json()
         setAppointments(data)
-        // Cache to Dexie
+        // Cache to Dexie only for "all" to avoid incomplete caches
         if (selectedOperatorId === 'all') {
           await db.appointmentsCache.clear()
           await db.appointmentsCache.bulkPut(data)
         }
       } else {
-        // Handle non-ok response (e.g. 500, 404) by falling back to cache
-        if (selectedOperatorId === 'all') {
-          const cached = await db.appointmentsCache.toArray()
-          if (cached.length > 0) setAppointments(cached)
+        // Fallback to cache if offline/error
+        const cached = await db.appointmentsCache.toArray()
+        if (cached.length > 0) {
+          const filtered = selectedOperatorId === 'all' 
+            ? cached 
+            : cached.filter((a: any) => a.userId === Number(selectedOperatorId))
+          setAppointments(filtered)
         }
       }
     } catch (error) {
       console.error('Error fetching appointments (falling back to cache):', error)
-      if (selectedOperatorId === 'all') {
-        const cached = await db.appointmentsCache.toArray()
-        if (cached.length > 0) setAppointments(cached)
+      const cached = await db.appointmentsCache.toArray()
+      if (cached.length > 0) {
+        const filtered = selectedOperatorId === 'all' 
+          ? cached 
+          : cached.filter((a: any) => a.userId === Number(selectedOperatorId))
+        setAppointments(filtered)
       }
     } finally {
       if (!silent) setLoading(false)
@@ -135,6 +141,17 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
           status: 'pending'
         })
         setIsModalOpen(false)
+        
+        // Register background sync if available
+        if ('serviceWorker' in navigator && 'SyncManager' in window) {
+          try {
+            const reg = await navigator.serviceWorker.ready;
+            await (reg as any).sync.register('sync-outbox');
+          } catch (e) {
+            console.warn('Sync registration failed:', e);
+          }
+        }
+
         alert('Tarea guardada localmente. Se sincronizará y notificará a los operadores cuando vuelvas a tener internet.')
         return
       } catch (err) {

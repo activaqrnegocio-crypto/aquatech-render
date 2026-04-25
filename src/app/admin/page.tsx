@@ -16,13 +16,6 @@ export default async function AdminDashboard() {
     redirect('/admin/subcontratista')
   }
 
-  const prefetchUrls = [
-    '/admin/proyectos/nuevo',
-    '/admin/cotizaciones/nuevo',
-    '/admin/inventario',
-    '/admin/team'
-  ]
-
   // 7-day metric date
   const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
 
@@ -64,7 +57,7 @@ export default async function AdminDashboard() {
     }),
     prisma.project.findMany({
       where: { status: { in: ['ACTIVO', 'LEAD'] } },
-      take: 5,
+      take: 30,
       orderBy: { updatedAt: 'desc' },
       select: {
         id: true,
@@ -191,6 +184,15 @@ export default async function AdminDashboard() {
     phone: u.phone,
     projectCount: u._count.projectTeams
   }))
+
+  const prefetchUrls = [
+    '/admin/proyectos/nuevo',
+    '/admin/cotizaciones/nuevo',
+    '/admin/inventario',
+    '/admin/team',
+    '/admin/calendario',
+    ...projectsList.map((p) => `/admin/proyectos/${p.id}`)
+  ]
 
   return (
     <>

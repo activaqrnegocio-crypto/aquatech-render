@@ -109,9 +109,64 @@ function timeAgo(dateStr: string) {
   return `hace ${days}d`
 }
 
-export default function DashboardClient({ stats, recentExpenses, recentMessages, activeProjects, teamList }: DashboardProps) {
-  const [activeTab, setActiveTab] = useState(activeProjects[0]?.id || 0)
+import { db } from '@/lib/db'
+
+export default function DashboardClient({ 
+  stats: initialStats, 
+  recentExpenses: initialExpenses, 
+  recentMessages: initialMessages, 
+  activeProjects: initialProjects, 
+  teamList: initialTeam 
+}: DashboardProps) {
+  const [stats, setStats] = useState(initialStats)
+  const [recentExpenses, setRecentExpenses] = useState(initialExpenses)
+  const [recentMessages, setRecentMessages] = useState(initialMessages)
+  const [activeProjects, setActiveProjects] = useState(initialProjects)
+  const [teamList, setTeamList] = useState(initialTeam)
+
+  const [activeTab, setActiveTab] = useState(0)
   const [mounted, setMounted] = useState(false)
+  
+  // 1. Initialize activeTab when projects load
+  useEffect(() => {
+    if (activeProjects.length > 0 && activeTab === 0) {
+      setActiveTab(activeProjects[0].id)
+    }
+  }, [activeProjects, activeTab])
+
+  // 2. Load/Save Offline Cache
+  useEffect(() => {
+    async function handleCache() {
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine
+      
+      // If we have fresh data from props, SAVE it to cache
+      if (!isOffline && initialProjects.length > 0) {
+        const dashboardData = {
+          id: 'main',
+          stats: initialStats,
+          recentExpenses: initialExpenses,
+          recentMessages: initialMessages,
+          activeProjects: initialProjects,
+          teamList: initialTeam,
+          timestamp: Date.now()
+        }
+        await db.dashboardCache.put(dashboardData)
+      } 
+      // If we are OFFLINE and have no data, LOAD from cache
+      else if (isOffline && activeProjects.length === 0) {
+        const cached = await db.dashboardCache.get('main')
+        if (cached) {
+          setStats(cached.stats)
+          setRecentExpenses(cached.recentExpenses)
+          setRecentMessages(cached.recentMessages)
+          setActiveProjects(cached.activeProjects)
+          setTeamList(cached.teamList)
+        }
+      }
+    }
+    handleCache()
+  }, [initialStats, initialExpenses, initialMessages, initialProjects, initialTeam])
+
   const [pushDismissed, setPushDismissed] = useState(true)
   const { 
     status: pushStatus, 

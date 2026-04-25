@@ -360,9 +360,12 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   shells.push('/admin/calendario', '/admin/calendario/');
   shells.push('/admin', '/admin/');
 
-  
-
-
+  for (const shell of shells) {
+    const shellMatch = await caches.match(shell, { ignoreVary: true, ignoreSearch: true });
+    if (isValidHTMLResponse(shellMatch)) {
+       return shellMatch;
+    }
+  }
   // Try by pathname across all caches (Deep search)
   const allCacheNames = await caches.keys();
   for (const cacheName of allCacheNames) {
@@ -663,7 +666,15 @@ async function processOutboxSync() {
           let method = 'POST';
           
           if (item.type === 'QUOTE') endpoint = '/api/quotes';
-          else if (item.type === 'TASK') endpoint = '/api/appointments';
+          else if (item.type === 'TASK') {
+            if (!item.payload.isNew && (item.payload.id || item.payload._id)) {
+              endpoint = `/api/appointments/${item.payload.id || item.payload._id}`;
+              method = 'PATCH';
+            } else {
+              endpoint = '/api/appointments';
+              method = 'POST';
+            }
+          }
           else if (item.type === 'MATERIAL') endpoint = '/api/materials';
           else if (item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD') {
             endpoint = `/api/projects/${item.projectId}/messages`;

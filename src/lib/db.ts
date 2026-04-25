@@ -49,6 +49,7 @@ export class OfflineDatabase extends Dexie {
   projectsCache!: Table<any>;
   appointmentsCache!: Table<any>;
   chatCache!: Table<any>;
+  dashboardCache!: Table<any>;
 
   constructor() {
     super('AquatechOfflineDB');
@@ -84,6 +85,18 @@ export class OfflineDatabase extends Dexie {
       projectsCache: 'id, title',
       appointmentsCache: 'id, projectId',
       chatCache: 'projectId'
+    });
+    this.version(9).stores({
+      outbox: '++id, projectId, status, timestamp, type',
+      auth: 'id',
+      authShadow: 'id',
+      materialsCache: 'id, code, name, category',
+      clientsCache: 'id, name, ruc',
+      quotesCache: 'id, clientName, projectId',
+      projectsCache: 'id, title',
+      appointmentsCache: 'id, projectId',
+      chatCache: 'projectId',
+      dashboardCache: 'id'
     });
   }
 }

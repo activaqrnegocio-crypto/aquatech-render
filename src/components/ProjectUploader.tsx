@@ -191,10 +191,10 @@ export default function ProjectUploader({
           gap: '16px', 
           marginBottom: minimal ? '0' : '24px' 
       }}>
-        {!minimal && (
-          <div>
-            <h3 className="card-title" style={{ fontSize: '1.125rem', margin: '0' }}>{title}</h3>
-            <p className="card-subtitle" style={{ margin: '4px 0 0 0' }}>Gestiona imágenes, videos y documentos</p>
+        {title && (
+          <div style={{ marginBottom: minimal ? '12px' : '0' }}>
+            <h3 className="card-title" style={{ fontSize: minimal ? '0.9rem' : '1.125rem', margin: '0', color: 'var(--primary)', fontWeight: 'bold' }}>{title}</h3>
+            {!minimal && <p className="card-subtitle" style={{ margin: '4px 0 0 0' }}>Gestiona imágenes, videos y documentos</p>}
           </div>
         )}
 

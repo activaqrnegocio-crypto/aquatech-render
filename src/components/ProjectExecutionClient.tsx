@@ -210,6 +210,33 @@ export default function ProjectExecutionClient({
     return () => clearInterval(expInterval)
   }, [mounted, project.id])
 
+  const handleDeleteGalleryItem = async (itemId: number | string) => {
+    if (typeof itemId === 'string' && itemId.startsWith('pending-')) {
+      // Borrar de la outbox si es pendiente
+      const outboxId = Number(itemId.replace('pending-', ''))
+      await db.outbox.delete(outboxId)
+      return
+    }
+
+    if (!window.confirm('¿Estás seguro de eliminar este archivo?')) return
+
+    try {
+      const res = await fetch(`/api/projects/${project.id}/gallery/${itemId}`, {
+        method: 'DELETE'
+      })
+      if (res.ok) {
+        startTransition(() => {
+          router.refresh()
+        })
+      } else {
+        alert('Error eliminando archivo')
+      }
+    } catch (err) {
+      console.error('Delete error:', err)
+      alert('Error de conexión')
+    }
+  }
+
   // Aggregate ALL expenses (prop, local state, Outbox, and Chat messages)
   const allExpenses = useMemo(() => {
     // 1. Start with localExpenses (which includes server data)
@@ -279,6 +306,7 @@ export default function ProjectExecutionClient({
 
   const masterGallery = useMemo(() => {
     const baseFiles = project.gallery.filter((item: any) => {
+      if (item.isFromChat) return false
       const cat = (item.category || 'MASTER').toUpperCase()
       return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
     })
@@ -353,7 +381,7 @@ export default function ProjectExecutionClient({
   const evidenceGallery = useMemo(() => {
     if (!project.gallery) return []
     // Filter ONLY by EVIDENCE category (explicitly uploaded as finals)
-    const list = [...project.gallery.filter((item: any) => (item.category || '').toUpperCase() === 'EVIDENCE')]
+    const list = [...project.gallery.filter((item: any) => !item.isFromChat && (item.category || '').toUpperCase() === 'EVIDENCE')]
     
     // Add pending uploads for Evidence
     const pendingEvidence = (pendingItems || [])
@@ -1708,8 +1736,20 @@ export default function ProjectExecutionClient({
           }}>
             <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 250px), 1fr))', gap: '20px' }}>
 
+                {/* Uploader para Planos y Registros - Visible para operadores offline/online */}
+                <div className="card" style={{ minWidth: 0, marginBottom: '20px' }}>
+                  <ProjectUploader 
+                    files={[]}
+                    onAddFile={handleUploadMedia}
+                    title="🔼 SUBIR ARCHIVOS A: PLANOS Y REGISTROS"
+                    defaultCategory="MASTER"
+                    showGrid={false}
+                    minimal={true}
+                  />
+                </div>
+
                 {/* Galería Principal (Planos/Fotos Admin) */}
-                {project.gallery && project.gallery.length > 0 && (
+                {masterGallery.length > 0 && (
                   <div className="card" style={{ minWidth: 0, marginBottom: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                       <h3 style={{ fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
@@ -1840,7 +1880,27 @@ export default function ProjectExecutionClient({
                           )}
 
                           {/* Always-visible action badges */}
-                          <div style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 20 }}>
+                          <div style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 20, display: 'flex', gap: '6px' }}>
+                            {/* Delete button */}
+                            {!item.isExpense && !item.isFromChat && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); handleDeleteGalleryItem(item.id); }} 
+                                style={{ 
+                                  width: '28px', height: '28px', borderRadius: '50%', 
+                                  backgroundColor: 'rgba(239, 68, 68, 0.85)', backdropFilter: 'blur(4px)',
+                                  color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                                  border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer',
+                                  transition: 'transform 0.2s, background-color 0.2s',
+                                  boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
+                                }}
+                                onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.15)'; e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 1)'; }}
+                                onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.85)'; }}
+                                title="Eliminar"
+                              >
+                                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                              </button>
+                            )}
+                            
                             <button 
                               onClick={(e) => { e.stopPropagation(); handleDownload(item.url, item.filename); }} 
                               style={{ 
@@ -1883,10 +1943,12 @@ export default function ProjectExecutionClient({
               {/* Uploader de Finales - Visible para todos en vista de operador para facilitar pruebas y uso */}
               <div className="card" style={{ minWidth: 0 }}>
                 <ProjectUploader 
-                  files={evidenceGallery}
+                  files={[]}
                   onAddFile={handleUploadMedia}
-                  title="Subir Finales (Foto/Video)"
+                  title="🔼 SUBIR ARCHIVOS A: FINALES (ENTREGA)"
                   defaultCategory="EVIDENCE"
+                  showGrid={false}
+                  minimal={true}
                 />
               </div>
 
@@ -1962,7 +2024,27 @@ export default function ProjectExecutionClient({
                       })()}
 
                       {/* Always-visible action badges */}
-                      <div style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 20 }}>
+                      <div style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 20, display: 'flex', gap: '6px' }}>
+                        {/* Delete button */}
+                        {!item.isFromChat && (
+                          <button 
+                            onClick={(e) => { e.stopPropagation(); handleDeleteGalleryItem(item.id); }} 
+                            style={{ 
+                              width: '28px', height: '28px', borderRadius: '50%', 
+                              backgroundColor: 'rgba(239, 68, 68, 0.85)', backdropFilter: 'blur(4px)',
+                              color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'center', 
+                              border: '1px solid rgba(255,255,255,0.2)', cursor: 'pointer',
+                              transition: 'transform 0.2s, background-color 0.2s',
+                              boxShadow: '0 2px 8px rgba(0,0,0,0.4)'
+                            }}
+                            onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.15)'; e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 1)'; }}
+                            onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; e.currentTarget.style.backgroundColor = 'rgba(239, 68, 68, 0.85)'; }}
+                            title="Eliminar"
+                          >
+                            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                          </button>
+                        )}
+                        
                         <button 
                           onClick={(e) => { e.stopPropagation(); handleDownload(item.url, item.filename); }} 
                           style={{ 

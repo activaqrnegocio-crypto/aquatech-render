@@ -42,7 +42,14 @@ export default function GlobalSyncWorker() {
           else if (item.type === 'DAY_END') { endpoint = `/api/day-records`; method = 'PUT' }
           else if (item.type === 'PHASE_COMPLETE') { endpoint = `/api/projects/${item.projectId}/phases/${item.payload.phaseId}`; method = 'PATCH' }
           else if (item.type === 'PROJECT') { endpoint = '/api/projects' }
-          else if (item.type === 'TASK') { endpoint = '/api/appointments' }
+          else if (item.type === 'TASK') {
+            if (!item.payload.isNew && (item.payload.id || item.payload._id)) {
+              endpoint = `/api/appointments/${item.payload.id || item.payload._id}`
+              method = 'PATCH'
+            } else {
+              endpoint = '/api/appointments'
+            }
+          }
           else if (item.type === 'TASK_STATUS_TOGGLE') { endpoint = `/api/appointments/${item.payload.appointmentId}`; method = 'PATCH' }
           else if (item.type === 'GALLERY_UPLOAD') { endpoint = `/api/projects/${item.projectId}/gallery` }
           

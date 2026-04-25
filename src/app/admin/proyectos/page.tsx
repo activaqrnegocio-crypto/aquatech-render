@@ -6,6 +6,7 @@ import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db'
+import OfflinePrefetcher from '@/components/OfflinePrefetcher'
 
 /**
  * AQUATECH_PROJECT_VIEW_V3
@@ -38,17 +39,18 @@ export default function ProyectosPage() {
         setIsAuthorized(!!authorized)
         if (!authorized) router.push('/admin')
       } 
-      // 2. If unauthenticated and offline, check cached session
-      else if (status === 'unauthenticated' && !navigator.onLine) {
+      // 2. If offline, check cached session immediately
+      else if (!navigator.onLine) {
         const cached = await db.auth.get('last_session')
         const authorized = cached && (
           cached.role === 'ADMIN' || 
-          cached.role === 'SUPERADMIN'
+          cached.role === 'SUPERADMIN' ||
+          cached.role === 'ADMINISTRADORA'
         )
         setIsAuthorized(!!authorized)
         if (!authorized) router.push('/admin/login')
       }
-      // 3. If still loading session, wait
+      // 3. If unauthenticated and online
       else if (status === 'unauthenticated' && navigator.onLine) {
         router.push('/admin/login')
       }
@@ -187,6 +189,7 @@ export default function ProyectosPage() {
 
   return (
     <div className="p-6">
+      <OfflinePrefetcher urls={projects.slice(0, 20).map(p => `/admin/proyectos/${p.id}`)} />
       <div className="dashboard-header" style={{ marginBottom: '30px' }}>
         <div>
           <h2 style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>Proyectos</h2>

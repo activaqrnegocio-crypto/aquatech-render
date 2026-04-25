@@ -9,7 +9,8 @@ export async function PATCH(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session || (session.user as any).role !== 'ADMIN') {
+    const userRole = (session?.user as any)?.role
+    if (!session || !['ADMIN', 'SUPERADMIN', 'ADMINISTRADORA', 'OPERATOR', 'OPERADOR', 'SUBCONTRATISTA'].includes(userRole)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
@@ -34,7 +35,8 @@ export async function DELETE(
 ) {
   try {
     const session = await getServerSession(authOptions)
-    if (!session || (session.user as any).role !== 'ADMIN') {
+    const userRole = (session?.user as any)?.role
+    if (!session || !['ADMIN', 'SUPERADMIN', 'ADMINISTRADORA', 'OPERATOR', 'OPERADOR', 'SUBCONTRATISTA'].includes(userRole)) {
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
