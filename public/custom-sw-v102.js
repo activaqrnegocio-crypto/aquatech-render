@@ -1,6 +1,6 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker (Standalone Offline-First) v47
-// FIX: Task Sync with base64 media handling
+// Aquatech CRM — Custom Service Worker v101-STABLE-OFFLINE
+// FIX: Force Operator Shell Offline Cache
 // ============================================================
 const STATIC_CACHE = 'aquatech-static';
 const PAGES_CACHE  = 'aquatech-pages';
