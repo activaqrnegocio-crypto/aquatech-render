@@ -1,6 +1,6 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker v101-STABLE-OFFLINE
-// FIX: Force Operator Shell Offline Cache
+// Aquatech CRM — Custom Service Worker v200-DEPLOY-FIX
+// CLEAN: Calendar removed, deploy pipeline fixed
 // ============================================================
 const STATIC_CACHE = 'aquatech-static';
 const PAGES_CACHE  = 'aquatech-pages';
@@ -26,7 +26,7 @@ const PRE_CACHE = [
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  console.log('[SW v46] Installing...');
+  console.log('[SW v200] Installing...');
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(async (cache) => {

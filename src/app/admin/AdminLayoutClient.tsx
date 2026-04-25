@@ -23,9 +23,9 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     const isOp = role === 'OPERATOR' || role === 'OPERADOR' || role === 'SUBCONTRATISTA'
     
     if (isOp) {
-      return ['/admin/operador/proyectos', '/admin/calendario', '/admin/inventario']
+      return ['/admin/operador', '/admin/inventario', '/admin/cotizaciones']
     }
-    return ['/admin/proyectos', '/admin/calendario', '/admin/equipo', '/admin/reportes', '/admin/cotizaciones']
+    return ['/admin/proyectos', '/admin/inventario', '/admin/cotizaciones']
   }
 
   const pagesToPrefetch = getPagesToPrefetch()
@@ -36,7 +36,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
 
   return (
     <div className="admin-layout">
-      {/* <ServiceWorkerRegistration /> */}
+      <ServiceWorkerRegistration />
       <GlobalSyncWorker />
       <OfflinePrefetcher urls={pagesToPrefetch} />
       <Suspense fallback={<div style={{ width: '260px', height: '100vh', background: 'var(--bg-card)' }} />}>
