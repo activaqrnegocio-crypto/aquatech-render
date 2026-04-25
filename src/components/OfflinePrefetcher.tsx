@@ -41,33 +41,44 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
       // 3. DEEP DATA PREFETCH: Populate Dexie for projects and chats
       // Only run this if we are online
       if (typeof navigator !== 'undefined' && navigator.onLine) {
-        urls.forEach(async (url) => {
-          // Check if it's a project detail page: /admin/proyectos/[id] or /operador/proyectos/[id]
-          const projectMatch = url.match(/\/(admin|operador)\/proyectos\/(\d+)/)
-          if (projectMatch) {
-            const projectId = projectMatch[2]
-            
-            try {
-              // A. Fetch Project Detail JSON
-              const pResp = await fetch(`/api/projects/${projectId}`)
-              if (pResp.ok) {
-                const projectData = await pResp.json()
-                await db.projectsCache.put(projectData)
+        const prefetchSequentially = async () => {
+          for (const url of urls) {
+            // Check if it's a project detail page
+            const projectMatch = url.match(/\/(admin|operador)\/proyectos\/(\d+)/)
+            if (projectMatch) {
+              const projectId = projectMatch[2]
+              
+              // Skip if already in cache and not forced
+              const existing = await db.projectsCache.get(Number(projectId))
+              if (existing && Date.now() - new Date(existing.updatedAt || 0).getTime() < 3600000) {
+                continue // Skip if updated in the last hour
               }
 
-              // B. Fetch Chat Messages JSON
-              const cResp = await fetch(`/api/projects/${projectId}/messages`)
-              if (cResp.ok) {
-                const messages = await cResp.json()
-                await db.chatCache.put({ projectId: Number(projectId), messages })
+              try {
+                // A. Fetch Project Detail JSON
+                const pResp = await fetch(`/api/projects/${projectId}`)
+                if (pResp.ok) {
+                  const projectData = await pResp.json()
+                  await db.projectsCache.put(projectData)
+                }
+
+                // B. Fetch Chat Messages JSON
+                const cResp = await fetch(`/api/projects/${projectId}/messages`)
+                if (cResp.ok) {
+                  const messages = await cResp.json()
+                  await db.chatCache.put({ projectId: Number(projectId), messages })
+                }
+                
+                console.log(`[Prefetch] Data cached for project ${projectId}`)
+                // Small delay to avoid saturating the browser
+                await new Promise(r => setTimeout(r, 500))
+              } catch (err) {
+                console.warn(`[Prefetch] Failed to cache data for project ${projectId}`, err)
               }
-              
-              console.log(`[Prefetch] Data cached for project ${projectId}`)
-            } catch (err) {
-              console.warn(`[Prefetch] Failed to cache data for project ${projectId}`, err)
             }
           }
-        })
+        }
+        prefetchSequentially()
       }
     }, 3000)
 

@@ -350,57 +350,19 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
     }
   }
 
-  // Try app shell fallback
-  const isOperator = pathname.includes('/operador');
-  const isSubcon = pathname.includes('/subcontratista');
-  
-  // universal fallbacks moved to end
+  // Try app shell fallback (Specific for main sections)
   const shells = [];
-  if (isOperator) shells.push('/admin/operador', '/admin/operador/');
-  if (isSubcon) shells.push('/admin/subcontratista', '/admin/subcontratista/');
-  shells.push('/admin/calendario', '/admin/calendario/');
-  shells.push('/admin', '/admin/');
+  if (pathname.includes('/operador')) shells.push('/admin/operador', '/admin/operador/');
+  else if (pathname.includes('/subcontratista')) shells.push('/admin/subcontratista', '/admin/subcontratista/');
+  else if (pathname.includes('/admin/proyectos')) shells.push('/admin/proyectos', '/admin/proyectos/');
+  else {
+    shells.push('/admin', '/admin/');
+  }
 
   for (const shell of shells) {
     const shellMatch = await caches.match(shell, { ignoreVary: true, ignoreSearch: true });
     if (isValidHTMLResponse(shellMatch)) {
        return shellMatch;
-    }
-  }
-  // Try by pathname across all caches (Deep search)
-  const allCacheNames = await caches.keys();
-  for (const cacheName of allCacheNames) {
-    if (cacheName.includes('rsc') || cacheName.includes('fonts')) continue;
-    const cache = await caches.open(cacheName);
-    const keys = await cache.keys();
-    for (const key of keys) {
-      try {
-        const keyUrl = new URL(key.url);
-        if (keyUrl.pathname === pathname || keyUrl.pathname === pathname + '/' || keyUrl.pathname + '/' === pathname) {
-          const match = await cache.match(key);
-          if (isValidHTMLResponse(match)) {
-             if (!forceServe && !pathname.includes('/login') && (match.url || '').includes('/login')) {
-                // skip
-             } else {
-                return match;
-             }
-          }
-        }
-      } catch (e) { /* skip invalid URLs */ }
-    }
-  }
-
-  // LAST RESORT: Try any parent path that is cached (Hierarchical search)
-  let currentPath = pathname;
-  while (currentPath.length > 1) {
-    currentPath = currentPath.substring(0, currentPath.lastIndexOf('/'));
-    if (!currentPath || currentPath === '/admin') break; 
-    
-    const parentUrl = new URL(currentPath, self.location.origin).href;
-    const parentMatch = await caches.match(parentUrl, { ignoreVary: true, ignoreSearch: true });
-    if (isValidHTMLResponse(parentMatch)) {
-      console.log('[SW] Found hierarchical fallback:', currentPath);
-      return parentMatch;
     }
   }
 
@@ -694,6 +656,9 @@ async function processOutboxSync() {
           } else if (item.type === 'PHASE_COMPLETE') {
             endpoint = `/api/projects/${item.projectId}/phases/${item.payload.phaseId}`;
             method = 'PATCH';
+          } else if (item.type === 'TEAM_UPDATE') {
+            endpoint = `/api/projects/${item.projectId}/team`;
+            method = 'PUT';
           } else if (item.type === 'PROJECT') {
             endpoint = '/api/projects';
           }

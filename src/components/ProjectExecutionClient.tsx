@@ -1403,10 +1403,12 @@ export default function ProjectExecutionClient({
         ['Categorías', categories.map(c => translateCategory(c)).join(', ') || 'N/A'],
         ['Dirección', `${fullProject.city || ''} ${fullProject.address || ''}`.trim() || 'N/A'],
         ['Ubicación GPS', (() => {
-          try {
-            const specs = JSON.parse(fullProject.technicalSpecs || '{}');
-            return specs.locationLink || fullProject.locationLink || 'N/A';
-          } catch { return fullProject.locationLink || 'N/A'; }
+          const findGpsLink = (text: string) => {
+            if (!text) return null
+            const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
+            return match ? match[0] : null
+          }
+          return fullProject.locationLink || findGpsLink(fullProject.address) || findGpsLink(fullProject.technicalSpecs) || 'N/A'
         })()],
         ['Fecha Inicio', formatDate(fullProject.startDate)],
         ['Fecha Fin (Est.)', formatDate(fullProject.endDate)],

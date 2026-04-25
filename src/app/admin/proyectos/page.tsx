@@ -60,6 +60,16 @@ export default function ProyectosPage() {
 
   useEffect(() => {
     if (isAuthorized === true) {
+      // Load from cache immediately if offline
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        db.projectsCache.toArray().then(cached => {
+          if (cached.length > 0) {
+            setProjects(cached)
+            setLoading(false)
+          }
+        })
+      }
+
       fetchProjects()
       
       const interval = setInterval(fetchProjects, 30000)
@@ -82,9 +92,7 @@ export default function ProyectosPage() {
         
         // Cache to Dexie when online
         if (typeof navigator !== 'undefined' && navigator.onLine) {
-          db.projectsCache.clear().then(() => {
-            db.projectsCache.bulkPut(data).catch(err => console.error('Error caching projects:', err))
-          })
+          db.projectsCache.bulkPut(data).catch(err => console.error('Error caching projects:', err))
         }
       }
     } catch (e) {

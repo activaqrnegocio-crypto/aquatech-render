@@ -216,7 +216,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       isExpense: true
     })).filter((e: any) => e.url)
 
-    // Add pending uploads from outbox
+    // Add pending uploads from outbox, filtering out those already in baseFiles
     const pendingUploads = (pendingItems || [])
       .filter((item: any) => (item.type === 'MEDIA_UPLOAD' || item.type === 'GALLERY_UPLOAD'))
       .filter((item: any) => {
@@ -231,6 +231,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         category: 'MASTER',
         isPending: true
       }))
+      .filter((pending: any) => !baseFiles.some((base: any) => base.url === pending.url || base.filename === pending.filename))
 
     return [...baseFiles, ...expenseFiles, ...pendingUploads]
   }, [gallery, expenses, pendingItems])
@@ -239,7 +240,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     // Strictly ONLY EVIDENCE category (uploaded as finals)
     const base = gallery.filter((item: any) => (item.category || '').toUpperCase() === 'EVIDENCE' && !item.isFromChat)
     
-    // Add pending evidence uploads
+    // Add pending evidence uploads, filtering out duplicates
     const pendingEvidence = (pendingItems || [])
       .filter((item: any) => (item.type === 'MEDIA_UPLOAD' || item.type === 'GALLERY_UPLOAD'))
       .filter((item: any) => (item.payload?.category || '').toUpperCase() === 'EVIDENCE')
@@ -251,6 +252,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         category: 'EVIDENCE',
         isPending: true
       }))
+      .filter((pending: any) => !base.some((b: any) => b.url === pending.url || b.filename === pending.filename))
 
     return [...base, ...pendingEvidence]
   }, [gallery, pendingItems])
@@ -865,6 +867,18 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const handleSaveTeam = async () => {
     setIsSavingTeam(true)
     try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        await db.outbox.add({
+          projectId: project.id,
+          type: 'TEAM_UPDATE',
+          payload: { operatorIds: selectedTeam },
+          status: 'pending',
+          timestamp: Date.now()
+        })
+        setIsEditingTeam(false)
+        return
+      }
+
       await fetch(`/api/projects/${project.id}/team`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
@@ -1420,10 +1434,12 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         ['Ciudad', fullProject.city || 'N/A'],
         ['Dirección', fullProject.address || 'N/A'],
         ['Ubicación GPS', (() => {
-          try {
-            const specs = JSON.parse(fullProject.technicalSpecs || '{}');
-            return specs.locationLink || fullProject.locationLink || 'N/A';
-          } catch { return fullProject.locationLink || 'N/A'; }
+          const findGpsLink = (text: string) => {
+            if (!text) return null
+            const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
+            return match ? match[0] : null
+          }
+          return fullProject.locationLink || findGpsLink(fullProject.address) || findGpsLink(fullProject.technicalSpecs) || 'N/A'
         })()],
         ['Fecha de Inicio', formatDate(fullProject.startDate)],
         ['Fecha Fin (Est.)', formatDate(fullProject.endDate)],
@@ -1818,26 +1834,36 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                     )}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Dirección</span>
+                    <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Dirección / GPS</span>
                     {!isEditingFicha ? (
                       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '5px', maxWidth: '60%' }}>
-                        {project.address && (project.address.includes('google.com/maps') || project.address.includes('maps.app.goo.gl')) ? (
-                          <a 
-                            href={project.address.match(/https?:\/\/\S+/)?.[0] || project.address} 
-                            target="_blank" 
-                            rel="noreferrer"
-                            className="btn btn-primary btn-sm"
-                            style={{ padding: '6px 16px', fontSize: '0.85rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(54, 162, 235, 0.2)' }}
-                          >
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                            Ver en Mapa
-                          </a>
-                        ) : (
-                          <span style={{ color: 'var(--text)', fontSize: '0.9rem', textAlign: 'right' }}>{project.address || 'N/A'}</span>
-                        )}
+                        {(() => {
+                          const findGpsLink = (text: string) => {
+                            if (!text) return null
+                            const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
+                            return match ? match[0] : null
+                          }
+                          const gpsLink = project.locationLink || findGpsLink(project.address) || findGpsLink(project.technicalSpecs?.locationLink) || findGpsLink(project.technicalSpecs)
+
+                          if (gpsLink) {
+                            return (
+                              <a 
+                                href={gpsLink} 
+                                target="_blank" 
+                                rel="noreferrer"
+                                className="btn btn-primary btn-sm"
+                                style={{ padding: '6px 16px', fontSize: '0.85rem', borderRadius: '20px', display: 'flex', alignItems: 'center', gap: '8px', boxShadow: '0 4px 12px rgba(54, 162, 235, 0.2)' }}
+                              >
+                                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                Ver Ubicación GPS
+                              </a>
+                            )
+                          }
+                          return <span style={{ color: 'var(--text)', fontSize: '0.9rem', textAlign: 'right' }}>{project.address || 'N/A'}</span>
+                        })()}
                       </div>
                     ) : (
-                      <input type="text" value={editAddress} onChange={e => setEditAddress(e.target.value)} className="form-input" style={{ width: '60%', padding: '4px 8px', fontSize: '0.9rem' }} />
+                      <input type="text" value={editAddress} onChange={e => setEditAddress(e.target.value)} placeholder="Dirección o Link de Google Maps" className="form-input" style={{ width: '60%', padding: '4px 8px', fontSize: '0.9rem' }} />
                     )}
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
