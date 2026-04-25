@@ -60,33 +60,25 @@ export async function GET(request: Request) {
     const unreadCountsMap: Record<number, number> = {}
 
     if (projects.length > 0) {
-      const viewsMap = new Map(views.map(v => [v.projectId, v]))
+      const projectIds = projects.map(p => p.id)
       
-      // Batch queries to avoid N+1 and connection pool exhaustion
-      for (let i = 0; i < projects.length; i += 100) {
-        const batch = projects.slice(i, i + 100)
-        const conditions = batch.map(p => {
-          const view = viewsMap.get(p.id)
-          const lastSeen = view ? new Date(view.lastSeen) : new Date(p.createdAt)
-          const sqlDate = lastSeen.toISOString().replace('T', ' ').replace('Z', '')
-          return `(projectId = ${p.id} AND createdAt > '${sqlDate}')`
+      // Use a single query with LEFT JOIN to count unread messages efficiently
+      const sql = `
+        SELECT cm.project_id as projectId, CAST(COUNT(*) AS UNSIGNED) as count
+        FROM chat_messages cm
+        LEFT JOIN project_views pv ON cm.project_id = pv.project_id AND pv.user_id = ${Number(userId)}
+        WHERE cm.user_id != ${Number(userId)}
+        AND cm.project_id IN (${projectIds.join(',')})
+        AND (pv.last_seen IS NULL OR cm.created_at > pv.last_seen)
+        GROUP BY cm.project_id
+      `
+      try {
+        const results: any[] = await prisma.$queryRawUnsafe(sql)
+        results.forEach(r => {
+          unreadCountsMap[r.projectId] = Number(r.count)
         })
-
-        const sql = `
-          SELECT projectId, CAST(COUNT(*) AS UNSIGNED) as count
-          FROM ChatMessage
-          WHERE userId != ${Number(userId)}
-          AND (${conditions.join(' OR ')})
-          GROUP BY projectId
-        `
-        try {
-          const results: any[] = await prisma.$queryRawUnsafe(sql)
-          results.forEach(r => {
-            unreadCountsMap[r.projectId] = Number(r.count)
-          })
-        } catch (err) {
-          console.error("Error fetching unread counts batch:", err)
-        }
+      } catch (err) {
+        console.error("Error fetching unread counts:", err)
       }
     }
 

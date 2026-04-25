@@ -12,7 +12,12 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
     }
 
+    const userId = Number(session.user.id)
+    const userRole = (session.user as any).role
+    const isOp = userRole === 'OPERATOR' || userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA'
+
     const quotes = await prisma.quote.findMany({
+      where: isOp ? { userId: userId } : {},
       include: {
         client: { select: { name: true } },
         project: { select: { title: true } }

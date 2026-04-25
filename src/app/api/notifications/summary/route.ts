@@ -47,40 +47,32 @@ export async function GET() {
       lastSeenMap[pv.projectId] = pv.lastSeen
     })
 
-    // 3. Use raw queries to get all unread counts at once (avoids N+1 and connection limits)
+    // 3. Use a single efficient query to get all unread counts at once
     const byProject: Record<number, number> = {}
     let totalUnread = 0
 
-    // Batch in groups of 100 projects max to keep query manageable
-    for (let i = 0; i < projectIds.length; i += 100) {
-      const batchIds = projectIds.slice(i, i + 100)
-      
-      const conditions = batchIds.map(pid => {
-        const lastSeen = lastSeenMap[pid] || new Date(0)
-        const sqlDate = lastSeen.toISOString().replace('T', ' ').replace('Z', '')
-        return `(projectId = ${pid} AND createdAt > '${sqlDate}')`
+    // Using a single query with LEFT JOIN is much more efficient than batched OR conditions
+    const sql = `
+      SELECT cm.project_id as projectId, CAST(COUNT(*) AS UNSIGNED) as count
+      FROM chat_messages cm
+      LEFT JOIN project_views pv ON cm.project_id = pv.project_id AND pv.user_id = ${userId}
+      WHERE cm.user_id != ${userId}
+      AND cm.project_id IN (${projectIds.join(',')})
+      AND (pv.last_seen IS NULL OR cm.created_at > pv.last_seen)
+      GROUP BY cm.project_id
+    `
+    
+    try {
+      const results: any[] = await prisma.$queryRawUnsafe(sql)
+      results.forEach(r => {
+        const c = Number(r.count)
+        if (c > 0) {
+          byProject[r.projectId] = c
+          totalUnread += c
+        }
       })
-
-      const sql = `
-        SELECT projectId, CAST(COUNT(*) AS UNSIGNED) as count
-        FROM ChatMessage
-        WHERE userId != ${userId}
-        AND (${conditions.join(' OR ')})
-        GROUP BY projectId
-      `
-      
-      try {
-        const results: any[] = await prisma.$queryRawUnsafe(sql)
-        results.forEach(r => {
-          const c = Number(r.count)
-          if (c > 0) {
-            byProject[r.projectId] = c
-            totalUnread += c
-          }
-        })
-      } catch (err) {
-        console.error("Error fetching notification counts batch:", err)
-      }
+    } catch (err) {
+      console.error("Error fetching notification counts:", err)
     }
 
     return NextResponse.json({ totalUnread, byProject }, {
