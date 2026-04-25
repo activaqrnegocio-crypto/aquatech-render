@@ -47,9 +47,11 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
 
   const setActiveTabWithUrl = (tab: 'CHAT' | 'GALLERY' | 'EVIDENCE') => {
     setActiveTab(tab)
-    const params = new URLSearchParams(searchParams.toString())
-    params.set('view', tab)
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false })
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href)
+      url.searchParams.set('view', tab)
+      window.history.replaceState(null, '', url.toString())
+    }
   }
 
   useEffect(() => {
@@ -719,10 +721,25 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     // Offline support
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
        try {
+          let processedUrl = file.url;
+          if (typeof file.url === 'string' && file.url.startsWith('blob:')) {
+             try {
+               const res = await fetch(file.url);
+               const blob = await res.blob();
+               processedUrl = await new Promise<string>((resolve) => {
+                 const reader = new FileReader();
+                 reader.onload = () => resolve(reader.result as string);
+                 reader.readAsDataURL(blob);
+               });
+             } catch (e) {
+               console.warn("Could not convert blob to base64", e);
+             }
+          }
+
           await db.outbox.add({
              type: 'GALLERY_UPLOAD',
              projectId: project.id,
-             payload: { ...file, category },
+             payload: { ...file, url: processedUrl, base64: processedUrl, category },
              timestamp: Date.now(),
              status: 'pending'
           })
@@ -3040,14 +3057,22 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       {/* LIGHTBOX PREVIEW MODAL */}
       {selectedPreviewImage && (() => {
         const getCleanType = (item: any) => {
-          let mime = item.mimeType || 'application/octet-stream';
-          if (mime === 'application/octet-stream') {
-            const ext = item.url.split('.').pop()?.toLowerCase();
+          let mime = item.mimeType || item.type || 'application/octet-stream';
+          
+          // Handle Prisma Enum Types
+          if (mime === 'IMAGE') return 'image/jpeg';
+          if (mime === 'VIDEO') return 'video/mp4';
+          if (mime === 'AUDIO') return 'audio/mpeg';
+          if (mime === 'DOCUMENT') return 'application/pdf';
+
+          if (mime === 'application/octet-stream' || !mime.includes('/')) {
+            const urlPath = item.url ? item.url.split('?')[0] : '';
+            const ext = urlPath.split('.').pop()?.toLowerCase();
             if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) return 'image/jpeg';
             if (['mp4', 'mov', 'webm'].includes(ext || '')) return 'video/mp4';
             if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext || '')) return 'audio/mpeg';
           }
-          return mime;
+          return mime.toLowerCase();
         };
 
         const cleanFilename = (name: string) => {

@@ -12,14 +12,19 @@ export default function GlobalSyncWorker() {
   useEffect(() => {
     if (session?.user?.id && navigator.onLine) {
       const u = session.user
-      db.auth.put({
-        id: 'last_session',
+      const authData = {
         userId: u.id,
         name: u.name || '',
         role: (u.role as any) || 'OPERATOR',
         username: (u as any).username || '',
         lastLogin: Date.now()
-      }).catch(console.error)
+      }
+      
+      // Para uso interno de la app (UI)
+      db.auth.put({ ...authData, id: 'last_session' }).catch(console.error)
+      
+      // Para uso exclusivo del Service Worker (Shadow Auth Proxy)
+      db.authShadow.put({ ...authData, id: 'current' }).catch(console.error)
     }
   }, [session])
 

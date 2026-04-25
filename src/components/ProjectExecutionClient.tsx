@@ -211,14 +211,14 @@ export default function ProjectExecutionClient({
   }, [mounted, project.id])
 
   const handleDeleteGalleryItem = async (itemId: number | string) => {
+    if (!window.confirm('¿Estás seguro de eliminar este archivo?')) return
+
     if (typeof itemId === 'string' && itemId.startsWith('pending-')) {
       // Borrar de la outbox si es pendiente
       const outboxId = Number(itemId.replace('pending-', ''))
       await db.outbox.delete(outboxId)
       return
     }
-
-    if (!window.confirm('¿Estás seguro de eliminar este archivo?')) return
 
     try {
       const res = await fetch(`/api/projects/${project.id}/gallery/${itemId}`, {
@@ -2247,14 +2247,22 @@ export default function ProjectExecutionClient({
       {/* Lightbox / Preview Modal */}
       {selectedPreviewImage && (() => {
         const getCleanType = (item: any) => {
-          let mime = item.mimeType || 'application/octet-stream';
-          if (mime === 'application/octet-stream') {
-            const ext = item.url.split('.').pop()?.toLowerCase();
+          let mime = item.mimeType || item.type || 'application/octet-stream';
+          
+          // Handle Prisma Enum Types
+          if (mime === 'IMAGE') return 'image/jpeg';
+          if (mime === 'VIDEO') return 'video/mp4';
+          if (mime === 'AUDIO') return 'audio/mpeg';
+          if (mime === 'DOCUMENT') return 'application/pdf';
+
+          if (mime === 'application/octet-stream' || !mime.includes('/')) {
+            const urlPath = item.url ? item.url.split('?')[0] : '';
+            const ext = urlPath.split('.').pop()?.toLowerCase();
             if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) return 'image/jpeg';
             if (['mp4', 'mov', 'webm'].includes(ext || '')) return 'video/mp4';
             if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext || '')) return 'audio/mpeg';
           }
-          return mime;
+          return mime.toLowerCase();
         };
 
         const cleanFilename = (name: string) => {
