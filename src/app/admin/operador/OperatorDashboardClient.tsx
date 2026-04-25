@@ -5,10 +5,10 @@ import { getLocalNow, formatToEcuador } from '@/lib/date-utils'
 import { db } from '@/lib/db'
 import { useLiveQuery } from 'dexie-react-hooks'
 import Link from 'next/link'
-import CalendarView from '@/components/Calendar/CalendarView'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { NotificationOnboarding } from '@/components/NotificationOnboarding'
 import { IosInstallBanner } from '@/components/IosInstallBanner'
+import { hasModuleAccess } from '@/lib/rbac'
 // Inline SVG icons to match project pattern
 const svgProps = (size: number, style?: React.CSSProperties, className?: string) => ({
   width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
@@ -37,10 +37,59 @@ export default function OperatorDashboardClient({
   activeDayRecord,
   appointments: initialAppointments
 }: OperatorDashboardClientProps) {
-  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS' | 'CALENDARIO'>('TAREAS')
+  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS'>('TAREAS')
   const [appointments, setAppointments] = useState(initialAppointments)
   const [projects, setProjects] = useState(initialProjects)
   const [selectedTask, setSelectedTask] = useState<any>(null)
+
+  const canManageCalendar = hasModuleAccess(user, 'calendario')
+
+  // 1. Initial hydration and offline cache for appointments
+  useEffect(() => {
+    if (initialAppointments.length > 0) {
+      localStorage.setItem('operator_appointments_cache', JSON.stringify(initialAppointments))
+    } else {
+      const cached = localStorage.getItem('operator_appointments_cache')
+      if (cached) {
+        try { setAppointments(JSON.parse(cached)) } catch (e) {}
+      }
+    }
+  }, [initialAppointments])
+
+  // 2. Local outbox tasks (created offline)
+  const pendingTasksRaw = useLiveQuery(
+    () => db.outbox.where('type').equals('TASK').toArray()
+  ) || []
+  
+  const pendingStatusToggles = useLiveQuery(
+    () => db.outbox.where('type').equals('TASK_STATUS_TOGGLE').toArray()
+  ) || []
+
+  // 3. Merge server appointments + local pending tasks + pending status toggles
+  const allAppointments = useMemo(() => {
+    let merged = [...appointments]
+
+    // Apply pending status toggles
+    pendingStatusToggles.forEach(toggle => {
+      const idx = merged.findIndex(a => a.id === toggle.payload.appointmentId)
+      if (idx !== -1) {
+        merged[idx] = { ...merged[idx], status: toggle.payload.status }
+      }
+    })
+
+    const pendingMapped = pendingTasksRaw.map(t => ({
+      id: `pending-${t.id}`, // pseudo-id
+      title: t.payload.title,
+      description: t.payload.description,
+      startTime: new Date(t.payload.startTime),
+      endTime: new Date(t.payload.endTime),
+      status: 'PENDIENTE',
+      userId: user.id,
+      project: projects.find((p: any) => p.id === Number(t.payload.projectId)) || null,
+      isOffline: true // flag for UI
+    }))
+    return [...merged, ...pendingMapped]
+  }, [appointments, pendingTasksRaw, pendingStatusToggles, projects, user.id])
   const [pushDismissed, setPushDismissed] = useState(true)
   const { 
     status: pushStatus, 
@@ -156,7 +205,7 @@ export default function OperatorDashboardClient({
 
   const todayTasks = useMemo(() => {
     const today = getLocalNow()
-    return appointments
+    return allAppointments
       .filter(a => {
         const d = new Date(a.startTime)
         return d.getDate() === today.getDate() && 
@@ -164,21 +213,71 @@ export default function OperatorDashboardClient({
                d.getFullYear() === today.getFullYear()
       })
       .sort((a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime())
-  }, [appointments])
+  }, [allAppointments])
 
   const fetchAppointments = async () => {
-    const res = await fetch(`/api/appointments?userId=${user.id}`)
-    if (res.ok) setAppointments(await res.json())
+    if (!navigator.onLine) {
+      const cached = localStorage.getItem('operator_appointments_cache')
+      if (cached) {
+        try { setAppointments(JSON.parse(cached)) } catch (e) {}
+      }
+      return
+    }
+    try {
+      const res = await fetch(`/api/appointments?userId=${user.id}`)
+      if (res.ok) {
+        const data = await res.json()
+        setAppointments(data)
+        localStorage.setItem('operator_appointments_cache', JSON.stringify(data))
+      }
+    } catch (err) {
+      console.warn("Failed to fetch appointments, falling back to cache")
+    }
   }
 
+
+
   const toggleStatus = async (task: any) => {
+    if (task.isOffline) {
+      alert('Esta tarea aún no se ha sincronizado con el servidor. Por favor, espera a tener conexión para marcarla como completada.')
+      return
+    }
+
     const newStatus = task.status === 'COMPLETADA' ? 'PENDIENTE' : 'COMPLETADA'
-    const res = await fetch(`/api/appointments/${task.id}`, {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus })
-    })
-    if (res.ok) await fetchAppointments()
+
+    // Actualización optimista local
+    setAppointments(prev => prev.map(a => a.id === task.id ? { ...a, status: newStatus } : a))
+    if (selectedTask && selectedTask.id === task.id) {
+      setSelectedTask({ ...selectedTask, status: newStatus })
+    }
+
+    if (!navigator.onLine) {
+      await db.outbox.add({
+        type: 'TASK_STATUS_TOGGLE',
+        projectId: task.project?.id || 0,
+        payload: { appointmentId: task.id, status: newStatus },
+        timestamp: Date.now(),
+        status: 'pending'
+      })
+      return
+    }
+
+    try {
+      const res = await fetch(`/api/appointments/${task.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status: newStatus })
+      })
+      if (res.ok) {
+        await fetchAppointments()
+      } else {
+        // Revertir en caso de error
+        await fetchAppointments() 
+      }
+    } catch (e) {
+      // Offline fallback: Revertir si falló
+      await fetchAppointments()
+    }
   }
 
   return (
@@ -322,25 +421,32 @@ export default function OperatorDashboardClient({
              </span>
            )}
         </button>
-        <button 
-          className={`tab ${activeTab === 'CALENDARIO' ? 'active' : ''}`} 
-          onClick={() => setActiveTab('CALENDARIO')}
-          style={{ 
-            flex: 1, 
-            padding: '10px 4px', 
-            fontSize: '0.75rem', 
-            display: 'flex', 
-            alignItems: 'center', 
-            justifyContent: 'center',
-            gap: '6px'
-          }}
-        >
-           <CalendarIcon size={14} /> 
-           <span style={{ whiteSpace: 'nowrap' }}>
-             Agenda <span className="d-none d-md-inline">Semanal</span>
-           </span>
-        </button>
+        {canManageCalendar && (
+          <Link 
+            href="/admin/calendario"
+            className="tab" 
+            style={{ 
+              flex: 1, 
+              padding: '10px 4px', 
+              fontSize: '0.75rem', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              gap: '6px',
+              textDecoration: 'none',
+              color: 'var(--text-muted)'
+            }}
+          >
+             <CalendarIcon size={14} /> 
+             <span style={{ whiteSpace: 'nowrap' }}>
+               Agenda <span className="d-none d-md-inline">Semanal</span>
+             </span>
+          </Link>
+        )}
       </div>
+
+      {/* Action header depending on active tab */}
+
 
       <div className="tab-content" style={{ marginTop: 'var(--space-md)' }}>
         {activeTab === 'TAREAS' && (
@@ -417,17 +523,7 @@ export default function OperatorDashboardClient({
           </div>
         )}
 
-        {activeTab === 'CALENDARIO' && (
-          <div className="card" style={{ padding: 'var(--space-md)' }}>
-            <CalendarView 
-              events={appointments}
-              isAdmin={false}
-              onAddEvent={() => {}}
-              onEditEvent={(evt) => setSelectedTask(evt)}
-              viewMode="WEEK"
-            />
-          </div>
-        )}
+
       </div>
 
       {/* MODAL DETALLES DE TAREA */}
@@ -513,6 +609,9 @@ export default function OperatorDashboardClient({
           </div>
         </div>
       )}
+      
+
+
       <style jsx>{`
         .tab-badge {
           background: var(--danger);

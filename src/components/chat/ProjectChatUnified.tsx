@@ -416,7 +416,7 @@ export default function ProjectChatUnified({
           const userName = msg.userName || msg.user?.name || 'Usuario';
           const parsedExtraData = typeof msg.extraData === 'string' ? JSON.parse(msg.extraData) : (msg.extraData || {});
           const isExpense = msg.type === 'EXPENSE_LOG' || msg.type === 'EXPENSE';
-          const isNote = parsedExtraData.isNote || msg.isNote;
+          const isNote = isExpense ? true : (parsedExtraData.isNote || msg.isNote);
           const amount = parsedExtraData.amount || msg.amount;
           
           let mediaArray = Array.isArray(msg.media) ? [...msg.media] : (msg.media ? [msg.media] : []);
@@ -582,8 +582,16 @@ export default function ProjectChatUnified({
                         boxSizing: 'border-box'
                       }}>
                       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px' }}>
-                        <div style={{ fontSize: '0.7rem', fontWeight: '800', color: isNote ? '#3b82f6' : '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                        <div style={{ fontSize: '0.7rem', fontWeight: '800', color: isNote ? '#3b82f6' : '#10b981', textTransform: 'uppercase', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: '4px' }}>
                           {isNote ? '🏷️ Nota de Gasto' : '💰 Gasto Real'}
+                          {(msg as any).isPending && (
+                            <span style={{ 
+                              background: '#f59e0b', color: 'white', padding: '1px 6px', 
+                              borderRadius: '4px', fontSize: '0.6rem', fontWeight: 'bold' 
+                            }}>
+                              🕒 PENDIENTE
+                            </span>
+                          )}
                         </div>
                         {msg.userName && <div style={{ fontSize: '0.65rem', opacity: 0.6 }}>{msg.userName}</div>}
                       </div>

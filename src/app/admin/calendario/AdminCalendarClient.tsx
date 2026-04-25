@@ -13,6 +13,8 @@ interface AdminCalendarClientProps {
 }
 
 export default function AdminCalendarClient({ operators, projects }: AdminCalendarClientProps) {
+  const [cachedOperators, setCachedOperators] = useState<any[]>(operators)
+  const [cachedProjects, setCachedProjects] = useState<any[]>(projects)
   const [appointments, setAppointments] = useState<any[]>([])
   const [selectedOperatorId, setSelectedOperatorId] = useState<string>('all')
   const [isModalOpen, setIsModalOpen] = useState(false)
@@ -25,14 +27,42 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
       const url = `/api/appointments?userId=${selectedOperatorId}`
       const res = await fetch(url)
       if (res.ok) {
-        setAppointments(await res.json())
+        const data = await res.json()
+        setAppointments(data)
+        localStorage.setItem(`calendar_appointments_${selectedOperatorId}`, JSON.stringify(data))
       }
     } catch (error) {
       console.error('Error fetching appointments:', error)
+      const cached = localStorage.getItem(`calendar_appointments_${selectedOperatorId}`)
+      if (cached) {
+        try { setAppointments(JSON.parse(cached)) } catch(e){}
+      }
     } finally {
       if (!silent) setLoading(false)
     }
   }
+
+  useEffect(() => {
+    if (operators.length > 0) {
+      localStorage.setItem('admin_calendar_operators', JSON.stringify(operators))
+      setCachedOperators(operators)
+    } else {
+      const cached = localStorage.getItem('admin_calendar_operators')
+      if (cached) {
+        try { setCachedOperators(JSON.parse(cached)) } catch(e){}
+      }
+    }
+
+    if (projects.length > 0) {
+      localStorage.setItem('admin_calendar_projects', JSON.stringify(projects))
+      setCachedProjects(projects)
+    } else {
+      const cached = localStorage.getItem('admin_calendar_projects')
+      if (cached) {
+        try { setCachedProjects(JSON.parse(cached)) } catch(e){}
+      }
+    }
+  }, [operators, projects])
 
   // --- OFFLINE SUPPORT ---
   const pendingTasks = useLiveQuery(
@@ -141,7 +171,7 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
              onChange={(e) => setSelectedOperatorId(e.target.value)}
            >
              <option value="all">Todos los operadores</option>
-             {operators.map(op => (
+             {cachedOperators.map(op => (
                <option key={op.id} value={op.id}>{op.name}</option>
              ))}
            </select>
@@ -173,8 +203,8 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
           onDelete={handleDeleteAppointment}
           initialData={editingEvent}
           userId={selectedOperatorId === 'all' ? 0 : Number(selectedOperatorId)} // This will be handled by the specialized modal
-          projects={projects}
-          operators={operators} // New prop for admin selection
+          projects={cachedProjects}
+          operators={cachedOperators} // New prop for admin selection
           isAdminView={true}
         />
       )}

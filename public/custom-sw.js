@@ -357,6 +357,7 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   const shells = [];
   if (isOperator) shells.push('/admin/operador', '/admin/operador/');
   if (isSubcon) shells.push('/admin/subcontratista', '/admin/subcontratista/');
+  shells.push('/admin/calendario', '/admin/calendario/');
   shells.push('/admin', '/admin/');
 
   

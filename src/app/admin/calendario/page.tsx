@@ -16,18 +16,25 @@ export default async function AdminCalendarPage() {
     redirect('/admin')
   }
 
-  const operators = await prisma.user.findMany({
-    where: { 
-      role: { in: ['OPERATOR', 'SUBCONTRATISTA'] },
-      isActive: true
-    },
-    select: { id: true, name: true }
-  })
+  let operators: any[] = []
+  let projects: any[] = []
 
-  const projects = await prisma.project.findMany({
-    where: { status: { not: 'CANCELADO' } },
-    select: { id: true, title: true, status: true }
-  })
+  try {
+    operators = await prisma.user.findMany({
+      where: { 
+        role: { in: ['OPERATOR', 'SUBCONTRATISTA'] },
+        isActive: true
+      },
+      select: { id: true, name: true }
+    })
+
+    projects = await prisma.project.findMany({
+      where: { status: { not: 'CANCELADO' } },
+      select: { id: true, title: true, status: true }
+    })
+  } catch (error) {
+    console.warn("Offline or DB error, passing empty arrays to client for cache fallback")
+  }
 
   return <AdminCalendarClient operators={operators} projects={projects} />
 }

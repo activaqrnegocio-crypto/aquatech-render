@@ -261,7 +261,7 @@ export default function ProjectExecutionClient({
 
   const myTotalSpent = useMemo(() => {
     return (allExpenses || [])
-      .filter((e: any) => !e.isNote)
+      .filter((e: any) => !e.isNote && !e.isPending)
       .reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0)
   }, [allExpenses])
 
@@ -941,7 +941,8 @@ export default function ProjectExecutionClient({
           mediaData = {
             url: uploadResult.url,
             filename: uploadResult.filename,
-            mimeType: uploadResult.mimeType
+            mimeType: uploadResult.mimeType,
+            category: 'CHAT'
           }
         } catch (uploadError) {
           console.error('Failed to upload media directly:', uploadError)
@@ -971,11 +972,12 @@ export default function ProjectExecutionClient({
                reader.onload = () => resolve(reader.result as string);
                reader.readAsDataURL(mediaFile);
              });
-             payload.media = {
-               base64: base64,
-               filename: mediaFile.name,
-               mimeType: mediaFile.type
-             };
+              payload.media = {
+                base64: base64,
+                filename: mediaFile.name,
+                mimeType: mediaFile.type,
+                category: 'CHAT'
+              };
            } catch (e) {
              console.warn('[Offline] Failed to convert file to base64:', e);
            }
@@ -1499,6 +1501,7 @@ export default function ProjectExecutionClient({
   }
 
   return (
+    <>
     <div className="project-execution-container" style={{ 
       display: 'flex', 
       flexDirection: 'column', 
@@ -2016,6 +2019,7 @@ export default function ProjectExecutionClient({
                   </div>
                 )}
               </div>
+              </div>
 
               {/* NOTAS DE GASTO - Solo visualización */}
               {allExpenses.filter(e => e.isNote).length > 0 && (
@@ -2303,6 +2307,6 @@ export default function ProjectExecutionClient({
       )}
       
       {/* Mobile Navigation Footer Removed to use Global Footer */}
-    </div>
+    </>
   )
 }

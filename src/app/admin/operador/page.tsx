@@ -27,39 +27,53 @@ export default async function OperatorDashboard() {
 
   const userId = Number(session.user.id)
 
-  // Fetch data in parallel
-  const [activeProjects, activeDayRecord, appointments, userViews] = await Promise.all([
-    prisma.project.findMany({
-      where: {
-        team: { some: { userId } },
-        status: { in: ['LEAD', 'ACTIVO', 'PENDIENTE'] }
-      },
-      orderBy: { updatedAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        status: true,
-        updatedAt: true,
-        client: { select: { name: true, city: true, address: true } },
-        phases: { 
-          orderBy: { displayOrder: 'asc' },
-          select: { id: true, title: true, status: true } 
+  let activeProjects: any[] = []
+  let activeDayRecord: any = null
+  let appointments: any[] = []
+  let userViews: any[] = []
+
+  try {
+    // Fetch data in parallel
+    const results = await Promise.all([
+      prisma.project.findMany({
+        where: {
+          team: { some: { userId } },
+          status: { in: ['LEAD', 'ACTIVO', 'PENDIENTE'] }
         },
-      }
-    }),
-    prisma.dayRecord.findFirst({
-        where: { userId, endTime: null },
-        include: { project: { select: { title: true } } }
-    }),
-    prisma.appointment.findMany({
-        where: { userId },
-        orderBy: { startTime: 'asc' },
-        include: { project: { select: { title: true } } }
-    }),
-    prisma.projectView.findMany({
-      where: { userId }
-    })
-  ])
+        orderBy: { updatedAt: 'desc' },
+        select: {
+          id: true,
+          title: true,
+          status: true,
+          updatedAt: true,
+          client: { select: { name: true, city: true, address: true } },
+          phases: { 
+            orderBy: { displayOrder: 'asc' },
+            select: { id: true, title: true, status: true } 
+          },
+        }
+      }),
+      prisma.dayRecord.findFirst({
+          where: { userId, endTime: null },
+          include: { project: { select: { title: true } } }
+      }),
+      prisma.appointment.findMany({
+          where: { userId },
+          orderBy: { startTime: 'asc' },
+          include: { project: { select: { title: true } } }
+      }),
+      prisma.projectView.findMany({
+        where: { userId }
+      })
+    ])
+
+    activeProjects = results[0]
+    activeDayRecord = results[1]
+    appointments = results[2]
+    userViews = results[3]
+  } catch (err) {
+    console.warn("Offline or DB error, passing empty operator data to client for cache fallback")
+  }
 
   // Calculate unread counts for each project
   const projectsWithUnread = await Promise.all(activeProjects.map(async (project: any) => {

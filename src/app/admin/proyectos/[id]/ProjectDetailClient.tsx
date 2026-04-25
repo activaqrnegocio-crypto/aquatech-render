@@ -60,12 +60,54 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   
   // --- CHAT STATE ---
   const [chatMessages, setChatMessages] = useState(project.chatMessages || [])
+  const [liveChat, setLiveChat] = useState<any[]>([])
   
   // Pending items from Dexie Outbox
   const pendingItems = useLiveQuery(
     () => db.outbox.where('projectId').equals(project.id).toArray(),
     [project.id]
   ) || []
+
+  const combinedChat = [
+    ...chatMessages,
+    ...liveChat,
+    ...pendingItems
+      .filter((item: any) => item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD')
+      .map((item: any) => {
+        let mediaArr: any[] = [];
+        if (item.payload.media) {
+          mediaArr = [{ url: item.payload.media.url || item.payload.media.base64, filename: item.payload.media.filename, mimeType: item.payload.media.mimeType }];
+        } else if (item.payload.previewBase64) {
+          mediaArr = [{ url: item.payload.previewBase64, filename: item.payload.fileData?.name || 'Archivo', mimeType: item.payload.fileData?.type || 'image/jpeg' }];
+        } else if (item.payload.fileData) {
+          try {
+            const blob = new Blob([item.payload.fileData.buffer], { type: item.payload.fileData.type });
+            const blobUrl = URL.createObjectURL(blob);
+            mediaArr = [{ url: blobUrl, filename: item.payload.fileData.name, mimeType: item.payload.fileData.type }];
+          } catch (e) {
+            mediaArr = [];
+          }
+        }
+
+        return {
+          id: `pending-${item.id}`,
+          projectId: item.projectId,
+          userId: session?.user?.id,
+          userName: `${session?.user?.name || 'Administrador'} (Pendiente)`,
+          content: item.payload.content || (item.type === 'MEDIA_UPLOAD' ? '[Archivo pendiente]' : (item.payload.fileData ? `📎 ${item.payload.fileData.name}` : '')),
+          type: item.payload.type || item.type,
+          createdAt: new Date(item.timestamp).toISOString(),
+          isMe: true,
+          isPending: true,
+          status: item.status,
+          lat: item.lat,
+          lng: item.lng,
+          phaseId: item.payload.phaseId,
+          media: mediaArr,
+          extraData: item.payload.extraData
+        };
+      })
+  ].sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
 
   const [message, setMessage] = useState('')
   const [activePhase, setActivePhase] = useState<number | null>(null)
@@ -938,6 +980,23 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         }
       }
 
+      // --- OPTIMISTIC UI UPDATE ---
+      const tempId = `temp-${Date.now()}-${Math.random()}`
+      setLiveChat((prev: any[]) => [
+        ...prev,
+        {
+          id: tempId,
+          content: payload.content,
+          type: payload.type,
+          media: payload.media ? { url: payload.media.base64 || payload.media.url, mimeType: payload.media.mimeType } : null,
+          extraData: Object.keys(payload.extraData || {}).length > 0 ? payload.extraData : null,
+          createdAt: new Date().toISOString(),
+          isMe: true,
+          userName: session?.user?.name || 'Administrador',
+          status: 'pending'
+        }
+      ])
+
       // Offline interceptor for Unified Chat
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
          try {
@@ -950,6 +1009,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                lng: location?.lng,
                status: 'pending'
             })
+            setLiveChat(prev => prev.filter(m => m.id !== tempId))
             return
          } catch (e) {
             console.error('Error saving offline unified message:', e)
@@ -984,6 +1044,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           userName: session?.user?.name || 'Administrador'
         }]
       })
+      setLiveChat(prev => prev.filter(m => m.id !== tempId))
 
       // 🔥 REAL-TIME EXPENSE SYNC: If message was an expense, update the expenses list locally
       if (payload.type === 'EXPENSE_LOG' && payload.extraData?.amount) {
@@ -1940,7 +2001,7 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
             }}>
             <ProjectChatUnified
               project={project}
-              messages={chatMessages.map((m: any) => ({
+              messages={combinedChat.map((m: any) => ({
                 ...m,
                 userName: m.user?.name || m.userName || 'Usuario',
                 userId: m.user?.id || m.userId
