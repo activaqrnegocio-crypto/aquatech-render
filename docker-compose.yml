@@ -5,6 +5,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+    image: aquatech-crm:v100-manual
     container_name: aquatech-crm-v2
     restart: always
     ports:
