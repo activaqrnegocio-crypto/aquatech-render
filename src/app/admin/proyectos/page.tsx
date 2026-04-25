@@ -367,9 +367,25 @@ export default function ProyectosPage() {
                       }
                     `}</style>
 
-                    <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem', marginBottom: '24px' }}>
-                      {p.client?.name || 'Cliente sin asignar'}
-                    </p>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', margin: '0 0 24px 0' }}>
+                      <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '0.95rem' }}>
+                        {p.client?.name || 'Cliente sin asignar'}
+                      </p>
+                      {p.city && (
+                        <span style={{ fontSize: '0.75rem', color: 'rgba(255,255,255,0.4)', backgroundColor: 'rgba(255,255,255,0.05)', padding: '2px 8px', borderRadius: '12px' }}>
+                          📍 {p.city}
+                        </span>
+                      )}
+                    </div>
+
+                    {p.estimatedBudget > 0 && (
+                      <div style={{ marginBottom: '15px', padding: '10px 15px', borderRadius: '12px', backgroundColor: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.05)' }}>
+                        <span style={{ fontSize: '0.7rem', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Presupuesto Estimado</span>
+                        <div style={{ fontSize: '1.1rem', fontWeight: '800', color: 'var(--primary)' }}>
+                          ${p.estimatedBudget.toLocaleString('en-US', { minimumFractionDigits: 2 })}
+                        </div>
+                      </div>
+                    )}
 
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
 

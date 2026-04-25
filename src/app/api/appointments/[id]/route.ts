@@ -50,6 +50,7 @@ export async function PATCH(
     if (projectId !== undefined) data.projectId = projectId ? Number(projectId) : null
     if (clientName !== undefined) data.clientName = clientName
     if (clientPhone !== undefined) data.clientPhone = clientPhone
+    if (body.files !== undefined) data.files = body.files ? (typeof body.files === 'string' ? body.files : JSON.stringify(body.files)) : null
 
     const updated = await prisma.appointment.update({
       where: { id: Number(id) },

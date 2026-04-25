@@ -10,13 +10,20 @@ import CalendarAssistant from '@/components/Calendar/CalendarAssistant'
 interface AdminCalendarClientProps {
   operators: any[]
   projects: any[]
+  isAdmin?: boolean
+  userId?: number
 }
 
-export default function AdminCalendarClient({ operators, projects }: AdminCalendarClientProps) {
+export default function AdminCalendarClient({ 
+  operators, 
+  projects, 
+  isAdmin = true, 
+  userId = 0 
+}: AdminCalendarClientProps) {
   const [cachedOperators, setCachedOperators] = useState<any[]>(operators)
   const [cachedProjects, setCachedProjects] = useState<any[]>(projects)
   const [appointments, setAppointments] = useState<any[]>([])
-  const [selectedOperatorId, setSelectedOperatorId] = useState<string>('all')
+  const [selectedOperatorId, setSelectedOperatorId] = useState<string>(isAdmin ? 'all' : userId.toString())
   const [isModalOpen, setIsModalOpen] = useState(false)
   const [editingEvent, setEditingEvent] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -205,25 +212,27 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
       </div>
 
       <div className="card mb-lg calendar-card" style={{ marginTop: 'var(--space-md)' }}>
-        <div className="filter-container">
-           <label className="filter-label">Filtrar por Operador:</label>
-           <select 
-             className="form-select operator-select" 
-             value={selectedOperatorId}
-             onChange={(e) => setSelectedOperatorId(e.target.value)}
-           >
-             <option value="all">Todos los operadores</option>
-             {cachedOperators.map(op => (
-               <option key={op.id} value={op.id}>{op.name}</option>
-             ))}
-           </select>
-           {loading && <span className="loading-text">Cargando agenda...</span>}
-        </div>
+        {isAdmin && (
+          <div className="filter-container">
+             <label className="filter-label">Filtrar por Operador:</label>
+             <select 
+               className="form-select operator-select" 
+               value={selectedOperatorId}
+               onChange={(e) => setSelectedOperatorId(e.target.value)}
+             >
+               <option value="all">Todos los operadores</option>
+               {cachedOperators.map(op => (
+                 <option key={op.id} value={op.id}>{op.name}</option>
+               ))}
+             </select>
+             {loading && <span className="loading-text">Cargando agenda...</span>}
+          </div>
+        )}
 
         <div className="calendar-wrapper">
           <CalendarView 
             events={allAppointments}
-            isAdmin={true}
+            isAdmin={isAdmin}
             viewMode="WEEK"
             onAddEvent={(date) => { 
                 setEditingEvent({ startTime: date }); 
@@ -247,7 +256,7 @@ export default function AdminCalendarClient({ operators, projects }: AdminCalend
           userId={selectedOperatorId === 'all' ? 0 : Number(selectedOperatorId)} // This will be handled by the specialized modal
           projects={cachedProjects}
           operators={cachedOperators} // New prop for admin selection
-          isAdminView={true}
+          isAdminView={isAdmin}
         />
       )}
 

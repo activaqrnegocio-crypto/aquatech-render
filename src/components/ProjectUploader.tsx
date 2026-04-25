@@ -103,7 +103,7 @@ export default function ProjectUploader({
       for (let i = 0; i < filesArray.length; i += batchSize) {
         const batch = filesArray.slice(i, i + batchSize);
         
-        await Promise.all(batch.map(async (file) => {
+        for (const file of batch) {
           const isImage = file.type.startsWith('image/')
 
           if (!isOnline) {
@@ -130,7 +130,7 @@ export default function ProjectUploader({
             }
             
             onAddFile(localFile)
-            return
+            continue
           }
 
           try {
@@ -157,7 +157,7 @@ export default function ProjectUploader({
             console.error('Project upload failed:', err)
             throw err
           }
-        }));
+        }
       }
     } catch (error) {
       console.error('Error handling files:', error)

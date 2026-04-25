@@ -352,8 +352,10 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
 
   // Try app shell fallback (Specific for main sections)
   const shells = [];
-  if (pathname.includes('/operador')) shells.push('/admin/operador', '/admin/operador/');
+  if (pathname.includes('/operador/nuevo')) shells.push('/admin/operador', '/admin/operador/');
+  else if (pathname.includes('/operador')) shells.push('/admin/operador', '/admin/operador/');
   else if (pathname.includes('/subcontratista')) shells.push('/admin/subcontratista', '/admin/subcontratista/');
+  else if (pathname.includes('/admin/proyectos/nuevo')) shells.push('/admin/proyectos', '/admin/proyectos/');
   else if (pathname.includes('/admin/proyectos')) shells.push('/admin/proyectos', '/admin/proyectos/');
   else {
     shells.push('/admin', '/admin/');

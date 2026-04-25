@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { createPortal } from 'react-dom'
+import { useRouter } from 'next/navigation'
 import { getLocalNow, formatForDateTimeInput, forceEcuadorTZ } from '@/lib/date-utils'
 import { uploadToBunnyClientSide } from '@/lib/storage-client'
 import { compressImage as optimizedCompress } from '@/lib/image-optimization'
@@ -31,6 +32,7 @@ export default function AppointmentModal({
   operators = [],
   isAdminView = false
 }: AppointmentModalProps) {
+  const router = useRouter()
   const [loading, setLoading] = useState(false)
   const [mounted, setMounted] = useState(false)
   const [selectedOperatorIds, setSelectedOperatorIds] = useState<number[]>([])
@@ -47,8 +49,9 @@ export default function AppointmentModal({
     operatorLocation: '',
     clientName: '',
     clientPhone: '',
+    status: 'PENDIENTE',
     mediaFiles: [] as File[],
-    previews: [] as { url: string; type: string; name: string }[]
+    previews: [] as { url: string; type: string; name: string; isNew?: boolean }[]
   })
 
   useEffect(() => {
@@ -70,8 +73,14 @@ export default function AppointmentModal({
           operatorLocation: initialData.operatorLocation || '',
           clientName: initialData.clientName || '',
           clientPhone: initialData.clientPhone || '',
+          status: initialData.status || 'PENDIENTE',
           mediaFiles: [],
-          previews: []
+          previews: initialData.files ? (typeof initialData.files === 'string' ? JSON.parse(initialData.files) : initialData.files).map((f: any) => ({
+            url: f.url || f.data,
+            type: f.type || 'document',
+            name: f.name || 'Archivo',
+            isNew: false
+          })) : []
         })
       } else {
         const now = getLocalNow()
@@ -91,19 +100,17 @@ export default function AppointmentModal({
           operatorLocation: '',
           clientName: '',
           clientPhone: '',
+          status: 'PENDIENTE',
           mediaFiles: [],
           previews: []
         })
       }
     } else {
       document.body.style.overflow = ''
-      // Cleanup previews when closing
-      formData.previews.forEach(p => URL.revokeObjectURL(p.url))
     }
 
     return () => {
       document.body.style.overflow = ''
-      formData.previews.forEach(p => URL.revokeObjectURL(p.url))
     }
   }, [isOpen, initialData, userId])
 
@@ -233,7 +240,8 @@ export default function AppointmentModal({
     const newPreviews = files.map(file => ({
       url: URL.createObjectURL(file),
       type: file.type,
-      name: file.name
+      name: file.name,
+      isNew: true
     }))
     setFormData(prev => ({
       ...prev, 
@@ -346,12 +354,25 @@ export default function AppointmentModal({
         }
       }
 
+      // Combinar archivos existentes (no nuevos) con los recién subidos
+      const existingFiles = formData.previews
+        .filter(p => !p.isNew)
+        .map(p => ({ url: p.url, type: p.type, name: p.name }));
+      
+      const newUploadedFiles = [
+        ...realFiles.map(f => ({ url: f.data, type: f.type, name: f.name })),
+        ...linkFiles.map(f => ({ url: f.url, type: f.type, name: f.name }))
+      ];
+
+      const allFiles = [...existingFiles, ...newUploadedFiles];
+
       const payload = {
         ...formData,
         startTime: forceEcuadorTZ(formData.startTime),
         endTime: forceEcuadorTZ(formData.endTime),
         attachments: realFiles, 
         attachmentLinks: linkFiles, 
+        files: allFiles, // Guardar en DB
         userIds: targetUserIds,
         userId: targetUserIds[0]
       }
@@ -396,6 +417,28 @@ export default function AppointmentModal({
                     placeholder="Ej: Mantenimiento"
                   />
                 </div>
+                
+                <div className="form-group-compact">
+                  <label className="form-label-aquatech">Estado de la Tarea (Semáforo)</label>
+                  <select 
+                    className="form-select-aquatech"
+                    style={{ 
+                      backgroundColor: formData.status === 'COMPLETADA' ? 'rgba(37, 211, 102, 0.1)' : 
+                                       formData.status === 'ATRASADA' ? 'rgba(239, 68, 68, 0.1)' : 
+                                       'rgba(245, 158, 11, 0.1)',
+                      color: formData.status === 'COMPLETADA' ? '#25D366' : 
+                             formData.status === 'ATRASADA' ? '#ef4444' : 
+                             '#f59e0b',
+                      fontWeight: 'bold'
+                    }}
+                    value={formData.status}
+                    onChange={e => setFormData({...formData, status: e.target.value})}
+                  >
+                    <option value="PENDIENTE">🟡 PENDIENTE (Amarillo)</option>
+                    <option value="COMPLETADA">🟢 REALIZADA (Verde)</option>
+                    <option value="ATRASADA">🔴 NO REALIZADA / ATRASADA (Rojo)</option>
+                  </select>
+                </div>
 
                 {isAdminView && (
                   <div className="form-group-compact">
@@ -438,52 +481,80 @@ export default function AppointmentModal({
 
                 <div className="location-row-aquatech">
                   <div className="form-group-compact">
-                    <label className="form-label-aquatech">👤 Nombre del Cliente</label>
+                    <div className="label-with-action-aquatech">
+                      <label className="form-label-aquatech">👤 Cliente</label>
+                      {formData.clientPhone && (
+                        <a 
+                          href={`https://wa.me/${formData.clientPhone.replace(/\D/g, '')}`} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="btn-voice-aquatech"
+                          style={{ background: 'rgba(37, 211, 102, 0.1)', borderColor: 'rgba(37, 211, 102, 0.3)', color: '#25D366' }}
+                        >
+                          WhatsApp
+                        </a>
+                      )}
+                    </div>
                     <input
                       className="form-input-aquatech"
                       type="text"
-                      placeholder="Ej: Juan Pérez"
+                      placeholder="Nombre del cliente"
                       value={formData.clientName || ''}
                       onChange={e => setFormData({...formData, clientName: e.target.value})}
                     />
                   </div>
+                  
                   <div className="form-group-compact">
-                    <label className="form-label-aquatech">📞 Número del Cliente</label>
+                    <label className="form-label-aquatech">📞 Contacto</label>
                     <input
                       className="form-input-aquatech"
                       type="text"
-                      placeholder="Ej: 099..."
+                      placeholder="Número de teléfono"
                       value={formData.clientPhone || ''}
                       onChange={e => setFormData({...formData, clientPhone: e.target.value})}
                     />
                   </div>
-                  <div className="form-group-compact">
-                    <label className="form-label-aquatech">📍 Ubicación Cliente</label>
+
+                  <div className="form-group-compact" style={{ gridColumn: '1 / -1' }}>
+                    <div className="label-with-action-aquatech">
+                      <label className="form-label-aquatech">📍 Ubicación Google Maps</label>
+                      {formData.clientLocation && (
+                        <a 
+                          href={formData.clientLocation.startsWith('http') ? formData.clientLocation : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formData.clientLocation)}`} 
+                          target="_blank" 
+                          rel="noreferrer"
+                          className="btn-voice-aquatech"
+                        >
+                          Abrir GPS
+                        </a>
+                      )}
+                    </div>
                     <input
                       className="form-input-aquatech"
                       type="text"
-                      placeholder="Link Google Maps..."
+                      placeholder="Pega el link de Google Maps aquí..."
                       value={formData.clientLocation || ''}
                       onChange={e => setFormData({...formData, clientLocation: e.target.value})}
                     />
                   </div>
-                  <div className="form-group-compact">
-                    <label className="form-label-aquatech">👷 Operario (GPS)</label>
-                    <button 
-                      type="button" 
-                      className="btn-gps-aquatech" 
-                      onClick={() => {
-                        if (navigator.geolocation) {
-                          navigator.geolocation.getCurrentPosition(pos => {
-                            const link = `https://www.google.com/maps?q=${pos.coords.latitude},${pos.coords.longitude}`;
-                            setFormData(prev => ({...prev, operatorLocation: link}));
-                          });
-                        }
-                      }}
-                    >
-                      {formData.operatorLocation ? '✨ OK' : '📡 GPS'}
-                    </button>
-                  </div>
+
+                  {formData.projectId && (
+                    <div className="form-group-compact" style={{ gridColumn: '1 / -1', marginTop: '10px' }}>
+                       <button 
+                         type="button"
+                         className="btn-attach-aquatech"
+                         style={{ width: '100%', background: 'rgba(88, 199, 255, 0.15)', borderColor: '#58c7ff' }}
+                         onClick={() => {
+                           const path = isAdminView ? `/admin/proyectos/${formData.projectId}` : `/operador/ficha/${formData.projectId}`;
+                           onClose();
+                           router.push(path);
+                         }}
+                       >
+                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                         Ver Detalles del Proyecto
+                       </button>
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -528,7 +599,8 @@ export default function AppointmentModal({
                           const newPreviews = files.map((file: File) => ({
                             url: URL.createObjectURL(file),
                             type: file.type,
-                            name: file.name
+                            name: file.name,
+                            isNew: true
                           }))
                           setFormData(prev => ({
                             ...prev,
@@ -554,7 +626,8 @@ export default function AppointmentModal({
                           const newPreviews = files.map((file: File) => ({
                             url: URL.createObjectURL(file),
                             type: file.type,
-                            name: file.name
+                            name: file.name,
+                            isNew: true
                           }))
                           setFormData(prev => ({
                             ...prev,
@@ -583,30 +656,136 @@ export default function AppointmentModal({
                       onChange={handleFileChange}
                     />
                   </div>
-                  {formData.previews.length > 0 && (
-                    <div className="preview-gallery-aquatech" style={{ marginTop: '10px' }}>
-                      {formData.previews.map((file, idx) => (
-                        <div key={idx} className="preview-item-aquatech">
-                          {file.type.startsWith('image/') ? (
-                            <img src={file.url} alt="preview" />
-                          ) : (
-                            <div className="preview-icon-aquatech">
-                              {file.type.startsWith('video/') ? '🎬' : 
-                               file.type.startsWith('audio/') ? '🎙️' : '📄'}
-                            </div>
-                          )}
-                          <button 
-                            type="button"
-                            className="remove-preview-btn"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              removeFile(idx);
-                            }}
-                          >✕</button>
-                        </div>
-                      ))}
+
+                  <div style={{ marginTop: '12px' }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
+                      <span style={{ fontSize: '0.9rem' }}>📦</span>
+                      <strong style={{ fontSize: '0.75rem', color: 'var(--text-muted)', letterSpacing: '0.5px' }}>MULTIMEDIA CARGADA</strong>
                     </div>
-                  )}
+                    
+                    <div className="preview-gallery-aquatech" style={{ 
+                      minHeight: '60px', 
+                      background: 'rgba(255,255,255,0.02)', 
+                      borderRadius: '10px', 
+                      padding: '10px',
+                      border: '1px solid rgba(255,255,255,0.05)',
+                      display: 'flex',
+                      flexWrap: 'wrap',
+                      gap: '10px'
+                    }}>
+                      {formData.previews.length > 0 ? (
+                        formData.previews.map((file, idx) => (
+                          <div 
+                            key={idx} 
+                            className="preview-item-aquatech"
+                            onClick={() => window.open(file.url, '_blank')}
+                            style={{ 
+                              cursor: 'pointer',
+                              width: '60px',
+                              height: '60px',
+                              position: 'relative',
+                              borderRadius: '8px',
+                              overflow: 'hidden',
+                              border: '2px solid rgba(88, 199, 255, 0.3)',
+                              transition: 'transform 0.2s'
+                            }}
+                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
+                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
+                          >
+                            {file.type.includes('image') ? (
+                              <img src={file.url} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                            ) : (
+                              <div className="preview-icon-aquatech" style={{ 
+                                width: '100%', 
+                                height: '100%', 
+                                display: 'flex', 
+                                alignItems: 'center', 
+                                justifyContent: 'center',
+                                background: '#0a192f',
+                                fontSize: '1.5rem'
+                              }}>
+                                {file.type.includes('video') ? '🎬' : 
+                                 file.type.includes('audio') ? '🎙️' : '📄'}
+                              </div>
+                            )}
+                            
+                            {/* Nombre del archivo mini */}
+                            <div style={{ 
+                              fontSize: '0.55rem', 
+                              color: 'white', 
+                              position: 'absolute', 
+                              bottom: 0, 
+                              left: 0, 
+                              right: 0,
+                              background: 'rgba(0,0,0,0.7)', 
+                              padding: '2px 4px', 
+                              textAlign: 'center',
+                              whiteSpace: 'nowrap',
+                              overflow: 'hidden',
+                              textOverflow: 'ellipsis'
+                            }}>
+                              {file.name}
+                            </div>
+
+                            {(isAdminView || file.isNew) && (
+                              <button 
+                                type="button"
+                                className="remove-preview-btn"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  removeFile(idx);
+                                }}
+                                style={{
+                                  position: 'absolute',
+                                  top: '2px',
+                                  right: '2px',
+                                  background: 'rgba(255,0,0,0.8)',
+                                  color: 'white',
+                                  border: 'none',
+                                  borderRadius: '50%',
+                                  width: '18px',
+                                  height: '18px',
+                                  fontSize: '10px',
+                                  cursor: 'pointer',
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  zIndex: 10
+                                }}
+                              >✕</button>
+                            )}
+                            
+                            {file.isNew && (
+                              <div style={{
+                                position: 'absolute',
+                                top: '2px',
+                                left: '2px',
+                                background: 'var(--brand-primary)',
+                                width: '8px',
+                                height: '8px',
+                                borderRadius: '50%',
+                                border: '1px solid white'
+                              }} title="Nuevo" />
+                            )}
+                          </div>
+                        ))
+                      ) : (
+                        <div style={{ 
+                          width: '100%', 
+                          display: 'flex', 
+                          flexDirection: 'column', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          color: 'var(--text-muted)',
+                          fontSize: '0.8rem',
+                          opacity: 0.6
+                        }}>
+                          <span>No hay archivos adjuntos</span>
+                          <span style={{ fontSize: '0.7rem' }}>Usa los botones de arriba para añadir</span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="form-group-compact">

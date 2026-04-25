@@ -89,11 +89,22 @@ export default function CalendarView({
     })
   }
 
-  const statusColors: any = {
-    PENDIENTE: 'var(--warning)',
-    EN_PROGRESO: 'var(--primary)',
-    COMPLETADA: 'var(--success)',
-    CANCELADA: 'var(--danger)'
+  const getEventColor = (event: any) => {
+    // Priority: Manual status colors as requested
+    if (event.status === 'COMPLETADA') return 'var(--success)'; // VERDE
+    if (event.status === 'ATRASADA') return 'var(--danger)';    // ROJO
+    if (event.status === 'PENDIENTE') return 'var(--warning)';  // AMARILLO
+
+    // Fallback logic for legacy events or other statuses
+    const today = getLocalNow();
+    today.setHours(0, 0, 0, 0);
+    const eventDate = new Date(event.startTime);
+    eventDate.setHours(0, 0, 0, 0);
+
+    if (eventDate < today && event.status !== 'COMPLETADA') {
+        return 'var(--danger)'; // ATRASADA (ROJO)
+    }
+    return 'var(--warning)'; // PENDIENTE (AMARILLO)
   }
 
   return (
@@ -171,7 +182,7 @@ export default function CalendarView({
                       key={event.id}
                       onClick={(e) => { e.stopPropagation(); onEditEvent(event); }}
                       className="event-pill"
-                      style={{ borderLeft: `3px solid ${statusColors[event.status]}` }}
+                      style={{ borderLeft: `3px solid ${getEventColor(event)}` }}
                     >
                       <div className="event-title">{event.title}</div>
                       <div className="event-time">

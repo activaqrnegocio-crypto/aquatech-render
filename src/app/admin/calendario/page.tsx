@@ -36,5 +36,12 @@ export default async function AdminCalendarPage() {
     console.warn("Offline or DB error, passing empty arrays to client for cache fallback")
   }
 
-  return <AdminCalendarClient operators={operators} projects={projects} />
+  return (
+    <AdminCalendarClient 
+      operators={operators} 
+      projects={projects} 
+      isAdmin={isAdmin(userRole)} 
+      userId={Number(session.user.id)}
+    />
+  )
 }

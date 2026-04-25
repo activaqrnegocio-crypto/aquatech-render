@@ -38,15 +38,45 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
         })
       }
 
-      // 3. DEEP DATA PREFETCH: Populate Dexie for projects and chats
+      // 3. DEEP DATA PREFETCH: Populate Dexie for projects, chats and global entities
       // Only run this if we are online
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         const prefetchSequentially = async () => {
+          // A. Global Entities (for forms and lists)
+          try {
+            // Clients
+            const clientsResp = await fetch('/api/clients')
+            if (clientsResp.ok) {
+              const clients = await clientsResp.json()
+              if (Array.isArray(clients)) {
+                await db.clientsCache.clear()
+                await db.clientsCache.bulkPut(clients)
+              }
+            }
+            
+            // Materials
+            const matResp = await fetch('/api/materials')
+            if (matResp.ok) {
+              const materials = await matResp.json()
+              if (Array.isArray(materials)) {
+                await db.materialsCache.clear()
+                await db.materialsCache.bulkPut(materials)
+              }
+            }
+
+            // Team
+            await fetch('/api/users?roles=OPERATOR,SUBCONTRATISTA').catch(() => {})
+
+            console.log('[Prefetch] Global data cached in Dexie')
+          } catch (e) {
+            console.warn('[Prefetch] Global data fetch failed', e)
+          }
+
           for (const url of urls) {
             // Check if it's a project detail page
-            const projectMatch = url.match(/\/(admin|operador)\/proyectos\/(\d+)/)
+            const projectMatch = url.match(/\/(admin|operador)\/proyectos\/(\d+)/) || url.match(/\/admin\/proyectos\/(\d+)/)
             if (projectMatch) {
-              const projectId = projectMatch[2]
+              const projectId = projectMatch[2] || projectMatch[1]
               
               // Skip if already in cache and not forced
               const existing = await db.projectsCache.get(Number(projectId))

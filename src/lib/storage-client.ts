@@ -27,8 +27,9 @@ export async function uploadToBunnyClientSide(
 
   // 2. Prepare path
   const timestamp = Date.now();
+  const randomSuffix = Math.random().toString(36).substring(2, 8);
   const safeName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_');
-  const path = `/${storageZone}/${folder}/${timestamp}-${safeName}`;
+  const path = `/${storageZone}/${folder}/${timestamp}-${randomSuffix}-${safeName}`;
   const uploadUrl = `https://${storageHost}${path}`;
 
   // 3. Direct PUT to Bunny.net
@@ -63,7 +64,7 @@ export async function uploadToBunnyClientSide(
   }
 
   return {
-    url: `${pullZoneUrl}/${folder}/${timestamp}-${safeName}`,
+    url: `${pullZoneUrl}/${folder}/${timestamp}-${randomSuffix}-${safeName}`,
     filename: originalName,
     mimeType: mimeType || 'application/octet-stream',
     type

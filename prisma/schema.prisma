@@ -428,6 +428,7 @@ model Appointment {
   clientPhone String?  @map("client_phone") @db.VarChar(50)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
+  files       String?  @db.LongText
   
   // Flags para evitar duplicados en recordatorios
   reminded60  Boolean  @default(false) @map("reminded_60")

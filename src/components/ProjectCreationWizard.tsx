@@ -200,21 +200,44 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
     if (status !== 'authenticated') return;
 
     // Fetch clients
-    fetch('/api/clients')
-      .then(r => r.json())
-      .then(data => { if (Array.isArray(data)) setClients(data) })
-      .catch(console.error)
-
-    fetchTeam()
+    const loadClients = async () => {
+      try {
+        const r = await fetch('/api/clients')
+        if (r.ok) {
+          const data = await r.json()
+          if (Array.isArray(data)) {
+            setClients(data)
+            await db.clientsCache.clear()
+            await db.clientsCache.bulkPut(data)
+          }
+        }
+      } catch (e) {
+        const cached = await db.clientsCache.toArray()
+        if (cached.length > 0) setClients(cached)
+      }
+    }
 
     // Fetch materials
-    fetch('/api/materials')
-      .then(r => r.ok ? r.json() : [])
-      .then(data => { if (Array.isArray(data)) setMaterials(data) })
-      .catch(err => {
-        console.error('Error fetching materials:', err)
-        setMaterials([])
-      })
+    const loadMaterials = async () => {
+      try {
+        const r = await fetch('/api/materials')
+        if (r.ok) {
+          const data = await r.json()
+          if (Array.isArray(data)) {
+            setMaterials(data)
+            await db.materialsCache.clear()
+            await db.materialsCache.bulkPut(data)
+          }
+        }
+      } catch (e) {
+        const cached = await db.materialsCache.toArray()
+        if (cached.length > 0) setMaterials(cached)
+      }
+    }
+
+    loadClients()
+    loadMaterials()
+    fetchTeam()
   }, [status, fetchTeam])
 
   const handleNext = () => {

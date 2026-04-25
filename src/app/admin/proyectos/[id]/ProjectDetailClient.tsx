@@ -875,6 +875,19 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           status: 'pending',
           timestamp: Date.now()
         })
+        
+        // --- LOCAL FEEDBACK ---
+        // Update localProject state so the UI reflects the change immediately
+        const newTeam = availableOperators
+          .filter((op: any) => selectedTeam.includes(op.id))
+          .map((op: any) => ({ user: op }));
+        
+        setLocalProject((prev: any) => ({
+          ...prev,
+          team: newTeam,
+          _pendingTeamSync: true // Visual flag
+        }));
+        
         setIsEditingTeam(false)
         return
       }
@@ -884,6 +897,18 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ operatorIds: selectedTeam })
       })
+      
+      // Update local state when online too for consistency before refresh
+      const newTeam = availableOperators
+        .filter((op: any) => selectedTeam.includes(op.id))
+        .map((op: any) => ({ user: op }));
+      
+      setLocalProject((prev: any) => ({
+        ...prev,
+        team: newTeam,
+        _pendingTeamSync: false
+      }));
+      
       setIsEditingTeam(false)
     } catch (e) {
       alert('Error guardando equipo')
@@ -1439,7 +1464,16 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
             const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
             return match ? match[0] : null
           }
-          return fullProject.locationLink || findGpsLink(fullProject.address) || findGpsLink(fullProject.technicalSpecs) || 'N/A'
+          let link = fullProject.locationLink;
+          if (!link || link === 'N/A') {
+            try {
+              const specs = JSON.parse(fullProject.technicalSpecs || '{}');
+              link = specs.locationLink || findGpsLink(fullProject.address) || findGpsLink(fullProject.technicalSpecs);
+            } catch (e) {
+              link = findGpsLink(fullProject.address) || findGpsLink(fullProject.technicalSpecs);
+            }
+          }
+          return link || 'N/A'
         })()],
         ['Fecha de Inicio', formatDate(fullProject.startDate)],
         ['Fecha Fin (Est.)', formatDate(fullProject.endDate)],
@@ -1453,7 +1487,15 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
         theme: 'grid',
         headStyles: { fillColor: [56, 189, 248], textColor: 255 },
         styles: { fontSize: 9, cellPadding: 4 },
-        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } }
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } },
+        didDrawCell: (data) => {
+          if (data.section === 'body' && data.column.index === 1) {
+            const cellText = data.cell.text[0];
+            if (cellText && (cellText.startsWith('http') || cellText.includes('maps'))) {
+              doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: cellText });
+            }
+          }
+        }
       })
       y = (doc as any).lastAutoTable.finalY + 15
 
@@ -2858,6 +2900,11 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 Equipo Asignado
+                {localProject._pendingTeamSync && (
+                  <span style={{ fontSize: '0.65rem', padding: '1px 6px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.3)', animation: 'pulse 2s infinite' }}>
+                    Sincronizando...
+                  </span>
+                )}
               </h3>
               {!isEditingTeam ? (
                 <button onClick={() => setIsEditingTeam(true)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }}>Editar</button>
@@ -2936,12 +2983,26 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginTop: '2px' }}><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
                 {(() => {
-                  const addr = project.address || project.client?.address
-                  if (!addr) return <span>Sin dirección</span>
-                  if (addr.includes('google.com/maps') || addr.includes('maps.app.goo.gl')) {
+                  const findGpsLink = (text: string) => {
+                    if (!text) return null
+                    const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
+                    return match ? match[0] : null
+                  }
+                  
+                  let locLink = project.locationLink
+                  if (!locLink || locLink === 'N/A') {
+                    try {
+                      const specs = JSON.parse(project.technicalSpecs || '{}')
+                      locLink = specs.locationLink || findGpsLink(project.address) || findGpsLink(project.technicalSpecs)
+                    } catch {
+                      locLink = findGpsLink(project.address) || findGpsLink(project.technicalSpecs)
+                    }
+                  }
+
+                  if (locLink && (locLink.includes('google.com/maps') || locLink.includes('maps.app.goo.gl') || locLink.startsWith('http'))) {
                     return (
                       <a 
-                        href={addr.match(/https?:\/\/\S+/)?.[0] || addr} 
+                        href={locLink} 
                         target="_blank" 
                         rel="noreferrer"
                         className="btn btn-primary btn-sm"
@@ -2952,6 +3013,8 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
                       </a>
                     )
                   }
+                  
+                  const addr = project.address || project.client?.address || 'Sin dirección'
                   return <span>{addr}</span>
                 })()}
               </div>

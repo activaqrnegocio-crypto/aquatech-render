@@ -5,6 +5,7 @@ import { getLocalNow, formatToEcuador } from '@/lib/date-utils'
 import { db } from '@/lib/db'
 import { useLiveQuery } from 'dexie-react-hooks'
 import Link from 'next/link'
+import AppointmentModal from '@/components/Calendar/AppointmentModal'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { NotificationOnboarding } from '@/components/NotificationOnboarding'
 import { IosInstallBanner } from '@/components/IosInstallBanner'
@@ -505,7 +506,14 @@ export default function OperatorDashboardClient({
                     <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{project.phases.length} fases</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                    <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)', flex: 1 }}>{project.title}</h3>
+                    <div style={{ flex: 1 }}>
+                      <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)' }}>{project.title}</h3>
+                      {project.city && (
+                        <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                          📍 {project.city}
+                        </div>
+                      )}
+                    </div>
                     {project.unreadCount > 0 && (
                       <span className="unread-dot-badge" title="Mensajes sin leer">
                         {project.unreadCount}
@@ -526,88 +534,35 @@ export default function OperatorDashboardClient({
 
       </div>
 
-      {/* MODAL DETALLES DE TAREA */}
+      {/* MODAL DETALLES DE TAREA (Multimedia support) */}
       {selectedTask && (
-        <div className="modal-overlay" onClick={() => setSelectedTask(null)} style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, background: 'rgba(0,0,0,0.6)', zIndex: 9999, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '20px' }}>
-          <div className="card" onClick={(e) => e.stopPropagation()} style={{ width: '100%', maxWidth: '400px', padding: '24px', borderRadius: '16px', background: 'var(--bg-deep)' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-              <h2 style={{ margin: 0, fontSize: '1.2rem', color: 'var(--brand-primary)' }}>Detalle de Tarea</h2>
-              <button 
-                onClick={() => setSelectedTask(null)}
-                style={{ background: 'none', border: 'none', fontSize: '1.5rem', cursor: 'pointer', color: 'var(--text-muted)' }}
-              >
-                &times;
-              </button>
-            </div>
-            
-            <div style={{ marginBottom: '16px' }}>
-              <strong style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '1px' }}>TÍTULO</strong>
-              <div style={{ fontSize: '1.1rem', fontWeight: 600, marginTop: '4px' }}>{selectedTask.title}</div>
-            </div>
-
-            {selectedTask.description && (
-              <div style={{ marginBottom: '16px' }}>
-                <strong style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '1px' }}>DESCRIPCIÓN O NOTAS</strong>
-                <div style={{ 
-                  marginTop: '4px', 
-                  whiteSpace: 'pre-wrap', 
-                  color: 'var(--text)', 
-                  fontSize: '0.95rem', 
-                  background: 'var(--bg-surface)', 
-                  padding: '12px', 
-                  borderRadius: '8px',
-                  wordBreak: 'break-word',
-                  overflowWrap: 'anywhere'
-                }}>
-                  {selectedTask.description}
-                </div>
-              </div>
-            )}
-
-            <div style={{ marginBottom: '16px', display: 'flex', gap: '20px' }}>
-              <div style={{ flex: 1 }}>
-                <strong style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '1px' }}>HORA DE INICIO</strong>
-                <div style={{ marginTop: '4px', fontSize: '0.95rem' }}>{formatToEcuador(selectedTask.startTime, { hour: '2-digit', minute: '2-digit' })}</div>
-              </div>
-              <div style={{ flex: 1 }}>
-                <strong style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '1px' }}>HORA DE FIN</strong>
-                <div style={{ marginTop: '4px', fontSize: '0.95rem' }}>{formatToEcuador(selectedTask.endTime, { hour: '2-digit', minute: '2-digit' })}</div>
-              </div>
-            </div>
-
-            {selectedTask.project && (
-              <div style={{ marginBottom: '16px' }}>
-                <strong style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '1px' }}>PROYECTO ASOCIADO</strong>
-                <div style={{ marginTop: '4px', fontSize: '0.95rem', display: 'flex', alignItems: 'center', gap: '6px' }}>
-                  <Briefcase size={16} /> {selectedTask.project.title}
-                </div>
-              </div>
-            )}
-
-            {selectedTask.location && (
-              <div style={{ marginBottom: '20px' }}>
-                <strong style={{ color: 'var(--text-muted)', fontSize: '0.8rem', letterSpacing: '1px' }}>UBICACIÓN</strong>
-                <div style={{ marginTop: '4px', fontSize: '0.95rem', display: 'flex', alignItems: 'flex-start', gap: '6px' }}>
-                  <span style={{ fontSize: '1.1rem' }}>📍</span> 
-                  <span>{selectedTask.location}</span>
-                </div>
-              </div>
-            )}
-
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '16px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-               <span className={`badge ${selectedTask.status === 'COMPLETADA' ? 'badge-success' : 'badge-warning'}`}>
-                 Estado: {selectedTask.status}
-               </span>
-               <button 
-                  className="btn btn-secondary" 
-                  onClick={() => setSelectedTask(null)}
-                  style={{ padding: '8px 16px', fontSize: '0.9rem' }}
-               >
-                 Cerrar
-               </button>
-            </div>
-          </div>
-        </div>
+        <AppointmentModal
+          isOpen={!!selectedTask}
+          onClose={() => setSelectedTask(null)}
+          onSave={async (data) => {
+            // Reutilizar la lógica de toggleStatus o similar para guardar cambios del operador
+            try {
+              const res = await fetch(`/api/appointments/${data.id}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+              })
+              if (res.ok) {
+                await fetchAppointments()
+                setSelectedTask(null)
+              } else {
+                alert('Error al actualizar tarea')
+              }
+            } catch (e) {
+              alert('Error de conexión')
+            }
+          }}
+          initialData={selectedTask}
+          userId={Number(user.id)}
+          projects={projects}
+          operators={[user]} // El operador solo se ve a sí mismo generalmente
+          isAdminView={false}
+        />
       )}
       
 

@@ -1408,7 +1408,16 @@ export default function ProjectExecutionClient({
             const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
             return match ? match[0] : null
           }
-          return fullProject.locationLink || findGpsLink(fullProject.address) || findGpsLink(fullProject.technicalSpecs) || 'N/A'
+          let link = fullProject.locationLink;
+          if (!link || link === 'N/A') {
+            try {
+              const specs = JSON.parse(fullProject.technicalSpecs || '{}');
+              link = specs.locationLink || findGpsLink(fullProject.address) || findGpsLink(fullProject.technicalSpecs);
+            } catch (e) {
+              link = findGpsLink(fullProject.address) || findGpsLink(fullProject.technicalSpecs);
+            }
+          }
+          return link || 'N/A'
         })()],
         ['Fecha Inicio', formatDate(fullProject.startDate)],
         ['Fecha Fin (Est.)', formatDate(fullProject.endDate)],
@@ -1422,7 +1431,15 @@ export default function ProjectExecutionClient({
         theme: 'grid',
         headStyles: { fillColor: [56, 189, 248], textColor: 255 },
         styles: { fontSize: 9, cellPadding: 4 },
-        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } }
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 50 } },
+        didDrawCell: (data: any) => {
+          if (data.section === 'body' && data.column.index === 1) {
+            const cellText = data.cell.text[0];
+            if (cellText && (cellText.startsWith('http') || cellText.includes('maps'))) {
+              doc.link(data.cell.x, data.cell.y, data.cell.width, data.cell.height, { url: cellText });
+            }
+          }
+        }
       })
       y = (doc as any).lastAutoTable.finalY + 20
 
@@ -1681,13 +1698,23 @@ export default function ProjectExecutionClient({
                     <span style={{ color: 'var(--text-muted)' }}>Ubicación</span>
                     <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
                       {(() => {
-                        let locLink = project.locationLink;
-                        try {
-                          const specs = JSON.parse(project.technicalSpecs || '{}');
-                          if (specs.locationLink) locLink = specs.locationLink;
-                        } catch {}
+                        const findGpsLink = (text: any) => {
+                          if (!text || typeof text !== 'string') return null
+                          const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
+                          return match ? match[0] : null
+                        }
 
-                        if (locLink && (locLink.includes('google.com/maps') || locLink.includes('maps.app.goo.gl') || locLink.startsWith('http'))) {
+                        let locLink = project.locationLink;
+                        if (!locLink || locLink === 'N/A') {
+                          try {
+                            const specs = JSON.parse(project.technicalSpecs || '{}');
+                            locLink = specs.locationLink || findGpsLink(projectAddress) || findGpsLink(project.technicalSpecs);
+                          } catch {
+                            locLink = findGpsLink(projectAddress) || findGpsLink(project.technicalSpecs);
+                          }
+                        }
+
+                        if (locLink && typeof locLink === 'string' && (locLink.includes('google.com/maps') || locLink.includes('maps.app.goo.gl') || locLink.startsWith('http'))) {
                           return (
                             <a 
                               href={locLink} 
@@ -1802,8 +1829,7 @@ export default function ProjectExecutionClient({
                 </div>
 
                 {/* Galería Principal (Planos/Fotos Admin) */}
-                {masterGallery.length > 0 && (
-                  <div className="card" style={{ minWidth: 0, marginBottom: '20px' }}>
+                <div className="card" style={{ minWidth: 0, marginBottom: '20px' }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
                       <h3 style={{ fontSize: '1.2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
@@ -1991,7 +2017,6 @@ export default function ProjectExecutionClient({
                       ))}
                     </div>
                   </div>
-                )}
 
               {/* Uploader de Finales - Visible para todos en vista de operador para facilitar pruebas y uso */}
               <div className="card" style={{ minWidth: 0 }}>

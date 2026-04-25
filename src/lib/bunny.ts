@@ -9,7 +9,8 @@ export async function uploadToBunny(
   folder: string = 'aquatech-crm'
 ): Promise<string> {
   const timestamp = Date.now()
-  const path = `/${BUNNY_STORAGE_ZONE}/${folder}/${timestamp}-${filename}`
+  const randomSuffix = Math.random().toString(36).substring(2, 8)
+  const path = `/${BUNNY_STORAGE_ZONE}/${folder}/${timestamp}-${randomSuffix}-${filename}`
   
   const response = await fetch(`https://${BUNNY_STORAGE_HOST}${path}`, {
     method: 'PUT',
@@ -24,7 +25,7 @@ export async function uploadToBunny(
     throw new Error(`Bunny upload failed: ${response.statusText}`)
   }
 
-  return `${BUNNY_PULLZONE_URL}/${folder}/${timestamp}-${filename}`
+  return `${BUNNY_PULLZONE_URL}/${folder}/${timestamp}-${randomSuffix}-${filename}`
 }
 
 export async function deleteFromBunny(fileUrl: string): Promise<void> {
