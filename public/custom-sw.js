@@ -1,5 +1,5 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker v200-DEPLOY-FIX
+// Aquatech CRM — Custom Service Worker v201-DEPLOY-FIX
 // CLEAN: Calendar removed, deploy pipeline fixed
 // ============================================================
 const STATIC_CACHE = 'aquatech-static';
@@ -15,13 +15,7 @@ const PRE_CACHE = [
   '/manifest.json',
   '/favicon.ico',
   '/logo.jpg',
-  '/cotizacion.jpg',
-  '/admin',
-  '/admin/cotizaciones',
-  '/admin/cotizaciones/nuevo',
-  '/admin/proyectos/nuevo',
-  '/admin/operador',
-  '/admin/inventario'
+  '/cotizacion.jpg'
 ];
 
 // ─── INSTALL ────────────────────────────────────────────────
@@ -225,83 +219,100 @@ async function rscNetworkFirst(request) {
  * 4. If all fails → offline.html → inline HTML
  */
 async function navigationHandler(request) {
-  const url = new URL(request.url);
-  console.log('[SW] Navigation:', url.pathname);
-
-  // ── STEP 1: Check cache first for instant offline response
-  let cached = await findCachedPage(request.url, url.pathname);
-  
-  if (cached) {
-    // Validate: don't serve cached login pages for non-login URLs
-    const cachedUrl = cached.url || '';
-    if (!url.pathname.includes('/login') && cachedUrl.includes('/login')) {
-      console.log('[SW] Cached response is login redirect, checking network...');
-      // If we are online, we skip cache and try network (to get the real page)
-      // If we are offline, we MIGHT have to serve it or fallback to a shell
-      if (navigator.onLine) {
-        cached = null;
-      } else {
-        console.log('[SW] Offline and only have redirect, trying shells...');
-        // Fallback to shells before giving up
-      }
-    }
-  }
-
-  if (cached) {
-    console.log('[SW] Serving from cache:', url.pathname);
-    // Update in background (stale-while-revalidate for pages)
-    updatePageInBackground(request.clone(), url.pathname);
-    return cached;
-  }
-
-  // ── STEP 2: Cache miss → try network with SHORT timeout (3s)
   try {
-    const response = await fetchWithTimeout(request.clone(), 3000);
-    if (response.ok) {
-      const contentType = response.headers.get('Content-Type') || '';
-      const isHTML = contentType.includes('text/html');
-      const finalUrl = response.url || '';
-      const isLoginRedirect = finalUrl.includes('/login');
-      
-      // ONLY cache actual HTML responses, never RSC payloads or JSON
-      if (isHTML && !isLoginRedirect) {
-        const cache = await caches.open(PAGES_CACHE);
-        cache.put(request.url, response.clone());
-        const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
-        cache.put(alt, response.clone());
-        if (response.redirected && finalUrl) {
-          cache.put(finalUrl, response.clone());
+    const url = new URL(request.url);
+    console.log('[SW] Navigation:', url.pathname);
+
+    // ── STEP 1: Check cache first for instant offline response
+    let cached = await findCachedPage(request.url, url.pathname);
+    
+    if (cached) {
+      // Validate: don't serve cached login pages for non-login URLs
+      const cachedUrl = cached.url || '';
+      if (!url.pathname.includes('/login') && cachedUrl.includes('/login')) {
+        console.log('[SW] Cached response is login redirect, checking network...');
+        // If we are online, we skip cache and try network (to get the real page)
+        // If we are offline, we MIGHT have to serve it or fallback to a shell
+        if (navigator.onLine) {
+          cached = null;
+        } else {
+          console.log('[SW] Offline and only have redirect, trying shells...');
+          // Fallback to shells before giving up
         }
-        console.log('[SW] Cached page:', url.pathname);
       }
     }
-    return response;
-  } catch (e) {
-    console.warn('[SW] Navigation network failed:', url.pathname);
+
+    if (cached) {
+      console.log('[SW] Serving from cache:', url.pathname);
+      // Update in background (stale-while-revalidate for pages)
+      updatePageInBackground(request.clone(), url.pathname);
+      return cached;
+    }
+
+    // ── STEP 2: Cache miss → try network with SHORT timeout (3s)
+    try {
+      const response = await fetchWithTimeout(request.clone(), 3000);
+      if (response.ok) {
+        const contentType = response.headers.get('Content-Type') || '';
+        const isHTML = contentType.includes('text/html');
+        const finalUrl = response.url || '';
+        const isLoginRedirect = finalUrl.includes('/login');
+        
+        // ONLY cache actual HTML responses, never RSC payloads or JSON
+        if (isHTML && !isLoginRedirect) {
+          const cache = await caches.open(PAGES_CACHE);
+          cache.put(request.url, response.clone());
+          const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
+          cache.put(alt, response.clone());
+          if (response.redirected && finalUrl) {
+            cache.put(finalUrl, response.clone());
+          }
+          console.log('[SW] Cached page:', url.pathname);
+        }
+      }
+      return response;
+    } catch (e) {
+      console.warn('[SW] Navigation network failed:', url.pathname);
+    }
+
+    // ── STEP 3: Last chance — Try shells if network failed or we are offline
+    const shell = await findCachedPage(request.url, url.pathname, true); // true = force serve
+    if (shell) {
+      console.log('[SW] Network failed, serving shell as fallback');
+      return shell;
+    }
+
+    // ── STEP 4: Try offline.html
+    const offlinePage = await caches.match('/offline.html');
+    if (offlinePage) return offlinePage;
+
+    // ── STEP 5: Inline fallback (absolute last resort)
+    return new Response(
+      '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<title>Sin conexión</title></head>' +
+      '<body style="font-family:system-ui,sans-serif;text-align:center;padding:50px;background:#0a0f1e;color:white;">' +
+      '<h1 style="margin-bottom:16px;">📡 Sin conexión</h1>' +
+      '<p style="color:#94a3b8;">Conecta a internet y recarga.</p>' +
+      '<button onclick="window.location.reload()" style="margin-top:20px;padding:12px 24px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;">Reintentar</button>' +
+      '</body></html>', 
+      { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    );
+  } catch (fatalError) {
+    console.error('[SW] FATAL in navigation handler:', fatalError);
+    // Absolute fallback in case something throws unhandled error
+    const offlinePage = await caches.match('/offline.html');
+    if (offlinePage) return offlinePage;
+    return new Response(
+      '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
+      '<title>Sin conexión</title></head>' +
+      '<body style="font-family:system-ui,sans-serif;text-align:center;padding:50px;background:#0a0f1e;color:white;">' +
+      '<h1 style="margin-bottom:16px;">📡 Error de navegación</h1>' +
+      '<p style="color:#94a3b8;">Por favor, conecta a internet y recarga la página.</p>' +
+      '<button onclick="location.reload()" style="margin-top:20px;padding:12px 24px;background:#3b82f6;color:white;border:none;border-radius:8px;">Reintentar</button>' +
+      '</body></html>',
+      { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
+    );
   }
-
-  // ── STEP 3: Last chance — Try shells if network failed or we are offline
-  const shell = await findCachedPage(request.url, url.pathname, true); // true = force serve
-  if (shell) {
-    console.log('[SW] Network failed, serving shell as fallback');
-    return shell;
-  }
-
-  // ── STEP 4: Try offline.html
-  const offlinePage = await caches.match('/offline.html');
-  if (offlinePage) return offlinePage;
-
-  // ── STEP 5: Inline fallback (absolute last resort)
-  return new Response(
-    '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
-    '<title>Sin conexión</title></head>' +
-    '<body style="font-family:system-ui,sans-serif;text-align:center;padding:50px;background:#0a0f1e;color:white;">' +
-    '<h1 style="margin-bottom:16px;">📡 Sin conexión</h1>' +
-    '<p style="color:#94a3b8;">Conecta a internet y recarga.</p>' +
-    '<button onclick="window.location.reload()" style="margin-top:20px;padding:12px 24px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;">Reintentar</button>' +
-    '</body></html>', 
-    { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
-  );
 }
 
 /**

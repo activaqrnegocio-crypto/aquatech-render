@@ -295,6 +295,36 @@
   </div>
 
   <script>
+    // Auto-login offline if credentials exist
+    (async function() {
+      try {
+        const request = indexedDB.open('AquatechOfflineDB');
+        request.onsuccess = () => {
+          const db = request.result;
+          if (!db.objectStoreNames.contains('auth')) return;
+          const tx = db.transaction('auth', 'readonly');
+          const store = tx.objectStore('auth');
+          const getReq = store.get('last_session');
+          getReq.onsuccess = () => {
+            const auth = getReq.result;
+            if (auth && auth.role) {
+              document.getElementById('title').textContent = 'Ingresando en modo offline...';
+              document.getElementById('desc').textContent = `Bienvenido, ${auth.name}`;
+              
+              const target = auth.role === 'OPERATOR' || auth.role === 'OPERADOR' 
+                ? '/admin/operador' 
+                : auth.role === 'SUBCONTRATISTA' 
+                  ? '/admin/subcontratista' 
+                  : '/admin';
+              
+              localStorage.setItem('auth_shadow_active', 'true');
+              setTimeout(() => { window.location.href = target; }, 500);
+            }
+          };
+        };
+      } catch(e) { console.error('Offline auto-login failed', e); }
+    })();
+
     // Auto-detect when connection comes back
     window.addEventListener('online', () => {
       const status = document.getElementById('status');

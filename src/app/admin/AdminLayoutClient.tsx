@@ -8,6 +8,8 @@ import { Suspense } from 'react'
 
 import { useSession } from 'next-auth/react'
 import OfflinePrefetcher from '@/components/OfflinePrefetcher'
+import OfflineErrorBoundary from '@/components/OfflineErrorBoundary'
+import { useState, useEffect } from 'react'
 
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession()
@@ -15,6 +17,20 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   const router = useRouter()
   const isLoginPage = pathname === '/admin/login'
   const isDashboard = pathname === '/admin' || pathname === '/admin/' || pathname === '/admin/operador' || pathname === '/admin/operador/'
+
+  const [isOnline, setIsOnline] = useState(true)
+
+  useEffect(() => {
+    setIsOnline(navigator.onLine)
+    const handleOnline = () => setIsOnline(true)
+    const handleOffline = () => setIsOnline(false)
+    window.addEventListener('online', handleOnline)
+    window.addEventListener('offline', handleOffline)
+    return () => {
+      window.removeEventListener('online', handleOnline)
+      window.removeEventListener('offline', handleOffline)
+    }
+  }, [])
 
   // Determine pages to pre-cache for offline availability
   const getPagesToPrefetch = () => {
@@ -43,19 +59,31 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
         <Sidebar />
       </Suspense>
       <main className="admin-content">
-        {!isDashboard && (
-          <div style={{ padding: '10px 20px 0 20px', marginBottom: '-10px' }}>
-            <button 
-              onClick={() => router.back()}
-              className="btn btn-ghost btn-sm"
-              style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--text-muted)' }}
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
-              <span>Volver</span>
-            </button>
+        {!isOnline && (
+          <div style={{
+            background: '#f59e0b', color: 'white', padding: '10px 20px', 
+            textAlign: 'center', fontWeight: 'bold', fontSize: '0.85rem',
+            position: 'sticky', top: 0, zIndex: 50,
+            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)'
+          }}>
+            📡 Modo Offline — Los cambios se guardarán y sincronizarán automáticamente
           </div>
         )}
-        {children}
+        <OfflineErrorBoundary>
+          {!isDashboard && (
+            <div style={{ padding: '10px 20px 0 20px', marginBottom: '-10px' }}>
+              <button 
+                onClick={() => router.back()}
+                className="btn btn-ghost btn-sm"
+                style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--text-muted)' }}
+              >
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 12H5M12 19l-7-7 7-7"/></svg>
+                <span>Volver</span>
+              </button>
+            </div>
+          )}
+          {children}
+        </OfflineErrorBoundary>
       </main>
     </div>
   )
