@@ -41,7 +41,18 @@ export default function OperatorDashboardClient({
 }: OperatorDashboardClientProps) {
   const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS'>('TAREAS')
   const [appointments, setAppointments] = useState(initialAppointments)
-  const [projects, setProjects] = useState(initialProjects)
+  // Use Dexie as live source for projects to support offline correctly
+  const projectsFromCache = useLiveQuery(
+    () => db.projectsCache.toArray()
+  ) || []
+
+  // Combine initial projects with cache
+  const projects = useMemo(() => {
+    // If we have projects in cache, use them (they are more complete for offline)
+    if (projectsFromCache.length > 0) return projectsFromCache
+    return initialProjects
+  }, [projectsFromCache, initialProjects])
+
   const [selectedTask, setSelectedTask] = useState<any>(null)
 
   const canManageCalendar = hasModuleAccess(user, 'calendario')
@@ -90,6 +101,7 @@ export default function OperatorDashboardClient({
     }))
     return [...merged, ...pendingMapped]
   }, [appointments, pendingTasksRaw, pendingStatusToggles, projects, user.id])
+
   const [pushDismissed, setPushDismissed] = useState(true)
   const { 
     status: pushStatus, 
@@ -116,8 +128,7 @@ export default function OperatorDashboardClient({
   // Polling for live project updates
   useEffect(() => {
     const fetchAllData = async () => {
-      // Solo hacer el request si la pestaña está activa para no saturar la base de datos
-      if (document.visibilityState !== 'visible') return;
+      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
       
       try {
         const [projRes, appRes] = await Promise.all([
@@ -127,7 +138,17 @@ export default function OperatorDashboardClient({
 
         if (projRes.ok) {
           const freshProjects = await projRes.json()
-          setProjects(freshProjects)
+          // Update cache with fresh basic data if we are online
+          if (freshProjects.length > 0) {
+             for (const p of freshProjects) {
+               const existing = await db.projectsCache.get(p.id)
+               await db.projectsCache.put({ 
+                 ...(existing || {}), 
+                 ...p, 
+                 lastAccessedAt: Date.now() 
+               })
+             }
+          }
         }
         if (appRes.ok) {
           const freshApps = await appRes.json()
@@ -138,8 +159,7 @@ export default function OperatorDashboardClient({
       }
     }
     
-    // Polling cada 3 segundos para mantener la agenda y proyectos actualizados
-    const interval = setInterval(fetchAllData, 3000)
+    const interval = setInterval(fetchAllData, 10000) // Slower poll to avoid excessive DB writes
     return () => clearInterval(interval)
   }, [user.id])
 
@@ -478,9 +498,9 @@ export default function OperatorDashboardClient({
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                     <div style={{ flex: 1 }}>
                       <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)' }}>{project.title}</h3>
-                      {project.city && (
+                      {(project.city || project.client?.city) && (
                         <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                          📍 {project.city}
+                          📍 {project.city || project.client?.city}
                         </div>
                       )}
                     </div>

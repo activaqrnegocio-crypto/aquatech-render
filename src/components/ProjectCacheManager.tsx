@@ -41,24 +41,34 @@ export default function ProjectCacheManager() {
 
     try {
       // 1. Obtener la lista primero
-      const limit = 100
+      const limit = 50
       const res = await fetch(`/api/projects/bulk-cache?limit=${limit}`)
       
       if (!res.ok) throw new Error('Error al conectar con el servidor')
 
       const projects = await res.json()
       
+      // 2. Establecer el total de inmediato para que el usuario lo vea
+      setProgress({ current: 0, total: projects.length })
+
       if (projects.length === 0) {
+        // Guardar metadata aunque sea cero para quitar el mensaje de "no hay datos"
+        const now = Date.now()
+        await db.cacheMetadata.put({
+          id: 'projects_bulk',
+          lastSync: now,
+          count: 0,
+          status: 'idle'
+        })
+        setProjectCount(0)
+        setLastSync(now)
         setSyncComplete(true)
         setIsSyncing(false)
         return
       }
 
-      // 2. Establecer el total de inmediato para que el usuario lo vea
-      setProgress({ current: 0, total: projects.length })
-
-      const CHUNK_SIZE = 5
-      const TIMEOUT_MS = 20000 // 20 segundos por lote por si la red es lenta
+      const CHUNK_SIZE = 3 // Más pequeño para no saturar memoria móvil
+      const TIMEOUT_MS = 30000 
 
       for (let i = 0; i < projects.length; i += CHUNK_SIZE) {
         const chunk = projects.slice(i, i + CHUNK_SIZE)
@@ -75,22 +85,23 @@ export default function ProjectCacheManager() {
 
               await db.projectsCache.put(projectToCache)
               
-              // Precarga de imágenes para modo offline
+              // Precarga de imágenes ULTRA segura (sin bloquear el hilo principal)
               if (p.gallery && p.gallery.length > 0) {
-                // Precargar las 10 fotos más recientes para que el navegador las guarde en caché
-                p.gallery.slice(0, 10).forEach((item: any) => {
-                  if (item.url && item.url.startsWith('http')) {
-                    const img = new Image();
-                    img.src = item.url;
-                  }
-                });
+                setTimeout(() => {
+                  p.gallery.slice(0, 5).forEach((item: any) => {
+                    if (item.url && item.url.startsWith('http')) {
+                      const img = new Image();
+                      img.src = item.url;
+                    }
+                  });
+                }, 100);
               }
 
               if (chatMessages.length > 0) {
                 await db.chatCache.put({ projectId: p.id, messages: chatMessages })
               }
               
-              setProgress(prev => ({ ...prev, current: prev.current + 1 }))
+              setProgress(prev => ({ ...prev, current: Math.min(prev.current + 1, prev.total) }))
               return true
             } catch (err) {
               console.error(`Error caching project ${p.id}:`, err)
@@ -107,12 +118,12 @@ export default function ProjectCacheManager() {
         try {
           await Promise.race([processChunk(), timeoutPromise])
         } catch (err) {
-          console.warn(`Lote ${i/CHUNK_SIZE + 1} demoró demasiado o falló. Continuando...`)
+          console.warn(`Lote demoró demasiado. Continuando...`)
           const remainingInChunk = Math.min(CHUNK_SIZE, projects.length - i)
-          setProgress(prev => {
-            const nextCurrent = prev.current + remainingInChunk
-            return { ...prev, current: Math.min(nextCurrent, prev.total) }
-          })
+          setProgress(prev => ({ 
+            ...prev, 
+            current: Math.min(prev.current + remainingInChunk, prev.total) 
+          }))
         }
       }
 
@@ -133,13 +144,6 @@ export default function ProjectCacheManager() {
     } catch (e: any) {
       console.error('Manual sync failed:', e)
       alert(`Error al guardar caché: ${e.message}`)
-      
-      await db.cacheMetadata.put({
-        id: 'projects_bulk',
-        lastSync: lastSync || Date.now(),
-        count: projectCount,
-        status: 'error'
-      })
     } finally {
       setIsSyncing(false)
     }
@@ -283,7 +287,7 @@ export default function ProjectCacheManager() {
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              Guardar Caché (100)
+              Sincronizar Mis Proyectos
             </>
           )}
         </button>

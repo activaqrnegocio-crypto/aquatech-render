@@ -12,14 +12,17 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '50', 10)
+    const safeLimit = Math.min(limit, 50) // Cap at 50 for cloud stability
     
     // For operators, only return their projects
-    const userRole = (session.user as any).role
+    const rawRole = (session.user as any).role || ''
+    const userRole = String(rawRole).toUpperCase()
     const userId = (session.user as any).id
 
     const whereClause: any = {}
 
-    if (userRole === 'OPERATOR' || userRole === 'SUBCONTRATISTA') {
+    // Only filter if it's explicitly an operator or subcontractor
+    if (userRole === 'OPERATOR' || userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA') {
       whereClause.team = {
         some: {
           userId: Number(userId)
@@ -29,6 +32,7 @@ export async function GET(request: Request) {
 
     const projects = await prisma.project.findMany({
       where: whereClause,
+      take: safeLimit,
       include: {
         client: true,
         phases: { orderBy: { displayOrder: 'asc' } },
@@ -49,8 +53,7 @@ export async function GET(request: Request) {
           take: 30 // Recent chat messages
         }
       },
-      orderBy: { createdAt: 'desc' },
-      take: limit
+      orderBy: { createdAt: 'desc' }
     })
 
     return NextResponse.json(JSON.parse(JSON.stringify(projects)))
