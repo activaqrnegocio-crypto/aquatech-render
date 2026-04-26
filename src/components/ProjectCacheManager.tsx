@@ -9,6 +9,7 @@ export default function ProjectCacheManager() {
   const [progress, setProgress] = useState({ current: 0, total: 0 })
   const [lastSync, setLastSync] = useState<number | null>(null)
   const [projectCount, setProjectCount] = useState(0)
+  const [statusText, setStatusText] = useState('')
 
   useEffect(() => {
     const loadMetadata = async () => {
@@ -29,85 +30,112 @@ export default function ProjectCacheManager() {
   }, [])
 
   const handleManualSync = async () => {
-    if (isSyncing || syncComplete) return
+    if (isSyncing || syncComplete) return;
     if (!navigator.onLine) {
-      alert('Debes estar conectado a internet para guardar el caché.')
-      return
+      alert('Debes estar conectado a internet para guardar el caché.');
+      return;
     }
 
-    setIsSyncing(true)
-    setSyncComplete(false)
-    setProgress({ current: 0, total: 0 })
+    setIsSyncing(true);
+    setSyncComplete(false);
+    setProgress({ current: 0, total: 0 });
+
+    const TOTAL_GOAL = 30;
+    const CHUNK_SIZE = 10;
+    let totalSuccessCount = 0;
+    let allSyncProjects: any[] = [];
 
     try {
-      await db.cacheMetadata.put({
-        id: 'projects_bulk',
-        lastSync: lastSync || Date.now(),
-        count: projectCount,
-        status: 'syncing'
-      })
+      for (let offset = 0; offset < TOTAL_GOAL; offset += CHUNK_SIZE) {
+        const currentBlock = Math.floor(offset / CHUNK_SIZE) + 1;
+        const totalBlocks = Math.ceil(TOTAL_GOAL / CHUNK_SIZE);
+        const blockMsg = `Bloque ${currentBlock}/${totalBlocks}...`;
+        setStatusText(blockMsg);
+        
+        await db.cacheMetadata.put({
+          id: 'projects_bulk',
+          lastSync: lastSync || Date.now(),
+          count: totalSuccessCount,
+          status: blockMsg as any
+        });
 
-      const limit = 50
-      const res = await fetch(`/api/projects/bulk-cache?limit=${limit}`)
-      
-      if (!res.ok) {
-        throw new Error('Error al obtener datos del servidor')
-      }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 40000);
 
-      const projects = await res.json()
-      setProgress({ current: 0, total: projects.length })
+        const res = await fetch(`/api/projects/bulk-cache?limit=${CHUNK_SIZE}&skip=${offset}`, {
+          signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!res.ok) throw new Error(`Error en bloque ${currentBlock} (${res.status})`);
 
-      let successCount = 0
+        const chunkProjects = await res.json();
+        if (chunkProjects.length === 0) break;
 
-      for (let i = 0; i < projects.length; i++) {
-        const p = projects[i]
-        try {
-          const projectToCache = { ...p }
-          const chatMessages = p.chatMessages || []
-          delete projectToCache.chatMessages
+        for (let i = 0; i < chunkProjects.length; i++) {
+          const p = chunkProjects[i];
+          try {
+            const projectToCache = { ...p };
+            const chatMessages = p.chatMessages || [];
+            delete projectToCache.chatMessages;
 
-          await db.projectsCache.put(projectToCache)
-          
-          if (chatMessages.length > 0) {
-            await db.chatCache.put({ projectId: p.id, messages: chatMessages })
+            await db.projectsCache.put(projectToCache);
+            if (chatMessages.length > 0) {
+              await db.chatCache.put({ projectId: p.id, messages: chatMessages });
+            }
+
+            totalSuccessCount++;
+            allSyncProjects.push(p);
+            setProgress({ current: totalSuccessCount, total: TOTAL_GOAL });
+            
+            await new Promise(resolve => setTimeout(resolve, 30));
+          } catch (err) {
+            console.error(`Error caching project ${p.id}:`, err);
           }
-
-          successCount++
-          setProgress({ current: i + 1, total: projects.length })
-          
-          await new Promise(resolve => setTimeout(resolve, 50))
-        } catch (err) {
-          console.error(`Error caching project ${p.id}:`, err)
         }
       }
 
-      const now = Date.now()
-      setLastSync(now)
-      setProjectCount(successCount)
+      const now = Date.now();
+      setLastSync(now);
+      setProjectCount(totalSuccessCount);
 
       await db.cacheMetadata.put({
         id: 'projects_bulk',
         lastSync: now,
-        count: successCount,
+        count: totalSuccessCount,
         status: 'idle'
-      })
+      });
 
-      setSyncComplete(true)
+      setSyncComplete(true);
+      
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        const projectUrls = allSyncProjects.flatMap((p: any) => [
+          `/admin/proyectos/${p.id}`,
+          `/admin/proyectos/${p.id}/bitacora`
+        ]);
+        navigator.serviceWorker.controller.postMessage({
+          type: 'PRECACHE_URLS',
+          urls: projectUrls
+        });
+      }
 
     } catch (e: any) {
-      console.error('Manual sync failed:', e)
-      alert(`Error al guardar caché: ${e.message}`)
+      console.error('Manual sync failed:', e);
+      const errorMsg = e.name === 'AbortError' ? 'Tiempo de espera agotado (servidor lento)' : e.message;
+      alert(`Error al guardar caché: ${errorMsg}`);
+      setSyncComplete(false);
       
       await db.cacheMetadata.put({
         id: 'projects_bulk',
         lastSync: lastSync || Date.now(),
         count: projectCount,
         status: 'error'
-      })
+      });
     } finally {
-      setIsSyncing(false)
+      setIsSyncing(false);
     }
-  }
+  };
 
   const formatTimeAgo = (timestamp: number) => {
     const minutes = Math.floor((Date.now() - timestamp) / 60000)
@@ -228,7 +256,7 @@ export default function ProjectCacheManager() {
                 <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
               </svg>
-              Descargando {progress.current}/{progress.total}
+              {statusText || 'Descargando'} {progress.current}/{progress.total}
             </>
           ) : (
             <>
@@ -237,7 +265,7 @@ export default function ProjectCacheManager() {
                 <polyline points="7 10 12 15 17 10"/>
                 <line x1="12" y1="15" x2="12" y2="3"/>
               </svg>
-              Guardar Caché (50)
+              Guardar Caché (30)
             </>
           )}
         </button>

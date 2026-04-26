@@ -23,18 +23,13 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
       })
     }, 1000)
 
-    // 2. SW and Data Prefetch
+    // 2. SW and Data Prefetch (Increased delay to 5s to let UI breathe)
     const dataTimer = setTimeout(() => {
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        // HTML Caching
+        // HTML Caching (SW now handles this with chunks and timeouts)
         navigator.serviceWorker.controller.postMessage({
           type: 'PRECACHE_URLS',
           urls
-        })
-
-        // RSC Payload Caching
-        urls.forEach(url => {
-          fetch(url, { headers: { 'RSC': '1' } }).catch(() => {})
         })
       }
 
@@ -110,7 +105,7 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
         }
         prefetchSequentially()
       }
-    }, 3000)
+    }, 5000)
 
     return () => {
       clearTimeout(timer)

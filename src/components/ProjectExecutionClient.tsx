@@ -1283,17 +1283,26 @@ export default function ProjectExecutionClient({
         ['Estado Actual', fullProject.status === 'ACTIVO' ? 'En Ejecución' : fullProject.status],
         ['Dirección Texto', `${fullProject.city || ''} ${fullProject.address || ''}`.trim() || 'N/A'],
         ['Ubicación Cliente', (() => {
-          const link = fullProject.locationLink;
-          return (link && link !== 'N/A' && link.startsWith('http')) ? link : 'No proporcionada';
-        })()],
-        ['Ubicación Obra (Operador)', (() => {
           const findGpsLink = (text: string) => {
             if (!text) return null
             const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
             return match ? match[0] : null
           }
-          const link = findGpsLink(fullProject.technicalSpecs) || findGpsLink(fullProject.specsTranscription) || findGpsLink(fullProject.address);
-          return (link && link !== fullProject.locationLink) ? link : 'Ver ubicación principal';
+          const link = fullProject.locationLink || findGpsLink(fullProject.address);
+          return (link && link !== 'N/A') ? link : 'No proporcionada';
+        })()],
+        ['Ubicación Obra (GPS)', (() => {
+          const findGpsLink = (text: string) => {
+            if (!text) return null
+            const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
+            return match ? match[0] : null
+          }
+          let link = findGpsLink(fullProject.technicalSpecs) || findGpsLink(fullProject.specsTranscription) || findGpsLink(fullProject.address);
+          
+          // Si no hay link de obra pero hay de cliente, usamos el de cliente para no dejarlo vacío
+          if (!link || link === 'N/A') link = fullProject.locationLink;
+          
+          return (link && link !== 'N/A') ? link : 'No proporcionada';
         })()],
       ]
 

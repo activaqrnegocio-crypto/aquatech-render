@@ -242,7 +242,10 @@ export default function ProyectosPage() {
 
   return (
     <div className="p-6">
-      <OfflinePrefetcher urls={projects.slice(0, 20).map(p => `/admin/proyectos/${p.id}`)} />
+      <OfflinePrefetcher urls={projects.slice(0, 10).flatMap(p => [
+        `/admin/proyectos/${p.id}`,
+        `/admin/proyectos/${p.id}/bitacora`
+      ])} />
       <ProjectCacheManager />
       <div className="dashboard-header" style={{ marginBottom: '30px' }}>
         <div>

@@ -76,12 +76,29 @@ export default function AppointmentModal({
           clientPhone: initialData.clientPhone || '',
           status: initialData.status || 'PENDIENTE',
           mediaFiles: [],
-          previews: initialData.files ? (typeof initialData.files === 'string' ? JSON.parse(initialData.files) : initialData.files).map((f: any) => ({
-            url: f.url || f.data,
-            type: f.type || 'document',
-            name: f.name || 'Archivo',
-            isNew: false
-          })) : []
+          previews: initialData.files ? (typeof initialData.files === 'string' ? JSON.parse(initialData.files) : initialData.files).map((f: any) => {
+            // Robust fallback for offline tasks or missing URLs
+            let finalUrl = f.url || f.data;
+            if (!finalUrl && initialData.attachments) {
+              const att = Array.isArray(initialData.attachments) 
+                ? initialData.attachments.find((a: any) => a.name === f.name)
+                : null;
+              if (att) finalUrl = att.base64 || att.data;
+            }
+            if (!finalUrl && initialData.attachmentLinks) {
+              const link = Array.isArray(initialData.attachmentLinks)
+                ? initialData.attachmentLinks.find((l: any) => l.name === f.name)
+                : null;
+              if (link) finalUrl = link.base64 || link.url;
+            }
+
+            return {
+              url: finalUrl,
+              type: f.type || 'document',
+              name: f.name || 'Archivo',
+              isNew: false
+            };
+          }) : []
         })
       } else {
         const now = getLocalNow()
@@ -384,8 +401,8 @@ export default function AppointmentModal({
         .map(p => ({ url: p.url, type: p.type, name: p.name }));
       
       const newUploadedFiles = [
-        ...realFiles.map(f => ({ url: f.data, type: f.type, name: f.name })),
-        ...linkFiles.map(f => ({ url: f.url, type: f.type, name: f.name }))
+        ...realFiles.map(f => ({ url: f.data || f.base64, type: f.type, name: f.name })),
+        ...linkFiles.map(f => ({ url: f.url || f.base64, type: f.type, name: f.name }))
       ];
 
       const allFiles = [...existingFiles, ...newUploadedFiles];
@@ -1401,7 +1418,18 @@ export default function AppointmentModal({
               <p style={{ marginBottom: '30px', color: 'var(--text-muted)' }}>Vista previa no disponible para este formato.</p>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
                 <button 
-                  onClick={() => window.open(selectedMedia.url, '_blank')}
+                  onClick={() => {
+                    if (selectedMedia.url.startsWith('data:')) {
+                      const link = document.createElement('a');
+                      link.href = selectedMedia.url;
+                      link.download = selectedMedia.name;
+                      document.body.appendChild(link);
+                      link.click();
+                      document.body.removeChild(link);
+                    } else {
+                      window.open(selectedMedia.url, '_blank');
+                    }
+                  }}
                   style={{
                     background: 'var(--primary)',
                     color: 'black',
@@ -1428,10 +1456,21 @@ export default function AppointmentModal({
           <p style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '10px' }}>{selectedMedia.name}</p>
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
             <button 
-              onClick={() => window.open(selectedMedia.url, '_blank')}
+              onClick={() => {
+                if (selectedMedia.url.startsWith('data:')) {
+                  const link = document.createElement('a');
+                  link.href = selectedMedia.url;
+                  link.download = selectedMedia.name;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                } else {
+                  window.open(selectedMedia.url, '_blank');
+                }
+              }}
               style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer' }}
             >
-              Abrir Original
+              Abrir Original / Descargar
             </button>
           </div>
         </div>

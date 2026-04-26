@@ -10,6 +10,8 @@ const RSC_CACHE    = 'aquatech-rsc';
 
 // Only pre-cache truly PUBLIC files (no auth required)
 const PRE_CACHE = [
+  '/admin',
+  '/admin/operador',
   '/offline.html',
   '/app-start.html',
   '/manifest.json',
@@ -249,9 +251,9 @@ async function navigationHandler(request) {
       return cached;
     }
 
-    // ── STEP 2: Cache miss → try network with SHORT timeout (3s)
+    // ── STEP 2: Cache miss → try network with increased timeout (8s) for mobile stability
     try {
-      const response = await fetchWithTimeout(request.clone(), 3000);
+      const response = await fetchWithTimeout(request.clone(), 8000);
       if (response.ok) {
         const contentType = response.headers.get('Content-Type') || '';
         const isHTML = contentType.includes('text/html');
@@ -287,14 +289,17 @@ async function navigationHandler(request) {
     const offlinePage = await caches.match('/offline.html');
     if (offlinePage) return offlinePage;
 
-    // ── STEP 5: Inline fallback (absolute last resort)
+    // ── STEP 5: Final fallback → Redirect to Admin Dashboard instead of breaking UI
+    const dashboard = await caches.match('/admin', { ignoreVary: true, ignoreSearch: true });
+    if (dashboard) return dashboard;
+
     return new Response(
       '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
       '<title>Sin conexión</title></head>' +
       '<body style="font-family:system-ui,sans-serif;text-align:center;padding:50px;background:#0a0f1e;color:white;">' +
       '<h1 style="margin-bottom:16px;">📡 Sin conexión</h1>' +
-      '<p style="color:#94a3b8;">Conecta a internet y recarga.</p>' +
-      '<button onclick="window.location.reload()" style="margin-top:20px;padding:12px 24px;background:#3b82f6;color:white;border:none;border-radius:8px;cursor:pointer;">Reintentar</button>' +
+      '<p style="color:#94a3b8;">Esta página no está guardada. Por favor, vuelve al panel principal.</p>' +
+      '<a href="/admin" style="margin-top:20px;display:inline-block;padding:12px 24px;background:#3b82f6;color:white;text-decoration:none;border-radius:8px;font-weight:bold;">Ir al Panel Principal</a>' +
       '</body></html>', 
       { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
     );
@@ -357,6 +362,16 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   else if (pathname.includes('/subcontratista')) shells.push('/admin/subcontratista', '/admin/subcontratista/');
   else if (pathname.includes('/admin/proyectos/nuevo')) shells.push('/admin/proyectos', '/admin/proyectos/');
   else if (pathname.includes('/admin/proyectos')) shells.push('/admin/proyectos', '/admin/proyectos/');
+  // Force redirect to dashboard for non-cached secondary sections requested by user
+  else if (
+    pathname.includes('/admin/blog') || 
+    pathname.includes('/admin/marketing') || 
+    pathname.includes('/admin/recursos') || 
+    pathname.includes('/admin/equipo') ||
+    pathname.includes('/admin/team')
+  ) {
+    shells.push('/admin', '/admin/');
+  }
   else {
     shells.push('/admin', '/admin/');
   }
@@ -516,35 +531,49 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'PRECACHE_URLS') {
     const urls = event.data.urls || [];
     console.log('[SW] Warm-up pre-caching', urls.length, 'URLs');
+    
     event.waitUntil(
       caches.open(PAGES_CACHE).then(async (cache) => {
-        for (const url of urls) {
-          try {
-            const response = await fetch(url, { 
-              credentials: 'same-origin',
-              redirect: 'follow'
-            });
-            if (response.ok) {
-              const contentType = response.headers.get('Content-Type') || '';
-              const isHTML = contentType.includes('text/html');
-              const finalUrl = response.url || '';
-              const isLoginRedirect = finalUrl.includes('/login');
-              
-              // ONLY cache HTML — never RSC/JSON payloads
-              if (isHTML && !isLoginRedirect) {
-                await cache.put(url, response.clone());
-                const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
-                await cache.put(alt, response.clone());
-                if (response.redirected && finalUrl) {
-                  await cache.put(finalUrl, response.clone());
+        // Concurrency limit: 2 at a time for mobile stability
+        const CHUNK_SIZE = 2;
+        for (let i = 0; i < urls.length; i += CHUNK_SIZE) {
+          const chunk = urls.slice(i, i + CHUNK_SIZE);
+          
+          await Promise.all(chunk.map(async (url) => {
+            try {
+              // 7s timeout per URL to avoid hanging on slow pages or 502s
+              const response = await fetchWithTimeout(new Request(url, {
+                credentials: 'same-origin',
+                redirect: 'follow'
+              }), 7000);
+
+              if (response.ok) {
+                const contentType = response.headers.get('Content-Type') || '';
+                const isHTML = contentType.includes('text/html');
+                const finalUrl = response.url || '';
+                const isLoginRedirect = finalUrl.includes('/login');
+                
+                if (isHTML && !isLoginRedirect) {
+                  await cache.put(url, response.clone());
+                  const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
+                  await cache.put(alt, response.clone());
+                  if (response.redirected && finalUrl) {
+                    await cache.put(finalUrl, response.clone());
+                  }
+                  console.log('[SW] Warm-cached:', url);
                 }
-                console.log('[SW] Warm-cached:', url);
               }
+            } catch (e) {
+              console.warn('[SW] Warm-cache failed/timeout:', url);
             }
-          } catch (e) {
-            console.warn('[SW] Warm-cache failed for:', url);
+          }));
+          
+          // Small pause between chunks to let the CPU breathe
+          if (i + CHUNK_SIZE < urls.length) {
+            await new Promise(r => setTimeout(r, 400));
           }
         }
+        console.log('[SW] Warm-up complete');
       })
     );
   }

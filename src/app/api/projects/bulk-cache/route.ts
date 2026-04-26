@@ -12,6 +12,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '50', 10)
+    const skip = parseInt(searchParams.get('skip') || '0', 10)
     
     // For operators, only return their projects
     const userRole = (session.user as any).role
@@ -50,7 +51,8 @@ export async function GET(request: Request) {
         }
       },
       orderBy: { createdAt: 'desc' },
-      take: limit
+      take: limit,
+      skip: skip
     })
 
     return NextResponse.json(JSON.parse(JSON.stringify(projects)))
