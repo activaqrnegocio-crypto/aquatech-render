@@ -125,73 +125,68 @@ export async function POST(request: Request) {
     // Responder inmediatamente al cliente para no bloquearlo
     const response = NextResponse.json(results.length === 1 ? results[0] : results)
 
-    // PASO 2: Enviar notificaciones SECUENCIALMENTE después de crear las citas
+    // Enviar notificaciones en segundo plano
     const sendNotifications = async () => {
-      for (let i = 0; i < results.length; i++) {
-        const appointment = results[i]
+      try {
+        for (let i = 0; i < results.length; i++) {
+          const appointment = results[i]
+          const startLocale = formatTimeEcuador(startTime)
+          
+          notifyUser(
+            appointment.userId,
+            '📌 Nueva Tarea Asignada',
+            `${title} — ${startLocale}`,
+            `URL_CALENDAR`,
+            `task-${appointment.id}`
+          ).catch(e => console.error('Push error:', e))
 
-        // 🔔 Push Notification
-        const startLocale = formatTimeEcuador(startTime)
-        notifyUser(
-          appointment.userId,
-          '📌 Nueva Tarea Asignada',
-          `${title} — ${startLocale}`,
-          `URL_CALENDAR`,
-          `task-${appointment.id}`
-        )
+          if (appointment.user?.phone) {
+            try {
+              const startTimeLocale = formatTimeEcuador(startTime);
+              const startDateLocale = formatDateEcuador(startTime);
+              const descrText = description ? `\n📝 *Notas:*\n${description}` : '';
+              const locClientText = clientLocation ? `\n📍 *Ubicación Cliente:*\n${clientLocation}` : '';
+              const nameClientText = clientName ? `\n👤 *Cliente:*\n${clientName}` : '';
+              const phoneClientText = clientPhone ? `\n📞 *Teléfono Cliente:*\n${clientPhone}` : '';
+              const locOpText = operatorLocation ? `\n📡 *Ubicación Operario (GPS):*\n${operatorLocation}` : '';
+              
+              const allAttachments = [...(attachments || []), ...(attachmentLinks || [])];
+              const fileManifest = allAttachments.length > 0 
+                ? `\n📦 *Archivos adjuntos:* ${allAttachments.map(a => a.name).join(', ')}` 
+                : '';
 
-        // WhatsApp
-        if (appointment.user?.phone) {
-          try {
-            const startTimeLocale = formatTimeEcuador(startTime);
-            const startDateLocale = formatDateEcuador(startTime);
-            const descrText = description ? `\n📝 *Notas:*\n${description}` : '';
-            const locClientText = clientLocation ? `\n📍 *Ubicación Cliente:*\n${clientLocation}` : '';
-            const nameClientText = clientName ? `\n👤 *Cliente:*\n${clientName}` : '';
-            const phoneClientText = clientPhone ? `\n📞 *Teléfono Cliente:*\n${clientPhone}` : '';
-            const locOpText = operatorLocation ? `\n📡 *Ubicación Operario (GPS):*\n${operatorLocation}` : '';
-            
-            // Listado de archivos para diagnóstico
-            const allAttachments = [...(attachments || []), ...(attachmentLinks || [])];
-            const fileManifest = allAttachments.length > 0 
-              ? `\n📦 *Archivos adjuntos:* ${allAttachments.map(a => a.name).join(', ')}` 
-              : '';
+              const videoLinks = attachmentLinks?.filter((a: any) => a.type === 'video') || [];
+              const audioLinks = attachmentLinks?.filter((a: any) => a.type === 'audio') || [];
 
-            // Los links de respaldo para Videos y Audios
-            const videoLinks = attachmentLinks?.filter((a: any) => a.type === 'video') || [];
-            const audioLinks = attachmentLinks?.filter((a: any) => a.type === 'audio') || [];
+              let linksText = '';
+              if (videoLinks.length) {
+                linksText += `\n\n🎥 *Videos (Links):*\n${videoLinks.map((a: any) => `• ${a.url}`).join('\n')}`;
+              }
+              if (audioLinks.length) {
+                linksText += `\n\n🔊 *Audios (Respaldo):*\n${audioLinks.map((a: any) => `• [Escuchar Audio](${a.url})`).join('\n')}`;
+              }
 
-            let linksText = '';
-            if (videoLinks.length) {
-              linksText += `\n\n🎥 *Videos (Links):*\n${videoLinks.map((a: any) => `• ${a.url}`).join('\n')}`;
+              const message = `*Notificación Aquatech*\n\nHola ${appointment.user.name}, tienes una *nueva tarea* asignada:\n📌 *${title}*\n📅 Fecha: ${startDateLocale}\n⏰ Hora: ${startTimeLocale}${descrText}${nameClientText}${phoneClientText}${locClientText}${locOpText}${fileManifest}${linksText}\n\nConsulta más detalles en tu perfil.`;
+
+              await sendWhatsAppMessage(appointment.user.phone, message, attachments);
+            } catch (err) {
+              console.error(`❌ Error enviando WA a ${appointment.user.name}:`, err);
             }
-            if (audioLinks.length) {
-              linksText += `\n\n🔊 *Audios (Respaldo):*\n${audioLinks.map((a: any) => `• [Escuchar Audio](${a.url})`).join('\n')}`;
+
+            if (i < results.length - 1) {
+              await new Promise(resolve => setTimeout(resolve, 800));
             }
-
-            const message = `*Notificación Aquatech*\n\nHola ${appointment.user.name}, tienes una *nueva tarea* asignada:\n📌 *${title}*\n📅 Fecha: ${startDateLocale}\n⏰ Hora: ${startTimeLocale}${descrText}${nameClientText}${phoneClientText}${locClientText}${locOpText}${fileManifest}${linksText}\n\nConsulta más detalles en tu perfil.`;
-
-            // Enviar mensaje de texto + adjuntos reales (imgs, audios, docs)
-            await sendWhatsAppMessage(appointment.user.phone, message, attachments);
-            console.log(`✅ WA enviado a ${appointment.user.name} (${appointment.user.phone})`);
-          } catch (err) {
-            console.error(`❌ Error enviando WA a ${appointment.user.name}:`, err);
-          }
-
-          if (i < results.length - 1) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
           }
         }
+      } catch (err) {
+        console.error('Error global en notificaciones:', err);
       }
     }
 
-    try {
-      await sendNotifications()
-    } catch (err) {
-      console.error('Error global en notificaciones:', err);
-    }
+    // Iniciar notificaciones sin esperar
+    sendNotifications()
 
-    return response
+    return NextResponse.json(results.length === 1 ? results[0] : results, { status: 201 })
   } catch (error) {
     console.error('Error creating appointment:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

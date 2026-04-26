@@ -10,6 +10,7 @@ import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { NotificationOnboarding } from '@/components/NotificationOnboarding'
 import { IosInstallBanner } from '@/components/IosInstallBanner'
 import { hasModuleAccess } from '@/lib/rbac'
+import ProjectCacheManager from '@/components/ProjectCacheManager'
 // Inline SVG icons to match project pattern
 const svgProps = (size: number, style?: React.CSSProperties, className?: string) => ({
   width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
@@ -269,6 +270,11 @@ export default function OperatorDashboardClient({
 
       {/* iOS Install Guide (Only if needed) */}
       <IosInstallBanner />
+
+      {/* Sync Manager for Offline (Available for Operators too) */}
+      <div style={{ marginTop: '15px' }}>
+        <ProjectCacheManager />
+      </div>
 
       {/* Notification Onboarding Modal */}
       {showOnboarding && (

@@ -307,41 +307,41 @@ export async function POST(request: Request) {
       return newProject
     }, { timeout: 20000 })
 
-    // 🔔 Notification: Notify assigned team members via Push and WhatsApp
+    // 🔔 Notification: Notify assigned team members in background (Non-blocking)
     if (team && team.length > 0) {
       const creatorId = Number(userId)
-      const usersToNotify = await prisma.user.findMany({
+      prisma.user.findMany({
         where: { id: { in: team.map((id: any) => Number(id)) } },
         select: { id: true, phone: true, name: true }
-      });
+      }).then(async (usersToNotify) => {
+        for (let i = 0; i < usersToNotify.length; i++) {
+          const user = usersToNotify[i];
+          if (user.id === creatorId) continue;
 
-      for (let i = 0; i < usersToNotify.length; i++) {
-        const user = usersToNotify[i];
-        if (user.id === creatorId) continue;
+          // Web Push
+          notifyUser(
+            user.id,
+            '📊 Nuevo Proyecto Asignado',
+            `Te asignaron al proyecto: ${title}`,
+            `/admin/operador`,
+            `project-new-${project.id}`
+          ).catch(e => console.error('Push error:', e));
 
-        // Web Push
-        await notifyUser(
-          user.id,
-          '📊 Nuevo Proyecto Asignado',
-          `Te asignaron al proyecto: ${title}`,
-          `/admin/operador`,
-          `project-new-${project.id}`
-        ).catch(e => console.error('Push error:', e));
+          // WhatsApp
+          if (user.phone) {
+            const message = `🚀 *Aquatech CRM*\nHola ${user.name},\nhas sido asignado al proyecto: *${title}*.\nPor favor, revisa la plataforma para más detalles.`;
+            sendWhatsAppMessage(user.phone, message).catch((e) => console.error('WA error:', e));
+          }
 
-        // WhatsApp
-        if (user.phone) {
-          const message = `🚀 *Aquatech CRM*\nHola ${user.name},\nhas sido asignado al proyecto: *${title}*.\nPor favor, revisa la plataforma para más detalles.`;
-          await sendWhatsAppMessage(user.phone, message).catch((e) => console.error('WA error:', e));
+          // Small delay between messages to avoid collapsing Evolution API
+          if (i < usersToNotify.length - 1) {
+            await new Promise(resolve => setTimeout(resolve, 800)); // Reduced delay
+          }
         }
-
-        // Delay 1.5s between messages to avoid collapsing Evolution API
-        if (i < usersToNotify.length - 1) {
-          await new Promise(resolve => setTimeout(resolve, 1500));
-        }
-      }
+      }).catch(e => console.error('Notification background error:', e));
     }
 
-    // 🔔 Notification: Notify all Admins about new project
+    // 🔔 Notification: Notify all Admins about new project (Non-blocking)
     notifyAdmins(
       '🆕 Nuevo Proyecto Creado',
       `${session.user.name} creó: ${title}`,

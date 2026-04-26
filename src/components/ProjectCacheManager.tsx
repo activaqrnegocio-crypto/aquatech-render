@@ -40,25 +40,25 @@ export default function ProjectCacheManager() {
     setProgress({ current: 0, total: 0 })
 
     try {
-      await db.cacheMetadata.put({
-        id: 'projects_bulk',
-        lastSync: lastSync || Date.now(),
-        count: projectCount,
-        status: 'syncing'
-      })
-
+      // 1. Obtener la lista primero
       const limit = 100
       const res = await fetch(`/api/projects/bulk-cache?limit=${limit}`)
       
-      if (!res.ok) {
-        throw new Error('Error al obtener datos del servidor')
-      }
+      if (!res.ok) throw new Error('Error al conectar con el servidor')
 
       const projects = await res.json()
+      
+      if (projects.length === 0) {
+        setSyncComplete(true)
+        setIsSyncing(false)
+        return
+      }
+
+      // 2. Establecer el total de inmediato para que el usuario lo vea
       setProgress({ current: 0, total: projects.length })
 
       const CHUNK_SIZE = 5
-      const TIMEOUT_MS = 15000 // 15 segundos por lote
+      const TIMEOUT_MS = 20000 // 20 segundos por lote por si la red es lenta
 
       for (let i = 0; i < projects.length; i += CHUNK_SIZE) {
         const chunk = projects.slice(i, i + CHUNK_SIZE)
@@ -75,6 +75,17 @@ export default function ProjectCacheManager() {
 
               await db.projectsCache.put(projectToCache)
               
+              // Precarga de imágenes para modo offline
+              if (p.gallery && p.gallery.length > 0) {
+                // Precargar las 10 fotos más recientes para que el navegador las guarde en caché
+                p.gallery.slice(0, 10).forEach((item: any) => {
+                  if (item.url && item.url.startsWith('http')) {
+                    const img = new Image();
+                    img.src = item.url;
+                  }
+                });
+              }
+
               if (chatMessages.length > 0) {
                 await db.chatCache.put({ projectId: p.id, messages: chatMessages })
               }
@@ -253,7 +264,9 @@ export default function ProjectCacheManager() {
                 <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
                 <path style={{ opacity: 0.75 }} fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"/>
               </svg>
-              Descargando {progress.current}/{progress.total}
+              {progress.total > 0 
+                ? `Descargando ${progress.current}/${progress.total}` 
+                : 'Preparando lista...'}
             </>
           ) : lastSync && (Date.now() - lastSync < 3600000) ? (
             <>

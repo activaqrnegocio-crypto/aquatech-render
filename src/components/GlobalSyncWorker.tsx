@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { db } from '@/lib/db'
@@ -9,6 +9,7 @@ export default function GlobalSyncWorker() {
   const { data: session } = useSession()
   const router = useRouter()
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
+  const syncLock = useRef(false)
 
   // Cache session info for offline role detection
   useEffect(() => {
@@ -31,15 +32,34 @@ export default function GlobalSyncWorker() {
   }, [session])
 
   const syncOutbox = async () => {
-    if (typeof window === 'undefined' || !navigator.onLine) return
-    const items = await db.outbox.where('status').anyOf(['pending', 'failed']).toArray()
-    if (items.length === 0) return
+    if (typeof window === 'undefined' || !navigator.onLine || syncLock.current) return
+    
+    // 1. Cross-tab lock (prevent multiple tabs syncing at once)
+    const now = Date.now()
+    const lastSyncStart = localStorage.getItem('global_sync_lock')
+    if (lastSyncStart && (now - Number(lastSyncStart)) < 60000) {
+      // A sync is likely running in another tab (60s safety timeout)
+      return
+    }
+    localStorage.setItem('global_sync_lock', String(now))
 
-    let hasSyncedAnything = false
+    syncLock.current = true
+    try {
+      const items = await db.outbox.where('status').anyOf(['pending', 'failed']).toArray()
+      if (items.length === 0) {
+        localStorage.removeItem('global_sync_lock')
+        return
+      }
 
-    for (const item of items) {
-       try {
-         await db.outbox.update(item.id!, { status: 'syncing' })
+      let hasSyncedAnything = false
+
+      for (const item of items) {
+        // Double check status hasn't changed by another process (sanity check)
+        const currentItem = await db.outbox.get(item.id!)
+        if (!currentItem || currentItem.status === 'syncing') continue
+
+        try {
+          await db.outbox.update(item.id!, { status: 'syncing' })
           let endpoint = ''
           let method = 'POST'
           
@@ -186,6 +206,10 @@ export default function GlobalSyncWorker() {
 
     if (hasSyncedAnything) {
       router.refresh()
+    }
+    } finally {
+      syncLock.current = false
+      localStorage.removeItem('global_sync_lock')
     }
   }
 

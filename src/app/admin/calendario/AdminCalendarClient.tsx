@@ -52,55 +52,53 @@ export default function AdminCalendarClient({
     initCache()
   }, [operators, projects])
 
+  // Load cache immediately on mount
+  useEffect(() => {
+    async function loadInitialCache() {
+      const cached = await db.appointmentsCache.toArray()
+      if (cached.length > 0) {
+        // Map to selected operator if needed
+        const filtered = selectedOperatorId === 'all' 
+          ? cached 
+          : cached.filter((a: any) => a.userId === Number(selectedOperatorId))
+        setAppointments(filtered)
+        setLoading(false) // Stop initial loading if we have cache
+      }
+    }
+    loadInitialCache()
+  }, [selectedOperatorId])
+
   const fetchAppointments = async (silent = false) => {
-    if (!silent) setLoading(true)
+    if (!silent && appointments.length === 0) setLoading(true)
     try {
-      const url = `/api/appointments?userId=${selectedOperatorId}`
+      // Limit to 1 month ago and 2 months ahead for speed
+      const now = new Date()
+      const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+      const end = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString()
+      
+      const url = `/api/appointments?userId=${selectedOperatorId}&start=${start}&end=${end}`
       const res = await fetch(url)
       
       if (res.ok) {
         const data = await res.json()
         setAppointments(data)
-        // Cache to Dexie only for "all" to avoid incomplete caches
+        
+        // Always cache to IndexedDB for offline persistence
+        // If it's "all", we replace the whole cache
         if (selectedOperatorId === 'all') {
           await db.appointmentsCache.clear()
           await db.appointmentsCache.bulkPut(data)
-        }
-      } else {
-        // Fallback to cache if offline/error
-        const cached = await db.appointmentsCache.toArray()
-        if (cached.length > 0) {
-          const filtered = selectedOperatorId === 'all' 
-            ? cached 
-            : cached.filter((a: any) => a.userId === Number(selectedOperatorId))
-          setAppointments(filtered)
+        } else {
+          // If it's a specific operator, we merge/update
+          await db.appointmentsCache.bulkPut(data)
         }
       }
     } catch (error) {
-      console.error('Error fetching appointments (falling back to cache):', error)
-      const cached = await db.appointmentsCache.toArray()
-      if (cached.length > 0) {
-        const filtered = selectedOperatorId === 'all' 
-          ? cached 
-          : cached.filter((a: any) => a.userId === Number(selectedOperatorId))
-        setAppointments(filtered)
-      }
+      console.warn('Network fetch failed, staying with cache:', error)
     } finally {
-      if (!silent) setLoading(false)
+      setLoading(false)
     }
   }
-
-  // Effect to load cache immediately if offline
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      db.appointmentsCache.toArray().then(cached => {
-        if (cached.length > 0 && appointments.length === 0) {
-          setAppointments(cached)
-          setLoading(false)
-        }
-      })
-    }
-  }, [])
 
   // --- OFFLINE SUPPORT ---
   const pendingTasks = useLiveQuery(
