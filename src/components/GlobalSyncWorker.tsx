@@ -34,26 +34,29 @@ export default function GlobalSyncWorker() {
     setBulkProgress({ current: 0, total: 0 })
     
     try {
+      window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+        detail: { message: `Conectando con el servidor...` }
+      }))
+
       const res = await fetch('/api/projects/bulk-cache?limit=50')
-      if (!res.ok) throw new Error('Error de red')
+      if (!res.ok) throw new Error('Error de red o sesión expirada')
       const projects = await res.json()
       
-      // LOG de preparación
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
         detail: { message: `Preparando descarga de ${projects.length} proyectos...` }
       }))
 
-      // LIMPIEZA: Muy importante para que César pase de 20 a 7
+      // Limpieza rápida
       await db.projectsCache.clear()
       await db.chatCache.clear()
 
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
-        detail: { message: `Caché local limpiado. Iniciando guardado...` }
+        detail: { message: `Iniciando transferencia de datos...` }
       }))
 
       setBulkProgress({ current: 0, total: projects.length })
       
-      const CHUNK_SIZE = 3
+      const CHUNK_SIZE = 10 // Aumentamos a 10 para más velocidad
       for (let i = 0; i < projects.length; i += CHUNK_SIZE) {
         const chunk = projects.slice(i, i + CHUNK_SIZE)
         
@@ -62,32 +65,31 @@ export default function GlobalSyncWorker() {
             const projectToCache = { ...p, lastAccessedAt: Date.now() }
             const chatMessages = p.chatMessages || []
             delete projectToCache.chatMessages
+            
             await db.projectsCache.put(projectToCache)
             
-            // Precarga de imágenes
+            // Precarga de imágenes en paralelo (sin esperar)
             if (p.gallery?.length > 0) {
-              p.gallery.slice(0, 5).forEach((img: any) => {
-                if (img.url) { new Image().src = img.url }
+              p.gallery.slice(0, 3).forEach((img: any) => {
+                if (img.url) { const i = new Image(); i.src = img.url; }
               });
             }
 
             if (chatMessages.length > 0) {
               await db.chatCache.put({ projectId: p.id, messages: chatMessages })
             }
-            
-            const nextCurrent = Math.min(projects.length, i + chunk.length)
-            
-            // Emitir log para el usuario
-            window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
-              detail: { message: `Sincronizados ${nextCurrent} de ${projects.length} proyectos...` }
-            }))
+          } catch (e) { console.warn(`Error en proyecto ${p.id}`, e) }
+        }))
 
-            window.dispatchEvent(new CustomEvent('bulk-cache-sync-progress', {
-              detail: { current: nextCurrent, total: projects.length }
-            }))
+        const nextCurrent = Math.min(projects.length, i + chunk.length)
+        setBulkProgress({ current: nextCurrent, total: projects.length })
+        
+        window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+          detail: { message: `Sincronizados ${nextCurrent}/${projects.length}...` }
+        }))
 
-            setBulkProgress({ current: nextCurrent, total: projects.length })
-          } catch (e) { console.error(e) }
+        window.dispatchEvent(new CustomEvent('bulk-cache-sync-progress', {
+          detail: { current: nextCurrent, total: projects.length }
         }))
       }
 

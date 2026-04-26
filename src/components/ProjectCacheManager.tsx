@@ -11,6 +11,7 @@ export default function ProjectCacheManager() {
   const [projectCount, setProjectCount] = useState(0)
   const [syncLogs, setSyncLogs] = useState<string[]>([])
   const [showLogs, setShowLogs] = useState(false)
+  const [isDismissed, setIsDismissed] = useState(false)
 
   useEffect(() => {
     // 1. Cargar metadatos iniciales
@@ -20,6 +21,11 @@ export default function ProjectCacheManager() {
         if (meta) {
           setLastSync(meta.lastSync)
           setProjectCount(meta.count)
+          
+          // Si el estado en DB dice 'syncing', asumimos que algo está pasando en el worker
+          if (meta.status === 'syncing') {
+            setIsSyncing(true)
+          }
         }
       } catch (e) {}
     }
@@ -81,6 +87,8 @@ export default function ProjectCacheManager() {
     return `hace ${days} d`
   }
 
+  if (isDismissed) return null;
+
   return (
     <div style={{
       background: syncComplete 
@@ -119,16 +127,29 @@ export default function ProjectCacheManager() {
           marginBottom: '14px',
           display: 'flex',
           alignItems: 'center',
+          justifyContent: 'space-between',
           gap: '10px',
           fontWeight: 'bold',
           fontSize: '0.9rem',
           animation: 'fadeSlideIn 0.4s ease-out'
         }}>
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-            <polyline points="22 4 12 14.01 9 11.01"/>
-          </svg>
-          ¡Caché guardado! — {projectCount} proyectos listos para modo offline
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+              <polyline points="22 4 12 14.01 9 11.01"/>
+            </svg>
+            ¡Caché guardado! — {projectCount} proyectos listos
+          </div>
+          <button 
+            onClick={() => setIsDismissed(true)}
+            style={{ 
+              background: 'rgba(0,0,0,0.2)', border: 'none', color: 'white', 
+              padding: '4px 10px', borderRadius: '6px', fontSize: '0.75rem', 
+              cursor: 'pointer', fontWeight: 'bold'
+            }}
+          >
+            Cerrar
+          </button>
         </div>
       )}
       
@@ -174,7 +195,7 @@ export default function ProjectCacheManager() {
 
         <button
           onClick={handleManualSync}
-          disabled={isSyncing || syncComplete}
+          disabled={isSyncing}
           style={{
             display: 'flex',
             alignItems: 'center',
@@ -184,13 +205,9 @@ export default function ProjectCacheManager() {
             fontWeight: 'bold',
             fontSize: '0.85rem',
             border: 'none',
-            cursor: isSyncing || syncComplete ? 'not-allowed' : 'pointer',
+            cursor: isSyncing ? 'not-allowed' : 'pointer',
             transition: 'all 0.3s ease',
-            ...(syncComplete ? {
-              background: '#10b981',
-              color: 'white',
-              boxShadow: '0 4px 14px rgba(16, 185, 129, 0.4)'
-            } : isSyncing ? {
+            ...(isSyncing ? {
               background: 'rgba(255,255,255,0.08)',
               color: 'rgba(255,255,255,0.5)'
             } : {
@@ -200,14 +217,7 @@ export default function ProjectCacheManager() {
             })
           }}
         >
-          {syncComplete ? (
-            <>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"/>
-              </svg>
-              ✓ Caché Guardado
-            </>
-          ) : isSyncing ? (
+          {isSyncing ? (
             <>
               <svg style={{ animation: 'spin 1s linear infinite' }} width="16" height="16" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
                 <circle style={{ opacity: 0.25 }} cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/>
@@ -215,15 +225,7 @@ export default function ProjectCacheManager() {
               </svg>
               {progress.total > 0 
                 ? `Descargando ${progress.current}/${progress.total}` 
-                : 'Preparando lista...'}
-            </>
-          ) : lastSync && (Date.now() - lastSync < 3600000) ? (
-            <>
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
-                <polyline points="22 4 12 14.01 9 11.01"/>
-              </svg>
-              Actualizado (Re-sync)
+                : 'Preparando...'}
             </>
           ) : (
             <>
