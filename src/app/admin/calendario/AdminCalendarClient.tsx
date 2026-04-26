@@ -68,7 +68,7 @@ export default function AdminCalendarClient({
     loadInitialCache()
   }, [selectedOperatorId])
 
-  const fetchAppointments = async (silent = false) => {
+  const fetchAppointments = async (silent = false, retryCount = 0) => {
     if (!silent && appointments.length === 0) setLoading(true)
     try {
       // Limit to 1 month ago and 2 months ahead for speed
@@ -92,10 +92,23 @@ export default function AdminCalendarClient({
           // If it's a specific operator, we merge/update
           await db.appointmentsCache.bulkPut(data)
         }
+        setLoading(false)
+      } else {
+        // Si la base de datos cortó la conexión (error 500), reintentamos silenciosamente una vez
+        if (retryCount < 1) {
+          console.warn(`Fetch fallido (Status: ${res.status}). Reintentando conexión a DB en 500ms...`)
+          setTimeout(() => fetchAppointments(silent, retryCount + 1), 500)
+          return
+        }
+        setLoading(false)
       }
     } catch (error) {
+      if (retryCount < 1) {
+        console.warn('Error de red detectado. Reintentando conexión a DB en 500ms...', error)
+        setTimeout(() => fetchAppointments(silent, retryCount + 1), 500)
+        return
+      }
       console.warn('Network fetch failed, staying with cache:', error)
-    } finally {
       setLoading(false)
     }
   }

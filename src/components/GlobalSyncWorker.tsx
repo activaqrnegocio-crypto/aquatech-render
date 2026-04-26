@@ -394,12 +394,20 @@ export default function GlobalSyncWorker() {
             if (Math.random() > 0.9) refreshCaches() 
         }
     }, 15000) // 15 seconds for more responsive background sync
+
+    // Keep-Alive Ping para base de datos (StackCP)
+    const keepAliveInterval = setInterval(() => {
+      if (navigator.onLine) {
+        fetch('/api/health/ping').catch(() => {})
+      }
+    }, 240000) // 4 minutos
     
     return () => {
       window.removeEventListener('online', handleStatusChange)
       window.removeEventListener('offline', handleStatusChange)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       clearInterval(interval)
+      clearInterval(keepAliveInterval)
     }
   }, [])
 
