@@ -144,41 +144,7 @@ export default function OperatorDashboardClient({
     return () => clearInterval(interval)
   }, [user.id])
 
-  // Syncing projects from Outbox
-  useEffect(() => {
-    const syncOutboxProject = async () => {
-      if (!navigator.onLine) return
-      
-      const pendingProjects = await db.outbox.where('type').equals('PROJECT').toArray()
-      if (pendingProjects.length === 0) return
-
-      for (const item of pendingProjects) {
-        try {
-          const resp = await fetch('/api/projects', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(item.payload)
-          })
-          
-          if (resp.ok) {
-            await db.outbox.delete(item.id!)
-            // Re-fetch projects to show the new one
-            const projRes = await fetch('/api/operator/projects')
-            if (projRes.ok) {
-              const freshProjects = await projRes.json()
-              setProjects(freshProjects)
-            }
-          }
-        } catch (err) {
-          console.error('Failed to sync offline project from outbox:', err)
-        }
-      }
-    }
-
-    syncOutboxProject()
-    window.addEventListener('online', syncOutboxProject)
-    return () => window.removeEventListener('online', syncOutboxProject)
-  }, [])
+  // Redundant sync removed - Handled by GlobalSyncWorker
 
   // Legacy localStorage Cleanup (One-time)
   useEffect(() => {

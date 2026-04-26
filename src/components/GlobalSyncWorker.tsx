@@ -2,10 +2,12 @@
 
 import { useEffect, useState } from 'react'
 import { useSession } from 'next-auth/react'
+import { useRouter } from 'next/navigation'
 import { db } from '@/lib/db'
 
 export default function GlobalSyncWorker() {
   const { data: session } = useSession()
+  const router = useRouter()
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
 
   // Cache session info for offline role detection
@@ -32,6 +34,8 @@ export default function GlobalSyncWorker() {
     if (typeof window === 'undefined' || !navigator.onLine) return
     const items = await db.outbox.where('status').anyOf(['pending', 'failed']).toArray()
     if (items.length === 0) return
+
+    let hasSyncedAnything = false
 
     for (const item of items) {
        try {
@@ -60,49 +64,83 @@ export default function GlobalSyncWorker() {
           
           let finalPayload = { ...item.payload }
           
-          // Handle media upload: reconstruct File from stored ArrayBuffer
-          const hasFileData = item.payload.fileData?.buffer;
-          const hasRawFile = item.payload.file;
+          // --- NEW: UNIFIED MEDIA SYNC LOGIC ---
+          const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
           
-          if ((hasFileData || hasRawFile) && (item.type === 'MESSAGE' || item.type === 'EXPENSE' || item.type === 'MEDIA_UPLOAD' || item.type === 'TASK')) {
+          // 1. Handle single media (MESSAGE, MEDIA_UPLOAD, EXPENSE, GALLERY_UPLOAD)
+          const hasBase64 = finalPayload.media?.base64 || 
+                           (item.type === 'GALLERY_UPLOAD' && finalPayload.url?.startsWith('data:')) ||
+                           finalPayload.receiptPhoto?.startsWith('data:');
+          const hasFileData = finalPayload.fileData?.buffer;
+          const hasRawFile = finalPayload.file;
+
+          if (hasBase64 || hasFileData || hasRawFile) {
             try {
-              const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
-              
               let uploadFile: File | Blob;
               let finalFilename: string;
-              
-              if (hasFileData) {
-                // Reconstruct File from stored ArrayBuffer (new format — survives IDB)
-                const blob = new Blob([item.payload.fileData.buffer], { type: item.payload.fileData.type });
-                uploadFile = new File([blob], item.payload.fileData.name, { type: item.payload.fileData.type });
-                finalFilename = item.payload.fileData.name;
+
+              if (hasBase64) {
+                const b64Url = finalPayload.media?.base64 || finalPayload.url || finalPayload.receiptPhoto;
+                const resB64 = await fetch(b64Url);
+                uploadFile = await resB64.blob();
+                finalFilename = finalPayload.media?.filename || finalPayload.filename || `sync_${Date.now()}.jpg`;
+              } else if (hasFileData) {
+                const blob = new Blob([finalPayload.fileData.buffer], { type: finalPayload.fileData.type });
+                uploadFile = new File([blob], finalPayload.fileData.name, { type: finalPayload.fileData.type });
+                finalFilename = finalPayload.fileData.name;
               } else {
-                // Legacy: raw File object (may work if app wasn't restarted)
-                uploadFile = item.payload.file;
-                finalFilename = item.payload.file.name || `sync_upload_${Date.now()}`;
+                uploadFile = finalPayload.file;
+                finalFilename = finalPayload.file.name || `sync_legacy_${Date.now()}`;
               }
+
+              const folder = item.projectId ? `projects/${item.projectId}` : 'general';
+              const uploadResult = await uploadToBunnyClientSide(uploadFile, finalFilename, folder);
               
-              const uploadResult = await uploadToBunnyClientSide(uploadFile, finalFilename, `projects/${item.projectId}/chat`)
-              finalPayload.media = {
-                url: uploadResult.url,
-                filename: uploadResult.filename,
-                mimeType: uploadResult.mimeType
+              if (finalPayload.media) {
+                finalPayload.media = { url: uploadResult.url, filename: finalFilename, mimeType: uploadResult.mimeType };
               }
-              // Clean up file data from payload before sending to API
-              delete finalPayload.file
-              delete finalPayload.fileData
-              delete finalPayload.previewBase64
-            } catch (uploadError) {
-              console.error('Failed to upload media during sync:', uploadError)
-              await db.outbox.update(item.id!, { status: 'pending' })
-              continue // Try next item
+              if (item.type === 'GALLERY_UPLOAD') finalPayload.url = uploadResult.url;
+              if (finalPayload.receiptPhoto) finalPayload.receiptPhoto = uploadResult.url;
+
+              delete finalPayload.file;
+              delete finalPayload.fileData;
+              delete finalPayload.previewBase64;
+              if (finalPayload.media) delete finalPayload.media.base64;
+            } catch (err) {
+              console.error('Failed single media upload:', err);
+              await db.outbox.update(item.id!, { status: 'pending' });
+              continue;
             }
           }
-          
-          // Clean up any remaining file data
-          delete finalPayload.fileData
-          delete finalPayload.previewBase64
-          delete finalPayload.file
+
+          // 2. Handle multiple media (TASK / CALENDAR)
+          if (item.type === 'TASK' && (finalPayload.attachments || finalPayload.attachmentLinks)) {
+            try {
+              const allAttachments = [...(finalPayload.attachments || []), ...(finalPayload.attachmentLinks || [])];
+              const uploadedFiles = [];
+
+              for (const att of allAttachments) {
+                if (att.base64) {
+                  const resB64 = await fetch(att.base64);
+                  const blob = await resB64.blob();
+                  const uploadResult = await uploadToBunnyClientSide(blob, att.name, 'appointments');
+                  uploadedFiles.push({ url: uploadResult.url, type: att.type, name: att.name });
+                } else if (att.data?.startsWith('http') || att.url?.startsWith('http')) {
+                  // Already uploaded or existing link
+                  uploadedFiles.push({ url: att.url || att.data, type: att.type, name: att.name });
+                }
+              }
+
+              // Update the task payload with final URLs
+              finalPayload.files = uploadedFiles;
+              finalPayload.attachments = uploadedFiles.filter(f => f.type !== 'video').map(f => ({ data: f.url, type: f.type, name: f.name }));
+              finalPayload.attachmentLinks = uploadedFiles.filter(f => f.type === 'video').map(f => ({ url: f.url, type: f.type, name: f.name }));
+            } catch (err) {
+              console.error('Failed task attachments sync:', err);
+              await db.outbox.update(item.id!, { status: 'pending' });
+              continue;
+            }
+          }
           
           if (endpoint) {
              const res = await fetch(endpoint, {
@@ -118,6 +156,7 @@ export default function GlobalSyncWorker() {
              })
              if (res.ok) {
                await db.outbox.delete(item.id!)
+               hasSyncedAnything = true
              } else {
                const status = res.status
                // If unauthorized, go back to pending so it retries when user logs in
@@ -131,6 +170,10 @@ export default function GlobalSyncWorker() {
        } catch (e) {
           await db.outbox.update(item.id!, { status: 'pending' })
        }
+    }
+
+    if (hasSyncedAnything) {
+      router.refresh()
     }
   }
 

@@ -1,12 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db'
 import OfflinePrefetcher from '@/components/OfflinePrefetcher'
+
+import ProjectCacheManager from '@/components/ProjectCacheManager'
 
 /**
  * AQUATECH_PROJECT_VIEW_V3
@@ -19,6 +21,9 @@ export default function ProyectosPage() {
   const [projects, setProjects] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('ALL')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [visibleCount, setVisibleCount] = useState(10)
+  const PAGE_SIZE = 10
   const [updatingId, setUpdatingId] = useState<number | null>(null)
 
   // Authorization check that handles both online (session) and offline (cached session)
@@ -60,15 +65,15 @@ export default function ProyectosPage() {
 
   useEffect(() => {
     if (isAuthorized === true) {
-      // Load from cache immediately if offline
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        db.projectsCache.toArray().then(cached => {
-          if (cached.length > 0) {
-            setProjects(cached)
-            setLoading(false)
-          }
-        })
-      }
+      // Stale-while-revalidate: Load from cache immediately
+      db.projectsCache.toArray().then(cached => {
+        if (cached.length > 0) {
+          // Sort by creation date descending
+          const sorted = cached.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+          setProjects(sorted)
+          setLoading(false)
+        }
+      })
 
       fetchProjects()
       
@@ -84,22 +89,42 @@ export default function ProyectosPage() {
   }, [isAuthorized])
 
   const fetchProjects = async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return; // Don't fetch if explicitly offline
+
     try {
       const res = await fetch('/api/projects')
+      if (!res.ok) throw new Error('API fetch failed')
       const data = await res.json()
+      
       if (Array.isArray(data)) {
         setProjects(data)
         
-        // Cache to Dexie when online
+        // Cache to Dexie when online (passive cache for list fields only)
         if (typeof navigator !== 'undefined' && navigator.onLine) {
-          db.projectsCache.bulkPut(data).catch(err => console.error('Error caching projects:', err))
+          // Only update items that already exist in cache to not overwrite full offline data with partial list data
+          const existingCache = await db.projectsCache.toArray()
+          const existingIds = new Set(existingCache.map(p => p.id))
+          
+          const bulkUpdates = data.map(item => {
+            if (existingIds.has(item.id)) {
+              const existingItem = existingCache.find(p => p.id === item.id)
+              // Merge, keeping heavy data like chat/gallery
+              return { ...existingItem, ...item }
+            }
+            return item
+          })
+          
+          db.projectsCache.bulkPut(bulkUpdates).catch(err => console.error('Error caching projects:', err))
         }
       }
     } catch (e) {
-      console.error(e)
-      // Load from cache if offline
+      console.error('fetchProjects fallback:', e)
+      // Already loaded from cache initially, but try again just in case
       const cached = await db.projectsCache.toArray()
-      if (cached.length > 0) setProjects(cached)
+      if (cached.length > 0) {
+        const sorted = cached.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        setProjects(sorted)
+      }
     } finally {
       setLoading(false)
     }
@@ -184,7 +209,8 @@ export default function ProyectosPage() {
     { value: 'ARCHIVADO', label: 'Archivado' }
   ]
 
-  const filteredProjects = statusFilter === 'ALL' 
+  // 1. Filter by status
+  const statusFiltered = statusFilter === 'ALL' 
     ? allProjects 
     : allProjects.filter(p => {
         if (statusFilter === 'ARCHIVADO') {
@@ -193,11 +219,31 @@ export default function ProyectosPage() {
         return p.status === statusFilter;
     })
 
+  // 2. Search filter (intelligent: title, client, city)
+  const filteredProjects = useMemo(() => {
+    if (!searchQuery.trim()) return statusFiltered
+    const q = searchQuery.toLowerCase().trim()
+    return statusFiltered.filter(p => {
+      const title = (p.title || '').toLowerCase()
+      const client = (p.client?.name || '').toLowerCase()
+      const city = (p.city || '').toLowerCase()
+      return title.includes(q) || client.includes(q) || city.includes(q)
+    })
+  }, [statusFiltered, searchQuery])
+
+  // 3. Paginated subset
+  const paginatedProjects = filteredProjects.slice(0, visibleCount)
+  const hasMore = filteredProjects.length > visibleCount
+
+  // Reset pagination when filters or search change
+  useEffect(() => { setVisibleCount(PAGE_SIZE) }, [statusFilter, searchQuery])
+
   if (loading) return <div style={{ padding: '60px', textAlign: 'center', color: 'var(--text-muted)' }}>Cargando proyectos...</div>
 
   return (
     <div className="p-6">
       <OfflinePrefetcher urls={projects.slice(0, 20).map(p => `/admin/proyectos/${p.id}`)} />
+      <ProjectCacheManager />
       <div className="dashboard-header" style={{ marginBottom: '30px' }}>
         <div>
           <h2 style={{ fontSize: '1.8rem', fontWeight: 'bold' }}>Proyectos</h2>
@@ -211,8 +257,50 @@ export default function ProyectosPage() {
         </Link>
       </div>
 
+      {/* Search Bar */}
+      <div style={{ marginBottom: '20px', position: 'relative' }}>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="rgba(255,255,255,0.4)" strokeWidth="2.5"
+          style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', pointerEvents: 'none' }}
+        >
+          <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
+        </svg>
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Buscar por nombre, cliente o ciudad..."
+          style={{
+            width: '100%',
+            padding: '14px 16px 14px 48px',
+            borderRadius: '14px',
+            border: '1px solid rgba(255,255,255,0.1)',
+            backgroundColor: 'rgba(255,255,255,0.05)',
+            color: '#FFFFFF',
+            fontSize: '0.95rem',
+            fontWeight: '500',
+            outline: 'none',
+            transition: 'all 0.2s ease'
+          }}
+          onFocus={(e) => { e.target.style.borderColor = 'var(--primary)'; e.target.style.backgroundColor = 'rgba(255,255,255,0.08)' }}
+          onBlur={(e) => { e.target.style.borderColor = 'rgba(255,255,255,0.1)'; e.target.style.backgroundColor = 'rgba(255,255,255,0.05)' }}
+        />
+        {searchQuery && (
+          <button
+            onClick={() => setSearchQuery('')}
+            style={{
+              position: 'absolute', right: '14px', top: '50%', transform: 'translateY(-50%)',
+              background: 'rgba(255,255,255,0.1)', border: 'none', color: 'rgba(255,255,255,0.6)',
+              borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '1rem'
+            }}
+          >
+            ✕
+          </button>
+        )}
+      </div>
+
       {/* Tabs con Contraste Premium */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '35px', flexWrap: 'wrap' }}>
+      <div style={{ display: 'flex', gap: '12px', marginBottom: '35px', flexWrap: 'wrap', alignItems: 'center' }}>
         <button
           onClick={() => setStatusFilter('ALL')}
           style={{
@@ -250,6 +338,13 @@ export default function ProyectosPage() {
             </span>
           </button>
         ))}
+
+        {/* Result count indicator */}
+        {searchQuery && (
+          <span style={{ fontSize: '0.85rem', color: 'rgba(255,255,255,0.4)', fontWeight: '600', marginLeft: 'auto' }}>
+            {filteredProjects.length} resultado{filteredProjects.length !== 1 ? 's' : ''}
+          </span>
+        )}
       </div>
 
       <div style={{ 
@@ -258,7 +353,7 @@ export default function ProyectosPage() {
         gap: '24px',
         marginTop: '20px'
       }}>
-        {filteredProjects.map(p => {
+        {paginatedProjects.map(p => {
           const totalPhases = p.phases?.length || 0
           const completedPhases = (p.phases || []).filter((ph: any) => ph.status === 'COMPLETADA').length
           const progress = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0
@@ -436,14 +531,55 @@ export default function ProyectosPage() {
               <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/>
             </svg>
             <h3 style={{ color: '#FFFFFF', marginBottom: '10px', fontSize: '1.5rem' }}>
-              {statusFilter === 'ALL' ? 'Sin proyectos' : `No hay proyectos "${getStatusLabel(statusFilter)}"`}
+              {searchQuery 
+                ? `No se encontraron resultados para "${searchQuery}"` 
+                : (statusFilter === 'ALL' ? 'Sin proyectos' : `No hay proyectos "${getStatusLabel(statusFilter)}"`)}
             </h3>
             <p style={{ color: 'rgba(255,255,255,0.5)', fontSize: '1rem' }}>
-              Intenta cambiar el filtro o crear un nuevo registro.
+              {searchQuery 
+                ? 'Intenta con otro término de búsqueda.' 
+                : 'Intenta cambiar el filtro o crear un nuevo registro.'}
             </p>
           </div>
         )}
       </div>
+
+      {/* Ver más button */}
+      {hasMore && (
+        <div style={{ display: 'flex', justifyContent: 'center', marginTop: '32px' }}>
+          <button
+            onClick={() => setVisibleCount(prev => prev + PAGE_SIZE)}
+            style={{
+              padding: '14px 40px',
+              borderRadius: '14px',
+              border: '1px solid rgba(255,255,255,0.12)',
+              backgroundColor: 'rgba(255,255,255,0.05)',
+              color: 'rgba(255,255,255,0.8)',
+              fontSize: '0.95rem',
+              fontWeight: '700',
+              cursor: 'pointer',
+              transition: 'all 0.2s ease',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '8px'
+            }}
+            onMouseEnter={(e) => { (e.target as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.1)'; (e.target as HTMLElement).style.borderColor = 'var(--primary)' }}
+            onMouseLeave={(e) => { (e.target as HTMLElement).style.backgroundColor = 'rgba(255,255,255,0.05)'; (e.target as HTMLElement).style.borderColor = 'rgba(255,255,255,0.12)' }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+              <polyline points="6 9 12 15 18 9"/>
+            </svg>
+            Ver más ({filteredProjects.length - visibleCount} restantes)
+          </button>
+        </div>
+      )}
+
+      {/* Pagination info */}
+      {filteredProjects.length > 0 && (
+        <p style={{ textAlign: 'center', marginTop: '16px', fontSize: '0.8rem', color: 'rgba(255,255,255,0.3)', fontWeight: '600' }}>
+          Mostrando {Math.min(visibleCount, filteredProjects.length)} de {filteredProjects.length} proyecto{filteredProjects.length !== 1 ? 's' : ''}
+        </p>
+      )}
     </div>
   )
 }

@@ -451,129 +451,6 @@ export default function ProjectExecutionClient({
 
 
 
-  const syncOutbox = async () => {
-    if (!navigator.onLine) return
-    if (isSyncingRef.current) return
-    isSyncingRef.current = true
-
-    try {
-      const items = await db.outbox.where('status').equals('pending').toArray()
-      if (items.length === 0) return
-
-    for (const item of items) {
-       try {
-         await db.outbox.update(item.id!, { status: 'syncing' })
-         
-         let currentPayload = { ...item.payload }
-
-         // FIX: Si hay media en Base64, subirla primero a Bunny para no saturar el API (4.5MB limit)
-         const hasBase64Media = currentPayload.media?.base64 || 
-                               (item.type === 'GALLERY_UPLOAD' && currentPayload.url?.startsWith('data:')) ||
-                               currentPayload.receiptPhoto?.startsWith('data:');
-
-         if (hasBase64Media) {
-            try {
-              const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
-              
-              // Caso 1: Media de Chat/Mensajes
-              if (currentPayload.media?.base64) {
-                const resB64 = await fetch(currentPayload.media.base64)
-                const blob = await resB64.blob()
-                const uploadResult = await uploadToBunnyClientSide(blob, currentPayload.media.filename, 'projects')
-                currentPayload.media = {
-                  url: uploadResult.url,
-                  filename: currentPayload.media.filename,
-                  mimeType: currentPayload.media.mimeType
-                }
-              }
-
-              // Caso 2: Media de Galería (EVIDENCE)
-              if (item.type === 'GALLERY_UPLOAD' && currentPayload.url?.startsWith('data:')) {
-                const resB64 = await fetch(currentPayload.url)
-                const blob = await resB64.blob()
-                const uploadResult = await uploadToBunnyClientSide(blob, currentPayload.filename || 'upload.jpg', 'projects')
-                currentPayload.url = uploadResult.url
-              }
-              
-              // Caso 3: Foto de Recibo de Gasto
-              if (currentPayload.receiptPhoto?.startsWith('data:')) {
-                const resB64 = await fetch(currentPayload.receiptPhoto)
-                const blob = await resB64.blob()
-                const uploadResult = await uploadToBunnyClientSide(blob, `expense_${Date.now()}.jpg`, `projects/${project.id}/expenses`)
-                currentPayload.receiptPhoto = uploadResult.url
-              }
-            } catch (err) {
-              console.error('Error subiendo media durante sync:', err)
-              await db.outbox.update(item.id!, { status: 'failed' })
-              continue; // Reintentar en el siguiente ciclo
-            }
-         }
-
-         let endpoint = ''
-         let method = 'POST'
-         
-          const isMedia = item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD'
-          if (isMedia) {
-            endpoint = `/api/projects/${project.id}/messages`
-          } else if (item.type === 'EXPENSE') {
-            endpoint = `/api/projects/${project.id}/expenses`
-          } else if (item.type === 'DAY_START') {
-            endpoint = `/api/day-records`
-          } else if (item.type === 'DAY_END') {
-            endpoint = `/api/day-records`
-            method = 'PUT'
-          } else if (item.type === 'PHASE_COMPLETE') {
-            endpoint = `/api/projects/${project.id}/phases/${item.payload.phaseId}`
-            method = 'PATCH'
-          } else if (item.type === 'GALLERY_UPLOAD') {
-            endpoint = `/api/projects/${project.id}/gallery`
-          }
-          
-          if (endpoint) {
-             const res = await fetch(endpoint, {
-                 method,
-                 headers: { 'Content-Type': 'application/json' },
-                 body: JSON.stringify({ 
-                   ...currentPayload, 
-                   lat: item.lat, 
-                   lng: item.lng, 
-                   createdAt: new Date(item.timestamp).toISOString(),
-                   isOfflineSync: true 
-                 })
-             })
-             if (res.ok) await db.outbox.delete(item.id!)
-             else await db.outbox.update(item.id!, { status: 'failed' })
-          }
-       } catch (e) {
-          await db.outbox.update(item.id!, { status: 'pending' })
-       }
-    }
-     } finally {
-       isSyncingRef.current = false
-     }
-    router.refresh()
-  }
-
-  useEffect(() => {
-    const handleStatusChange = () => {
-      setIsOnline(navigator.onLine)
-      if (navigator.onLine) syncOutbox()
-    }
-    window.addEventListener('online', handleStatusChange)
-    window.addEventListener('offline', handleStatusChange)
-    
-    // Auto-sync outbox interval
-    const interval = setInterval(() => {
-        if (navigator.onLine) syncOutbox()
-    }, 5000)
-
-    return () => {
-      window.removeEventListener('online', handleStatusChange)
-      window.removeEventListener('offline', handleStatusChange)
-      clearInterval(interval)
-    }
-  }, [project.id])
-
   const [loading, setLoading] = useState(false)
   const [expenseForm, setExpenseForm] = useState(false)
   const [amount, setAmount] = useState('')
@@ -1401,27 +1278,23 @@ export default function ProjectExecutionClient({
         ['Tipo de Proyecto', translateType(fullProject.type)],
         ['Tipo de Contrato', contracts.map(c => translateType(c)).join(', ') || 'N/A'],
         ['Categorías', categories.map(c => translateCategory(c)).join(', ') || 'N/A'],
-        ['Dirección', `${fullProject.city || ''} ${fullProject.address || ''}`.trim() || 'N/A'],
-        ['Ubicación GPS', (() => {
+        ['Fecha Inicio', formatDate(fullProject.startDate)],
+        ['Fecha Fin (Est.)', formatDate(fullProject.endDate)],
+        ['Estado Actual', fullProject.status === 'ACTIVO' ? 'En Ejecución' : fullProject.status],
+        ['Dirección Texto', `${fullProject.city || ''} ${fullProject.address || ''}`.trim() || 'N/A'],
+        ['Ubicación Cliente', (() => {
+          const link = fullProject.locationLink;
+          return (link && link !== 'N/A' && link.startsWith('http')) ? link : 'No proporcionada';
+        })()],
+        ['Ubicación Obra (Operador)', (() => {
           const findGpsLink = (text: string) => {
             if (!text) return null
             const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
             return match ? match[0] : null
           }
-          let link = fullProject.locationLink;
-          if (!link || link === 'N/A') {
-            try {
-              const specs = JSON.parse(fullProject.technicalSpecs || '{}');
-              link = specs.locationLink || findGpsLink(fullProject.address) || findGpsLink(fullProject.technicalSpecs);
-            } catch (e) {
-              link = findGpsLink(fullProject.address) || findGpsLink(fullProject.technicalSpecs);
-            }
-          }
-          return link || 'N/A'
+          const link = findGpsLink(fullProject.technicalSpecs) || findGpsLink(fullProject.specsTranscription) || findGpsLink(fullProject.address);
+          return (link && link !== fullProject.locationLink) ? link : 'Ver ubicación principal';
         })()],
-        ['Fecha Inicio', formatDate(fullProject.startDate)],
-        ['Fecha Fin (Est.)', formatDate(fullProject.endDate)],
-        ['Estado Actual', fullProject.status === 'ACTIVO' ? 'En Ejecución' : fullProject.status],
       ]
 
       autoTable(doc, {
@@ -1694,9 +1567,9 @@ export default function ProjectExecutionClient({
                     <span style={{ color: 'var(--text-muted)' }}>Nombre</span>
                     <span style={{ fontWeight: '500' }}>{clientName || 'N/A'}</span>
                   </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', alignItems: 'center' }}>
-                    <span style={{ color: 'var(--text-muted)' }}>Ubicación</span>
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.85rem', alignItems: 'flex-start' }}>
+                    <span style={{ color: 'var(--text-muted)', marginTop: '4px' }}>Ubicación</span>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px', maxWidth: '70%' }}>
                       {(() => {
                         const findGpsLink = (text: any) => {
                           if (!text || typeof text !== 'string') return null
@@ -1704,31 +1577,53 @@ export default function ProjectExecutionClient({
                           return match ? match[0] : null
                         }
 
-                        let locLink = project.locationLink;
-                        if (!locLink || locLink === 'N/A') {
-                          try {
-                            const specs = JSON.parse(project.technicalSpecs || '{}');
-                            locLink = specs.locationLink || findGpsLink(projectAddress) || findGpsLink(project.technicalSpecs);
-                          } catch {
-                            locLink = findGpsLink(projectAddress) || findGpsLink(project.technicalSpecs);
-                          }
+                        const clientLoc = project.locationLink && project.locationLink !== 'N/A' ? project.locationLink : null;
+                        const operatorLoc = findGpsLink(project.technicalSpecs) || findGpsLink(project.specsTranscription) || findGpsLink(projectAddress);
+                        
+                        const hasClient = !!clientLoc;
+                        const hasOperator = !!operatorLoc && operatorLoc !== clientLoc;
+
+                        if (!hasClient && !hasOperator) {
+                          return <span style={{ fontWeight: '500', textAlign: 'right' }}>{projectAddress || 'N/A'}</span>;
                         }
 
-                        if (locLink && typeof locLink === 'string' && (locLink.includes('google.com/maps') || locLink.includes('maps.app.goo.gl') || locLink.startsWith('http'))) {
-                          return (
-                            <a 
-                              href={locLink} 
-                              target="_blank" 
-                              rel="noreferrer"
-                              className="btn btn-primary btn-sm"
-                              style={{ padding: '4px 12px', fontSize: '0.75rem', borderRadius: '15px', display: 'flex', alignItems: 'center', gap: '6px' }}
-                            >
-                              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
-                              Abrir GPS
-                            </a>
-                          );
-                        }
-                        return <span style={{ fontWeight: '500' }}>{projectAddress || 'N/A'}</span>;
+                        return (
+                          <>
+                            {hasClient && (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Ubicación Cliente</span>
+                                <a 
+                                  href={clientLoc} 
+                                  target="_blank" 
+                                  rel="noreferrer"
+                                  className="btn btn-primary btn-sm"
+                                  style={{ padding: '4px 10px', fontSize: '0.7rem', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px' }}
+                                >
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                  Abrir Google Maps
+                                </a>
+                              </div>
+                            )}
+                            {hasOperator && (
+                              <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '2px' }}>
+                                <span style={{ fontSize: '0.65rem', color: 'var(--text-muted)', textTransform: 'uppercase' }}>Ubicación Obra / Operador</span>
+                                <a 
+                                  href={operatorLoc} 
+                                  target="_blank" 
+                                  rel="noreferrer"
+                                  className="btn btn-secondary btn-sm"
+                                  style={{ padding: '4px 10px', fontSize: '0.7rem', borderRadius: '6px', display: 'flex', alignItems: 'center', gap: '4px', backgroundColor: 'rgba(255,255,255,0.1)' }}
+                                >
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>
+                                  Ver Punto Marcado
+                                </a>
+                              </div>
+                            )}
+                            {!hasClient && hasOperator && projectAddress && (
+                               <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)', textAlign: 'right', marginTop: '4px' }}>{projectAddress}</span>
+                            )}
+                          </>
+                        );
                       })()}
                     </div>
                   </div>

@@ -38,6 +38,7 @@ export default function AppointmentModal({
   const [selectedOperatorIds, setSelectedOperatorIds] = useState<number[]>([])
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [filteredProjects, setFilteredProjects] = useState<any[]>(projects)
+  const [selectedMedia, setSelectedMedia] = useState<any>(null)
   const [formData, setFormData] = useState({
     title: '',
     description: '',
@@ -730,101 +731,94 @@ export default function AppointmentModal({
                       gap: '10px'
                     }}>
                       {formData.previews.length > 0 ? (
-                        formData.previews.map((file, idx) => (
-                          <div 
-                            key={idx} 
-                            className="preview-item-aquatech"
-                            onClick={() => window.open(file.url, '_blank')}
-                            style={{ 
-                              cursor: 'pointer',
-                              width: '60px',
-                              height: '60px',
-                              position: 'relative',
-                              borderRadius: '8px',
-                              overflow: 'hidden',
-                              border: '2px solid rgba(88, 199, 255, 0.3)',
-                              transition: 'transform 0.2s'
-                            }}
-                            onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.05)'}
-                            onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                          >
-                            {file.type.includes('image') ? (
-                              <img src={file.url} alt="preview" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                            ) : (
-                              <div className="preview-icon-aquatech" style={{ 
-                                width: '100%', 
-                                height: '100%', 
-                                display: 'flex', 
-                                alignItems: 'center', 
-                                justifyContent: 'center',
-                                background: '#0a192f',
-                                fontSize: '1.5rem'
-                              }}>
-                                {file.type.includes('video') ? '🎬' : 
-                                 file.type.includes('audio') ? '🎙️' : '📄'}
-                              </div>
-                            )}
-                            
-                            {/* Nombre del archivo mini */}
-                            <div style={{ 
-                              fontSize: '0.55rem', 
-                              color: 'white', 
-                              position: 'absolute', 
-                              bottom: 0, 
-                              left: 0, 
-                              right: 0,
-                              background: 'rgba(0,0,0,0.7)', 
-                              padding: '2px 4px', 
-                              textAlign: 'center',
-                              whiteSpace: 'nowrap',
-                              overflow: 'hidden',
-                              textOverflow: 'ellipsis'
-                            }}>
-                              {file.name}
-                            </div>
+                        formData.previews.map((file, idx) => {
+                          const isPdf = file.type?.includes('pdf') || file.name?.toLowerCase().endsWith('.pdf');
+                          const isImage = file.type?.includes('image');
+                          const isVideo = file.type?.includes('video');
+                          const isAudio = file.type?.includes('audio');
 
-                            {(isAdminView || file.isNew) && (
-                              <button 
-                                type="button"
-                                className="remove-preview-btn"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  removeFile(idx);
-                                }}
-                                style={{
-                                  position: 'absolute',
-                                  top: '2px',
-                                  right: '2px',
-                                  background: 'rgba(255,0,0,0.8)',
-                                  color: 'white',
-                                  border: 'none',
-                                  borderRadius: '50%',
-                                  width: '18px',
-                                  height: '18px',
-                                  fontSize: '10px',
-                                  cursor: 'pointer',
-                                  display: 'flex',
-                                  alignItems: 'center',
-                                  justifyContent: 'center',
-                                  zIndex: 10
-                                }}
-                              >✕</button>
-                            )}
-                            
-                            {file.isNew && (
-                              <div style={{
-                                position: 'absolute',
-                                top: '2px',
-                                left: '2px',
-                                background: 'var(--brand-primary)',
-                                width: '8px',
-                                height: '8px',
-                                borderRadius: '50%',
-                                border: '1px solid white'
-                              }} title="Nuevo" />
-                            )}
-                          </div>
-                        ))
+                          return (
+                            <div 
+                              key={idx} 
+                              className="preview-item-aquatech"
+                              style={{ 
+                                cursor: 'pointer',
+                                width: '90px',
+                                height: '90px',
+                                position: 'relative',
+                                borderRadius: '12px',
+                                overflow: 'hidden',
+                                border: '2px solid rgba(88, 199, 255, 0.2)',
+                                background: 'rgba(0,0,0,0.5)',
+                                transition: 'all 0.2s ease',
+                                boxShadow: '0 4px 12px rgba(0,0,0,0.2)'
+                              }}
+                              onClick={() => setSelectedMedia(file)}
+                            >
+                              <div className="preview-content-aquatech" style={{ width: '100%', height: '100%' }}>
+                                {isImage ? (
+                                  <img 
+                                    src={file.url} 
+                                    alt="preview" 
+                                    style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                                    onError={(e) => {
+                                      (e.target as HTMLImageElement).src = 'https://placehold.co/100x100?text=Error+Carga';
+                                    }}
+                                  />
+                                ) : isVideo ? (
+                                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="var(--primary)"><path d="M8 5v14l11-7z"/></svg>
+                                    <div style={{ position: 'absolute', top: '4px', right: '4px', fontSize: '9px', background: 'var(--primary)', color: 'black', padding: '1px 4px', borderRadius: '4px', fontWeight: 'bold' }}>VIDEO</div>
+                                  </div>
+                                ) : isAudio ? (
+                                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0f172a, #1e293b)' }}>
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                                  </div>
+                                ) : isPdf ? (
+                                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239, 68, 68, 0.1)' }}>
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                    <div style={{ position: 'absolute', top: '4px', right: '4px', fontSize: '9px', background: '#ef4444', color: 'white', padding: '1px 4px', borderRadius: '4px', fontWeight: 'bold' }}>PDF</div>
+                                  </div>
+                                ) : (
+                                  <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                                  </div>
+                                )}
+                              </div>
+                              
+                              {/* Botón de eliminar (solo si es admin o nuevo) */}
+                              {isAdminView && (
+                                <button 
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setFormData(prev => ({
+                                      ...prev,
+                                      previews: prev.previews.filter((_, i) => i !== idx),
+                                      mediaFiles: prev.mediaFiles.filter((_, i) => i !== (idx - (prev.previews.length - prev.mediaFiles.length)))
+                                    }))
+                                  }}
+                                  style={{
+                                    position: 'absolute', top: '4px', right: '4px',
+                                    width: '20px', height: '20px', borderRadius: '50%',
+                                    background: 'rgba(239, 68, 68, 0.9)', color: 'white',
+                                    border: 'none', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                                    fontSize: '10px', cursor: 'pointer', zIndex: 10
+                                  }}
+                                >✕</button>
+                              )}
+                              {/* Footer con nombre */}
+                              <div style={{ 
+                                position: 'absolute', bottom: 0, left: 0, right: 0,
+                                background: 'rgba(0,0,0,0.7)', padding: '4px',
+                                fontSize: '0.6rem', color: 'white', textAlign: 'center',
+                                whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'
+                              }}>
+                                {file.name || 'Archivo'}
+                              </div>
+                            </div>
+                          );
+                        })
                       ) : (
                         <div style={{ 
                           width: '100%', 
@@ -1312,6 +1306,138 @@ export default function AppointmentModal({
           }
         }
       `}</style>
+    {/* Overlay de Previsualización Grande */}
+    {selectedMedia && (
+      <div 
+        style={{
+          position: 'fixed',
+          top: 0, left: 0, right: 0, bottom: 0,
+          backgroundColor: 'rgba(0,0,0,0.95)',
+          zIndex: 99999,
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '20px',
+          backdropFilter: 'blur(10px)'
+        }}
+        onClick={() => setSelectedMedia(null)}
+      >
+        <button 
+          style={{
+            position: 'absolute',
+            top: '20px',
+            right: '20px',
+            background: 'rgba(255,255,255,0.1)',
+            border: 'none',
+            color: 'white',
+            width: '44px',
+            height: '44px',
+            borderRadius: '50%',
+            cursor: 'pointer',
+            fontSize: '20px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center'
+          }}
+          onClick={(e) => { e.stopPropagation(); setSelectedMedia(null); }}
+        >✕</button>
+
+        <div 
+          style={{ 
+            maxWidth: '90%', 
+            maxHeight: '80vh', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center',
+            position: 'relative'
+          }}
+          onClick={e => e.stopPropagation()}
+        >
+          {selectedMedia.type.includes('image') ? (
+            <img 
+              src={selectedMedia.url} 
+              alt="large-preview" 
+              style={{ 
+                maxWidth: '100%', 
+                maxHeight: '80vh', 
+                objectFit: 'contain',
+                borderRadius: '8px',
+                boxShadow: '0 20px 50px rgba(0,0,0,0.5)'
+              }} 
+              onError={(e) => {
+                (e.target as HTMLImageElement).src = 'https://placehold.co/800x600?text=Error+al+Cargar+Imagen';
+              }}
+            />
+          ) : selectedMedia.type.includes('video') ? (
+            <div style={{ width: '100%', maxWidth: '800px', background: '#000', borderRadius: '12px', overflow: 'hidden' }}>
+              <video 
+                src={selectedMedia.url} 
+                controls 
+                autoPlay
+                playsInline
+                style={{ 
+                  width: '100%',
+                  maxHeight: '70vh',
+                  display: 'block'
+                }} 
+              />
+            </div>
+          ) : selectedMedia.type.includes('audio') ? (
+            <div style={{ background: '#111827', padding: '40px', borderRadius: '24px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', width: '100%', maxWidth: '400px' }}>
+              <div style={{ marginBottom: '20px', fontSize: '4rem' }}>🎙️</div>
+              <audio 
+                src={selectedMedia.url} 
+                controls 
+                autoPlay
+                style={{ width: '100%' }} 
+              />
+              <p style={{ marginTop: '20px', fontSize: '0.9rem', color: 'var(--text-muted)', fontWeight: '500' }}>{selectedMedia.name}</p>
+            </div>
+          ) : (
+            <div style={{ background: '#111827', padding: '60px', borderRadius: '24px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', width: '100%', maxWidth: '500px' }}>
+              <div style={{ marginBottom: '20px', fontSize: '5rem' }}>{selectedMedia.type.includes('pdf') || selectedMedia.name?.toLowerCase().endsWith('.pdf') ? '📄' : '📁'}</div>
+              <h3 style={{ marginBottom: '10px', color: 'white', fontSize: '1.2rem' }}>{selectedMedia.name}</h3>
+              <p style={{ marginBottom: '30px', color: 'var(--text-muted)' }}>Vista previa no disponible para este formato.</p>
+              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
+                <button 
+                  onClick={() => window.open(selectedMedia.url, '_blank')}
+                  style={{
+                    background: 'var(--primary)',
+                    color: 'black',
+                    padding: '12px 24px',
+                    borderRadius: '10px',
+                    border: 'none',
+                    fontWeight: 'bold',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '8px'
+                  }}
+                >
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                  Descargar / Abrir
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer del preview */}
+        <div style={{ marginTop: '20px', textAlign: 'center', color: 'white' }}>
+          <p style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '10px' }}>{selectedMedia.name}</p>
+          <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
+            <button 
+              onClick={() => window.open(selectedMedia.url, '_blank')}
+              style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer' }}
+            >
+              Abrir Original
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+
     </div>,
     document.body
   );

@@ -39,6 +39,13 @@ export interface ClientCache {
   phone?: string;
 }
 
+export interface CacheMetadata {
+  id: string; // e.g., 'projects_bulk'
+  lastSync: number;
+  count: number;
+  status: 'idle' | 'syncing' | 'error';
+}
+
 export class OfflineDatabase extends Dexie {
   outbox!: Table<OutboxItem>;
   auth!: Table<AuthCache>;
@@ -50,6 +57,7 @@ export class OfflineDatabase extends Dexie {
   appointmentsCache!: Table<any>;
   chatCache!: Table<any>;
   dashboardCache!: Table<any>;
+  cacheMetadata!: Table<CacheMetadata>;
 
   constructor() {
     super('AquatechOfflineDB');
@@ -97,6 +105,19 @@ export class OfflineDatabase extends Dexie {
       appointmentsCache: 'id, projectId',
       chatCache: 'projectId',
       dashboardCache: 'id'
+    });
+    this.version(10).stores({
+      outbox: '++id, projectId, status, timestamp, type',
+      auth: 'id',
+      authShadow: 'id',
+      materialsCache: 'id, code, name, category',
+      clientsCache: 'id, name, ruc',
+      quotesCache: 'id, clientName, projectId',
+      projectsCache: 'id, title',
+      appointmentsCache: 'id, projectId',
+      chatCache: 'projectId',
+      dashboardCache: 'id',
+      cacheMetadata: 'id'
     });
   }
 }
