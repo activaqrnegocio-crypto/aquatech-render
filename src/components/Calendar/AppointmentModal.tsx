@@ -52,7 +52,7 @@ export default function AppointmentModal({
     clientPhone: '',
     status: 'PENDIENTE',
     mediaFiles: [] as File[],
-    previews: [] as { url: string; type: string; name: string; isNew?: boolean }[]
+    previews: [] as { url: string; type: string; name: string; isNew?: boolean; data?: string; isOffline?: boolean }[]
   })
 
   useEffect(() => {
@@ -76,29 +76,12 @@ export default function AppointmentModal({
           clientPhone: initialData.clientPhone || '',
           status: initialData.status || 'PENDIENTE',
           mediaFiles: [],
-          previews: initialData.files ? (typeof initialData.files === 'string' ? JSON.parse(initialData.files) : initialData.files).map((f: any) => {
-            // Robust fallback for offline tasks or missing URLs
-            let finalUrl = f.url || f.data;
-            if (!finalUrl && initialData.attachments) {
-              const att = Array.isArray(initialData.attachments) 
-                ? initialData.attachments.find((a: any) => a.name === f.name)
-                : null;
-              if (att) finalUrl = att.base64 || att.data;
-            }
-            if (!finalUrl && initialData.attachmentLinks) {
-              const link = Array.isArray(initialData.attachmentLinks)
-                ? initialData.attachmentLinks.find((l: any) => l.name === f.name)
-                : null;
-              if (link) finalUrl = link.base64 || link.url;
-            }
-
-            return {
-              url: finalUrl,
-              type: f.type || 'document',
-              name: f.name || 'Archivo',
-              isNew: false
-            };
-          }) : []
+          previews: initialData.files ? (typeof initialData.files === 'string' ? JSON.parse(initialData.files) : initialData.files).map((f: any) => ({
+            url: f.url || f.data,
+            type: f.type || 'document',
+            name: f.name || 'Archivo',
+            isNew: false
+          })) : []
         })
       } else {
         const now = getLocalNow()
@@ -383,14 +366,18 @@ export default function AppointmentModal({
             reader.readAsDataURL(file)
           })
           
-          const isVideo = file.type.startsWith('video/')
+          const ext = file.name.split('.').pop()?.toLowerCase() || '';
+          const isVideo = file.type.startsWith('video/') || ['mp4', 'mov', 'webm'].includes(ext);
+          const isAudio = file.type.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].includes(ext);
+          const isImage = file.type.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext);
+
           if (isVideo) {
-            linkFiles.push({ type: 'video', name: file.name, base64 })
+            linkFiles.push({ type: 'video', name: file.name, url: base64, isOffline: true })
           } else {
             let mediaType = 'document'
-            if (file.type.startsWith('image/')) mediaType = 'image'
-            if (file.type.startsWith('audio/')) mediaType = 'audio'
-            realFiles.push({ type: mediaType, name: file.name, base64 })
+            if (isImage) mediaType = 'image'
+            if (isAudio) mediaType = 'audio'
+            realFiles.push({ type: mediaType, name: file.name, data: base64, isOffline: true })
           }
         }
       }
@@ -401,8 +388,8 @@ export default function AppointmentModal({
         .map(p => ({ url: p.url, type: p.type, name: p.name }));
       
       const newUploadedFiles = [
-        ...realFiles.map(f => ({ url: f.data || f.base64, type: f.type, name: f.name })),
-        ...linkFiles.map(f => ({ url: f.url || f.base64, type: f.type, name: f.name }))
+        ...realFiles.map(f => ({ url: f.data, type: f.type, name: f.name, isOffline: f.isOffline })),
+        ...linkFiles.map(f => ({ url: f.url, type: f.type, name: f.name, isOffline: f.isOffline }))
       ];
 
       const allFiles = [...existingFiles, ...newUploadedFiles];
@@ -749,10 +736,13 @@ export default function AppointmentModal({
                     }}>
                       {formData.previews.length > 0 ? (
                         formData.previews.map((file, idx) => {
-                          const isPdf = file.type?.includes('pdf') || file.name?.toLowerCase().endsWith('.pdf');
-                          const isImage = file.type?.includes('image');
-                          const isVideo = file.type?.includes('video');
-                          const isAudio = file.type?.includes('audio');
+                          const fileName = (file.name || '').toLowerCase();
+                          const fileType = (file.type || '').toLowerCase();
+                          
+                          const isImage = fileType.includes('image') || fileName.match(/\.(jpg|jpeg|png|gif|webp|heic|svg)$/);
+                          const isVideo = fileType.includes('video') || fileName.match(/\.(mp4|mov|avi|webm|mkv|3gp|m4v)$/);
+                          const isAudio = fileType.includes('audio') || fileName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/);
+                          const isPdf = fileType.includes('pdf') || fileName.endsWith('.pdf');
 
                           return (
                             <div 
@@ -775,7 +765,7 @@ export default function AppointmentModal({
                               <div className="preview-content-aquatech" style={{ width: '100%', height: '100%' }}>
                                 {isImage ? (
                                   <img 
-                                    src={file.url} 
+                                    src={file.url || file.data} 
                                     alt="preview" 
                                     style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
                                     onError={(e) => {
@@ -790,6 +780,7 @@ export default function AppointmentModal({
                                 ) : isAudio ? (
                                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'linear-gradient(135deg, #0f172a, #1e293b)' }}>
                                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+                                    <div style={{ position: 'absolute', top: '4px', right: '4px', fontSize: '9px', background: 'var(--primary)', color: 'black', padding: '1px 4px', borderRadius: '4px', fontWeight: 'bold' }}>AUDIO</div>
                                   </div>
                                 ) : isPdf ? (
                                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(239, 68, 68, 0.1)' }}>
@@ -799,6 +790,28 @@ export default function AppointmentModal({
                                 ) : (
                                   <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                                     <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
+                                  </div>
+                                )}
+                                
+                                {file.isOffline && (
+                                  <div style={{ 
+                                    position: 'absolute', 
+                                    inset: 0, 
+                                    background: 'rgba(0,0,0,0.4)', 
+                                    display: 'flex', 
+                                    alignItems: 'center', 
+                                    justifyContent: 'center',
+                                    zIndex: 5
+                                  }}>
+                                    <span style={{ 
+                                      fontSize: '8px', 
+                                      background: '#f59e0b', 
+                                      color: 'black', 
+                                      padding: '2px 6px', 
+                                      borderRadius: '10px',
+                                      fontWeight: 'bold',
+                                      boxShadow: '0 2px 4px rgba(0,0,0,0.3)'
+                                    }}>PENDIENTE</span>
                                   </div>
                                 )}
                               </div>
@@ -1373,7 +1386,7 @@ export default function AppointmentModal({
         >
           {selectedMedia.type.includes('image') ? (
             <img 
-              src={selectedMedia.url} 
+              src={selectedMedia.url || selectedMedia.data} 
               alt="large-preview" 
               style={{ 
                 maxWidth: '100%', 
@@ -1389,7 +1402,7 @@ export default function AppointmentModal({
           ) : selectedMedia.type.includes('video') ? (
             <div style={{ width: '100%', maxWidth: '800px', background: '#000', borderRadius: '12px', overflow: 'hidden' }}>
               <video 
-                src={selectedMedia.url} 
+                src={selectedMedia.url || selectedMedia.data} 
                 controls 
                 autoPlay
                 playsInline
@@ -1404,7 +1417,7 @@ export default function AppointmentModal({
             <div style={{ background: '#111827', padding: '40px', borderRadius: '24px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', width: '100%', maxWidth: '400px' }}>
               <div style={{ marginBottom: '20px', fontSize: '4rem' }}>🎙️</div>
               <audio 
-                src={selectedMedia.url} 
+                src={selectedMedia.url || selectedMedia.data} 
                 controls 
                 autoPlay
                 style={{ width: '100%' }} 
@@ -1418,18 +1431,7 @@ export default function AppointmentModal({
               <p style={{ marginBottom: '30px', color: 'var(--text-muted)' }}>Vista previa no disponible para este formato.</p>
               <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
                 <button 
-                  onClick={() => {
-                    if (selectedMedia.url.startsWith('data:')) {
-                      const link = document.createElement('a');
-                      link.href = selectedMedia.url;
-                      link.download = selectedMedia.name;
-                      document.body.appendChild(link);
-                      link.click();
-                      document.body.removeChild(link);
-                    } else {
-                      window.open(selectedMedia.url, '_blank');
-                    }
-                  }}
+                  onClick={() => window.open(selectedMedia.url || selectedMedia.data, '_blank')}
                   style={{
                     background: 'var(--primary)',
                     color: 'black',
@@ -1456,21 +1458,10 @@ export default function AppointmentModal({
           <p style={{ fontSize: '1rem', fontWeight: 'bold', marginBottom: '10px' }}>{selectedMedia.name}</p>
           <div style={{ display: 'flex', gap: '10px', justifyContent: 'center' }}>
             <button 
-              onClick={() => {
-                if (selectedMedia.url.startsWith('data:')) {
-                  const link = document.createElement('a');
-                  link.href = selectedMedia.url;
-                  link.download = selectedMedia.name;
-                  document.body.appendChild(link);
-                  link.click();
-                  document.body.removeChild(link);
-                } else {
-                  window.open(selectedMedia.url, '_blank');
-                }
-              }}
+              onClick={() => window.open(selectedMedia.url, '_blank')}
               style={{ background: 'rgba(255,255,255,0.1)', border: 'none', color: 'white', padding: '8px 20px', borderRadius: '8px', cursor: 'pointer' }}
             >
-              Abrir Original / Descargar
+              Abrir Original
             </button>
           </div>
         </div>

@@ -337,12 +337,17 @@ export default function ProjectExecutionClient({
     
     // Filter by type
     return list.filter((item: any) => {
-      const mime = (item.mimeType || '').toLowerCase()
-      if (galleryFilter === 'IMAGES') return mime.startsWith('image/')
-      if (galleryFilter === 'VIDEOS') return mime.startsWith('video/')
-      if (galleryFilter === 'AUDIOS') return mime.startsWith('audio/')
-      if (galleryFilter === 'DOCS') return !mime.startsWith('image/') && !mime.startsWith('video/') && !mime.startsWith('audio/')
-      return true
+      const url = (item.url || '').toLowerCase();
+      const mime = (item.mimeType || '').toLowerCase();
+      const isImage = mime.startsWith('image/') || url.match(/\.(jpg|jpeg|png|gif|webp|heic|svg)$/);
+      const isVideo = mime.startsWith('video/') || url.match(/\.(mp4|mov|avi|webm|mkv|3gp|m4v)$/);
+      const isAudio = mime.startsWith('audio/') || url.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/);
+
+      if (galleryFilter === 'IMAGES') return isImage;
+      if (galleryFilter === 'VIDEOS') return isVideo;
+      if (galleryFilter === 'AUDIOS') return isAudio;
+      if (galleryFilter === 'DOCS') return !isImage && !isVideo && !isAudio;
+      return true;
     })
   }, [project.gallery, galleryFilter, localExpenses, pendingItems])
 
@@ -401,12 +406,17 @@ export default function ProjectExecutionClient({
 
     if (evidenceFilter === 'ALL') return combinedList
     return combinedList.filter((item: any) => {
-      const mime = (item.mimeType || '').toLowerCase()
-      if (evidenceFilter === 'IMAGES') return mime.startsWith('image/')
-      if (evidenceFilter === 'VIDEOS') return mime.startsWith('video/')
-      if (evidenceFilter === 'AUDIOS') return mime.startsWith('audio/')
-      if (evidenceFilter === 'DOCS') return !mime.startsWith('image/') && !mime.startsWith('video/') && !mime.startsWith('audio/')
-      return true
+      const url = (item.url || '').toLowerCase();
+      const mime = (item.mimeType || '').toLowerCase();
+      const isImage = mime.startsWith('image/') || url.match(/\.(jpg|jpeg|png|gif|webp|heic|svg)$/);
+      const isVideo = mime.startsWith('video/') || url.match(/\.(mp4|mov|avi|webm|mkv|3gp|m4v)$/);
+      const isAudio = mime.startsWith('audio/') || url.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/);
+
+      if (evidenceFilter === 'IMAGES') return isImage;
+      if (evidenceFilter === 'VIDEOS') return isVideo;
+      if (evidenceFilter === 'AUDIOS') return isAudio;
+      if (evidenceFilter === 'DOCS') return !isImage && !isVideo && !isAudio;
+      return true;
     })
   }, [project.gallery, evidenceFilter, pendingItems])
 
@@ -1283,26 +1293,17 @@ export default function ProjectExecutionClient({
         ['Estado Actual', fullProject.status === 'ACTIVO' ? 'En Ejecución' : fullProject.status],
         ['Dirección Texto', `${fullProject.city || ''} ${fullProject.address || ''}`.trim() || 'N/A'],
         ['Ubicación Cliente', (() => {
-          const findGpsLink = (text: string) => {
-            if (!text) return null
-            const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
-            return match ? match[0] : null
-          }
-          const link = fullProject.locationLink || findGpsLink(fullProject.address);
-          return (link && link !== 'N/A') ? link : 'No proporcionada';
+          const link = fullProject.locationLink;
+          return (link && link !== 'N/A' && link.startsWith('http')) ? link : 'No proporcionada';
         })()],
-        ['Ubicación Obra (GPS)', (() => {
+        ['Ubicación Obra (Operador)', (() => {
           const findGpsLink = (text: string) => {
             if (!text) return null
             const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
             return match ? match[0] : null
           }
-          let link = findGpsLink(fullProject.technicalSpecs) || findGpsLink(fullProject.specsTranscription) || findGpsLink(fullProject.address);
-          
-          // Si no hay link de obra pero hay de cliente, usamos el de cliente para no dejarlo vacío
-          if (!link || link === 'N/A') link = fullProject.locationLink;
-          
-          return (link && link !== 'N/A') ? link : 'No proporcionada';
+          const link = findGpsLink(fullProject.technicalSpecs) || findGpsLink(fullProject.specsTranscription) || findGpsLink(fullProject.address);
+          return (link && link !== fullProject.locationLink) ? link : 'Ver ubicación principal';
         })()],
       ]
 
@@ -1795,13 +1796,14 @@ export default function ProjectExecutionClient({
                         >
                           {(() => {
                             const getCleanType = (mime: string, url: string) => {
-                              if (mime === 'application/octet-stream' || !mime) {
+                              const cleanMime = (mime || '').toLowerCase();
+                              if (cleanMime === 'application/octet-stream' || !cleanMime) {
                                 const ext = url.split('.').pop()?.toLowerCase();
-                                if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) return 'image/jpeg';
-                                if (['mp4', 'mov', 'webm'].includes(ext || '')) return 'video/mp4';
-                                if (['mp3', 'wav', 'ogg', 'm4a'].includes(ext || '')) return 'audio/mpeg';
+                                if (['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'svg'].includes(ext || '')) return 'image/jpeg';
+                                if (['mp4', 'mov', 'webm', '3gp', 'm4v', 'avi'].includes(ext || '')) return 'video/mp4';
+                                if (['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].includes(ext || '')) return 'audio/mpeg';
                               }
-                              return mime;
+                              return cleanMime;
                             };
 
                             const cleanFilename = (name: string) => {

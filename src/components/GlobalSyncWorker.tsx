@@ -114,20 +114,32 @@ export default function GlobalSyncWorker() {
           }
 
           // 2. Handle multiple media (TASK / CALENDAR)
-          if (item.type === 'TASK' && (finalPayload.attachments || finalPayload.attachmentLinks)) {
+          if (item.type === 'TASK' && (finalPayload.attachments || finalPayload.attachmentLinks || finalPayload.files)) {
             try {
-              const allAttachments = [...(finalPayload.attachments || []), ...(finalPayload.attachmentLinks || [])];
+              const allAttachments = [
+                ...(finalPayload.attachments || []), 
+                ...(finalPayload.attachmentLinks || []),
+                ...(finalPayload.files || [])
+              ];
+              const processedIds = new Set();
               const uploadedFiles = [];
 
               for (const att of allAttachments) {
-                if (att.base64) {
-                  const resB64 = await fetch(att.base64);
+                const identifier = att.name + (att.url || att.data || att.base64);
+                if (processedIds.has(identifier)) continue;
+                processedIds.add(identifier);
+
+                const sourceData = att.base64 || att.url || att.data;
+                const isBase64 = sourceData?.startsWith('data:');
+
+                if (isBase64) {
+                  const resB64 = await fetch(sourceData);
                   const blob = await resB64.blob();
                   const uploadResult = await uploadToBunnyClientSide(blob, att.name, 'appointments');
                   uploadedFiles.push({ url: uploadResult.url, type: att.type, name: att.name });
-                } else if (att.data?.startsWith('http') || att.url?.startsWith('http')) {
+                } else if (sourceData?.startsWith('http')) {
                   // Already uploaded or existing link
-                  uploadedFiles.push({ url: att.url || att.data, type: att.type, name: att.name });
+                  uploadedFiles.push({ url: sourceData, type: att.type, name: att.name });
                 }
               }
 

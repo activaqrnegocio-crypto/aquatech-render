@@ -79,13 +79,11 @@ export default function OperatorDashboardClient({
     })
 
     const pendingMapped = pendingTasksRaw.map(t => ({
+      ...t.payload,
       id: `pending-${t.id}`, // pseudo-id
-      title: t.payload.title,
-      description: t.payload.description,
+      status: t.payload.status || 'PENDIENTE',
       startTime: new Date(t.payload.startTime),
       endTime: new Date(t.payload.endTime),
-      status: 'PENDIENTE',
-      userId: user.id,
       project: projects.find((p: any) => p.id === Number(t.payload.projectId)) || null,
       isOffline: true // flag for UI
     }))

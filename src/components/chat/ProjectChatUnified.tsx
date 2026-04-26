@@ -95,10 +95,18 @@ export default function ProjectChatUnified({
       parts.forEach((p: any) => {
         if (p?.url) {
           let type: 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS' = 'DOCS'
-          const url = p.url.toLowerCase()
-          if (url.match(/\.(jpg|jpeg|png|gif|webp|heic|svg)$/)) type = 'IMAGES'
-          else if (url.match(/\.(mp4|mov|avi|webm|mkv)$/)) type = 'VIDEOS'
-          else if (url.match(/\.(mp3|wav|ogg|m4a|aac)$/)) type = 'AUDIOS'
+          const url = (p.url || '').toLowerCase()
+          const mime = (p.mimeType || '').toLowerCase()
+          const pType = (p.type || '').toUpperCase()
+
+          // 1. Prioridad por tipo ya definido o mimeType
+          if (pType === 'IMAGE' || pType === 'IMAGES' || mime.startsWith('image/')) type = 'IMAGES'
+          else if (pType === 'VIDEO' || pType === 'VIDEOS' || mime.startsWith('video/')) type = 'VIDEOS'
+          else if (pType === 'AUDIO' || pType === 'AUDIOS' || mime.startsWith('audio/')) type = 'AUDIOS'
+          // 2. Fallback por extensión
+          else if (url.match(/\.(jpg|jpeg|png|gif|webp|heic|svg)$/)) type = 'IMAGES'
+          else if (url.match(/\.(mp4|mov|avi|webm|mkv|3gp|m4v)$/)) type = 'VIDEOS'
+          else if (url.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) type = 'AUDIOS'
           
           list.push({ 
             ...p, 

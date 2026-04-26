@@ -23,23 +23,72 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
       })
     }, 1000)
 
-    // 2. SW and Data Prefetch (Increased delay to 5s to let UI breathe)
+    // 2. SW and Data Prefetch
     const dataTimer = setTimeout(() => {
       if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
-        // HTML Caching (SW now handles this with chunks and timeouts)
+        // HTML Caching - Enviar al SW (el SW ya está optimizado para ir uno a uno)
         navigator.serviceWorker.controller.postMessage({
           type: 'PRECACHE_URLS',
           urls
         })
+
+        // RSC Payload Caching - IR UNO A UNO
+        const cacheRSC = async () => {
+          for (const url of urls) {
+            try {
+              await fetch(url, { headers: { 'RSC': '1' } })
+              // Esperar 300ms entre cada payload de Next.js
+              await new Promise(r => setTimeout(r, 300))
+            } catch (e) {}
+          }
+        }
+        cacheRSC()
       }
 
-      // 3. DEEP DATA PREFETCH: Populate Dexie for projects, chats and global entities
-      // Only run this if we are online
+      // 3. DEEP DATA PREFETCH & CLEANUP
       if (typeof navigator !== 'undefined' && navigator.onLine) {
-        const prefetchSequentially = async () => {
-          // A. Global Entities (for forms and lists)
+        const runGarbageCollector = async () => {
           try {
-            // Clients
+            const MAX_PROJECTS = 100;
+            const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
+            const now = Date.now();
+
+            // 1. Borrar proyectos muy viejos (más de 30 días sin acceso)
+            const oldProjects = await db.projectsCache
+              .where('lastAccessedAt')
+              .below(now - THIRTY_DAYS)
+              .toArray();
+            
+            for (const p of oldProjects) {
+              await db.projectsCache.delete(p.id);
+              await db.chatCache.delete(p.id);
+            }
+
+            // 2. Si hay demasiados, borrar los más viejos hasta quedar bajo el límite
+            const count = await db.projectsCache.count();
+            if (count > MAX_PROJECTS) {
+              const toDeleteCount = count - MAX_PROJECTS;
+              const toDelete = await db.projectsCache
+                .orderBy('lastAccessedAt')
+                .limit(toDeleteCount)
+                .toArray();
+              
+              for (const p of toDelete) {
+                await db.projectsCache.delete(p.id);
+                await db.chatCache.delete(p.id);
+              }
+              console.log(`[GC] Limpiados ${toDeleteCount} proyectos antiguos para liberar espacio.`);
+            }
+          } catch (e) {
+            console.error('[GC] Error en limpieza de caché:', e);
+          }
+        };
+
+        const prefetchSequentially = async () => {
+          await runGarbageCollector(); // Limpiar antes de empezar
+          
+          try {
+            // ... (resto de la lógica de clientes y materiales se mantiene)
             const clientsResp = await fetch('/api/clients')
             if (clientsResp.ok) {
               const clients = await clientsResp.json()
@@ -48,8 +97,8 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
                 await db.clientsCache.bulkPut(clients)
               }
             }
+            await new Promise(r => setTimeout(r, 500))
             
-            // Materials
             const matResp = await fetch('/api/materials')
             if (matResp.ok) {
               const materials = await matResp.json()
@@ -58,54 +107,52 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
                 await db.materialsCache.bulkPut(materials)
               }
             }
+            await new Promise(r => setTimeout(r, 500))
 
-            // Team
             await fetch('/api/users?roles=OPERATOR,SUBCONTRATISTA').catch(() => {})
+            await new Promise(r => setTimeout(r, 500))
 
-            console.log('[Prefetch] Global data cached in Dexie')
           } catch (e) {
             console.warn('[Prefetch] Global data fetch failed', e)
           }
 
           for (const url of urls) {
-            // Check if it's a project detail page
             const projectMatch = url.match(/\/(admin|operador)\/proyectos\/(\d+)/) || url.match(/\/admin\/proyectos\/(\d+)/)
             if (projectMatch) {
               const projectId = projectMatch[2] || projectMatch[1]
               
-              // Skip if already in cache and not forced
               const existing = await db.projectsCache.get(Number(projectId))
               if (existing && Date.now() - new Date(existing.updatedAt || 0).getTime() < 3600000) {
-                continue // Skip if updated in the last hour
+                // Solo actualizar el lastAccessedAt si ya existe y es reciente
+                await db.projectsCache.update(Number(projectId), { lastAccessedAt: Date.now() });
+                continue
               }
 
               try {
-                // A. Fetch Project Detail JSON
                 const pResp = await fetch(`/api/projects/${projectId}`)
                 if (pResp.ok) {
                   const projectData = await pResp.json()
-                  await db.projectsCache.put(projectData)
+                  // Guardar con marca de tiempo de acceso
+                  await db.projectsCache.put({ ...projectData, lastAccessedAt: Date.now() })
                 }
+                await new Promise(r => setTimeout(r, 400))
 
-                // B. Fetch Chat Messages JSON
                 const cResp = await fetch(`/api/projects/${projectId}/messages`)
                 if (cResp.ok) {
                   const messages = await cResp.json()
                   await db.chatCache.put({ projectId: Number(projectId), messages })
                 }
                 
-                console.log(`[Prefetch] Data cached for project ${projectId}`)
-                // Small delay to avoid saturating the browser
-                await new Promise(r => setTimeout(r, 500))
+                await new Promise(r => setTimeout(r, 800))
               } catch (err) {
-                console.warn(`[Prefetch] Failed to cache data for project ${projectId}`, err)
+                console.warn(`[Prefetch] Failed to cache project ${projectId}`, err)
               }
             }
           }
         }
         prefetchSequentially()
       }
-    }, 5000)
+    }, 4000)
 
     return () => {
       clearTimeout(timer)
