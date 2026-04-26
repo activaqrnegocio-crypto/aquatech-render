@@ -532,41 +532,43 @@ self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'PRECACHE_URLS') {
     const urls = event.data.urls || [];
     console.log('[SW] Warm-up pre-caching', urls.length, 'URLs');
+    
     event.waitUntil(
       caches.open(PAGES_CACHE).then(async (cache) => {
-        for (const url of urls) {
-          try {
-            // Usar fetchWithTimeout para que no se quede colgado eternamente (5 segundos max)
-            const response = await fetchWithTimeout(new Request(url, { 
-              credentials: 'same-origin',
-              headers: { 'Cache-Control': 'no-cache' }
-            }), 5000);
+        // Procesar en pequeños grupos para no bloquear
+        const batchSize = 3;
+        for (let i = 0; i < urls.length; i += batchSize) {
+          const batch = urls.slice(i, i + batchSize);
+          await Promise.all(batch.map(async (url) => {
+            try {
+              const response = await fetchWithTimeout(new Request(url, { 
+                credentials: 'same-origin',
+                headers: { 'Cache-Control': 'no-cache', 'Accept': 'text/html' }
+              }), 8000);
 
-            if (response.ok) {
-              const contentType = response.headers.get('Content-Type') || '';
-              const isHTML = contentType.includes('text/html');
-              const finalUrl = response.url || '';
-              const isLoginRedirect = finalUrl.includes('/login');
-              
-              if (isHTML && !isLoginRedirect) {
-                await cache.put(url, response.clone());
-                const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
-                await cache.put(alt, response.clone());
-                console.log('[SW] Warm-cached:', url);
+              if (response.ok) {
+                const contentType = response.headers.get('Content-Type') || '';
+                const isHTML = contentType.includes('text/html');
+                const finalUrl = response.url || '';
+                const isLoginRedirect = finalUrl.includes('/login');
+                
+                if (isHTML && !isLoginRedirect) {
+                  await cache.put(url, response.clone());
+                  // Guardar también la versión con/sin slash
+                  const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
+                  await cache.put(alt, response.clone());
+                  console.log('[SW] Warm-cached success:', url);
+                }
               }
+            } catch (e) {
+              console.warn('[SW] Warm-cache failed for:', url);
             }
-            
-            // Limpiar si excedemos el límite después de cada ráfaga
-            trimCache(PAGES_CACHE, 50);
-            
-            // Pausa de cortesía para no saturar el CPU del móvil ni el Servidor
-            await new Promise(r => setTimeout(r, 300));
-            
-          } catch (e) {
-            console.warn('[SW] Warm-cache failed or timeout for:', url);
-          }
+          }));
+          // Pequeño respiro
+          await new Promise(r => setTimeout(r, 200));
         }
         console.log('[SW] Pre-caching sequence finished');
+        trimCache(PAGES_CACHE, 60);
       })
     );
   }

@@ -57,48 +57,63 @@ export default function ProjectCacheManager() {
       const projects = await res.json()
       setProgress({ current: 0, total: projects.length })
 
-      let successCount = 0
-      const CHUNK_SIZE = 5 // Descargar de 5 en 5 para máxima velocidad
+      const CHUNK_SIZE = 5
+      const TIMEOUT_MS = 15000 // 15 segundos por lote
 
       for (let i = 0; i < projects.length; i += CHUNK_SIZE) {
         const chunk = projects.slice(i, i + CHUNK_SIZE)
         
-        const chunkPromises = chunk.map(async (p: any) => {
-          try {
-            const projectToCache = { 
-              ...p,
-              lastAccessedAt: Date.now()
-            }
-            const chatMessages = p.chatMessages || []
-            delete projectToCache.chatMessages
+        const processChunk = async () => {
+          const chunkPromises = chunk.map(async (p: any) => {
+            try {
+              const projectToCache = { 
+                ...p,
+                lastAccessedAt: Date.now()
+              }
+              const chatMessages = p.chatMessages || []
+              delete projectToCache.chatMessages
 
-            await db.projectsCache.put(projectToCache)
-            
-            if (chatMessages.length > 0) {
-              await db.chatCache.put({ projectId: p.id, messages: chatMessages })
+              await db.projectsCache.put(projectToCache)
+              
+              if (chatMessages.length > 0) {
+                await db.chatCache.put({ projectId: p.id, messages: chatMessages })
+              }
+              
+              setProgress(prev => ({ ...prev, current: prev.current + 1 }))
+              return true
+            } catch (err) {
+              console.error(`Error caching project ${p.id}:`, err)
+              return false
             }
-            
-            // Actualizar progreso individualmente
-            setProgress(prev => ({ ...prev, current: prev.current + 1 }))
-            return true
-          } catch (err) {
-            console.error(`Error caching project ${p.id}:`, err)
-            return false
-          }
-        })
+          })
+          await Promise.all(chunkPromises)
+        }
 
-        const results = await Promise.all(chunkPromises)
-        successCount += results.filter(Boolean).length
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Chunk Timeout')), TIMEOUT_MS)
+        )
+
+        try {
+          await Promise.race([processChunk(), timeoutPromise])
+        } catch (err) {
+          console.warn(`Lote ${i/CHUNK_SIZE + 1} demoró demasiado o falló. Continuando...`)
+          const remainingInChunk = Math.min(CHUNK_SIZE, projects.length - i)
+          setProgress(prev => {
+            const nextCurrent = prev.current + remainingInChunk
+            return { ...prev, current: Math.min(nextCurrent, prev.total) }
+          })
+        }
       }
 
       const now = Date.now()
+      const finalCount = await db.projectsCache.count()
       setLastSync(now)
-      setProjectCount(successCount)
+      setProjectCount(finalCount)
 
       await db.cacheMetadata.put({
         id: 'projects_bulk',
         lastSync: now,
-        count: successCount,
+        count: finalCount,
         status: 'idle'
       })
 
