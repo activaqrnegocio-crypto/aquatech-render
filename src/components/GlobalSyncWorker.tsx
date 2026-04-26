@@ -40,15 +40,16 @@ export default function GlobalSyncWorker() {
 
       const res = await fetch('/api/projects/bulk-cache?limit=100')
       if (!res.ok) throw new Error('Error de red o sesión expirada')
+
+      const projects = await res.json()
       
-      const contentLength = res.headers.get('Content-Length')
-      const sizeMB = contentLength ? (parseInt(contentLength) / (1024 * 1024)).toFixed(2) : '?'
+      // Calculate approximate size in MB from the object
+      const jsonString = JSON.stringify(projects)
+      const sizeMB = (jsonString.length / (1024 * 1024)).toFixed(2)
       
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
         detail: { message: `Datos recibidos (${sizeMB} MB). Procesando...` }
       }))
-
-      const projects = await res.json()
       
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
         detail: { message: `Preparando descarga de ${projects.length} proyectos...` }

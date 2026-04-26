@@ -39,20 +39,65 @@ export async function GET(request: Request) {
     const projects = await prisma.project.findMany({
       where: whereClause,
       take: safeLimit,
-      include: {
-        client: true,
-        phases: { orderBy: { displayOrder: 'asc' } },
-        team: { include: { user: true } },
-        chatMessages: { 
-          include: { user: true }, 
+      select: {
+        id: true,
+        title: true,
+        description: true,
+        status: true,
+        createdAt: true,
+        address: true,
+        city: true,
+        startDate: true,
+        endDate: true,
+        client: {
+          select: {
+            id: true,
+            name: true,
+            phone: true,
+            address: true
+          }
+        },
+        phases: {
+          select: {
+            id: true,
+            title: true,
+            status: true,
+            displayOrder: true
+          },
+          orderBy: { displayOrder: 'asc' }
+        },
+        team: {
+          select: {
+            id: true,
+            userId: true,
+            user: {
+              select: {
+                id: true,
+                name: true
+              }
+            }
+          }
+        },
+        chatMessages: {
+          select: {
+            id: true,
+            content: true,
+            createdAt: true,
+            userId: true,
+            user: {
+              select: {
+                name: true
+              }
+            }
+          },
           orderBy: { createdAt: 'desc' },
-          take: 15 // Recent chat messages (text only)
+          take: 15
         }
       },
       orderBy: { createdAt: 'desc' }
     })
 
-    return NextResponse.json(JSON.parse(JSON.stringify(projects)))
+    return NextResponse.json(projects)
   } catch (error) {
     console.error('Error in bulk-cache:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
