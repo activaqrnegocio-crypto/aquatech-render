@@ -231,6 +231,29 @@ export default function AppointmentModal({
     recognition.start()
   }
 
+  const handleGetGPS = () => {
+    if (!navigator.geolocation) {
+      alert('Tu navegador no soporta geolocalización')
+      return
+    }
+
+    setLoading(true)
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        const { latitude, longitude } = position.coords
+        const mapsLink = `https://www.google.com/maps?q=${latitude},${longitude}`
+        setFormData(prev => ({ ...prev, operatorLocation: mapsLink }))
+        setLoading(false)
+      },
+      (error) => {
+        console.error('Error GPS:', error)
+        alert('No se pudo obtener la ubicación. Asegúrate de dar permisos de GPS.')
+        setLoading(false)
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    )
+  }
+
   const getTargetUserIds = (): number[] => {
     return selectedOperatorIds
   }
@@ -517,7 +540,7 @@ export default function AppointmentModal({
 
                   <div className="form-group-compact" style={{ gridColumn: '1 / -1' }}>
                     <div className="label-with-action-aquatech">
-                      <label className="form-label-aquatech">📍 Ubicación Google Maps</label>
+                      <label className="form-label-aquatech">📍 Ubicación Cliente</label>
                       {formData.clientLocation && (
                         <a 
                           href={formData.clientLocation.startsWith('http') ? formData.clientLocation : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(formData.clientLocation)}`} 
@@ -532,9 +555,30 @@ export default function AppointmentModal({
                     <input
                       className="form-input-aquatech"
                       type="text"
-                      placeholder="Pega el link de Google Maps aquí..."
+                      placeholder="Pega el link de Google Maps del cliente aquí..."
                       value={formData.clientLocation || ''}
                       onChange={e => setFormData({...formData, clientLocation: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="form-group-compact" style={{ gridColumn: '1 / -1' }}>
+                    <div className="label-with-action-aquatech">
+                      <label className="form-label-aquatech">📡 Ubicación Operario (GPS)</label>
+                      <button 
+                        type="button"
+                        className="btn-voice-aquatech"
+                        style={{ background: 'rgba(88, 199, 255, 0.2)', borderColor: '#58c7ff' }}
+                        onClick={handleGetGPS}
+                      >
+                        📍 Capturar mi GPS
+                      </button>
+                    </div>
+                    <input
+                      className="form-input-aquatech"
+                      type="text"
+                      placeholder="Link de ubicación del operario..."
+                      value={formData.operatorLocation || ''}
+                      onChange={e => setFormData({...formData, operatorLocation: e.target.value})}
                     />
                   </div>
 

@@ -110,6 +110,8 @@ export async function POST(request: Request) {
           projectId: projectId ? Number(projectId) : null,
           clientName: clientName || null,
           clientPhone: clientPhone || null,
+          clientLocation: clientLocation || null,
+          operatorLocation: operatorLocation || null,
           files: body.files ? (typeof body.files === 'string' ? body.files : JSON.stringify(body.files)) : null,
         },
         include: {

@@ -428,7 +428,9 @@ model Appointment {
   clientPhone String?  @map("client_phone") @db.VarChar(50)
   createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
-  files       String?  @db.LongText
+  clientLocation   String?  @map("client_location") @db.VarChar(500)
+  operatorLocation String?  @map("operator_location") @db.VarChar(500)
+  files            String?  @db.LongText
   
   // Flags para evitar duplicados en recordatorios
   reminded60  Boolean  @default(false) @map("reminded_60")
@@ -619,6 +621,7 @@ enum ProjectType {
 
 enum ProjectStatus {
   LEAD
+  NEGOCIANDO
   ACTIVO
   PENDIENTE
   COMPLETADO
