@@ -107,6 +107,22 @@ export default function CalendarView({
     return 'var(--warning)'; // PENDIENTE (AMARILLO)
   }
 
+  const getEventBgColor = (event: any) => {
+    if (event.status === 'COMPLETADA') return 'rgba(37, 211, 102, 0.15)'; // VERDE
+    if (event.status === 'ATRASADA') return 'rgba(239, 68, 68, 0.15)';    // ROJO
+    if (event.status === 'PENDIENTE') return 'rgba(245, 158, 11, 0.15)';  // AMARILLO
+
+    const today = getLocalNow();
+    today.setHours(0, 0, 0, 0);
+    const eventDate = new Date(event.startTime);
+    eventDate.setHours(0, 0, 0, 0);
+
+    if (eventDate < today && event.status !== 'COMPLETADA') {
+        return 'rgba(239, 68, 68, 0.15)'; // ATRASADA (ROJO)
+    }
+    return 'rgba(245, 158, 11, 0.15)'; // PENDIENTE (AMARILLO)
+  }
+
   return (
     <div className="calendar-container" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
       
@@ -182,7 +198,10 @@ export default function CalendarView({
                       key={event.id}
                       onClick={(e) => { e.stopPropagation(); onEditEvent(event); }}
                       className="event-pill"
-                      style={{ borderLeft: `3px solid ${getEventColor(event)}` }}
+                      style={{ 
+                        borderLeft: `3px solid ${getEventColor(event)}`,
+                        backgroundColor: getEventBgColor(event)
+                      }}
                     >
                       <div className="event-title">{event.title}</div>
                       <div className="event-time">

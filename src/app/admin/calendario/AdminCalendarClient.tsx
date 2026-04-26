@@ -256,7 +256,7 @@ export default function AdminCalendarClient({
           userId={selectedOperatorId === 'all' ? 0 : Number(selectedOperatorId)} // This will be handled by the specialized modal
           projects={cachedProjects}
           operators={cachedOperators} // New prop for admin selection
-          isAdminView={isAdmin}
+          isAdminView={true}
         />
       )}
 

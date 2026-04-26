@@ -435,6 +435,7 @@ export default function AppointmentModal({
                     className="form-input-aquatech"
                     type="text"
                     required
+                    readOnly={!isAdminView}
                     value={formData.title}
                     onChange={e => setFormData({...formData, title: e.target.value})}
                     placeholder="Ej: Mantenimiento"
@@ -493,6 +494,7 @@ export default function AppointmentModal({
                   <select 
                     className="form-select-aquatech"
                     value={formData.projectId}
+                    disabled={!isAdminView}
                     onChange={e => setFormData({...formData, projectId: e.target.value})}
                   >
                     <option value="">No vinculado</option>
@@ -521,6 +523,7 @@ export default function AppointmentModal({
                     <input
                       className="form-input-aquatech"
                       type="text"
+                      readOnly={!isAdminView}
                       placeholder="Nombre del cliente"
                       value={formData.clientName || ''}
                       onChange={e => setFormData({...formData, clientName: e.target.value})}
@@ -532,6 +535,7 @@ export default function AppointmentModal({
                     <input
                       className="form-input-aquatech"
                       type="text"
+                      readOnly={!isAdminView}
                       placeholder="Número de teléfono"
                       value={formData.clientPhone || ''}
                       onChange={e => setFormData({...formData, clientPhone: e.target.value})}
@@ -555,6 +559,7 @@ export default function AppointmentModal({
                     <input
                       className="form-input-aquatech"
                       type="text"
+                      readOnly={!isAdminView}
                       placeholder="Pega el link de Google Maps del cliente aquí..."
                       value={formData.clientLocation || ''}
                       onChange={e => setFormData({...formData, clientLocation: e.target.value})}
@@ -564,18 +569,21 @@ export default function AppointmentModal({
                   <div className="form-group-compact" style={{ gridColumn: '1 / -1' }}>
                     <div className="label-with-action-aquatech">
                       <label className="form-label-aquatech">📡 Ubicación Operario (GPS)</label>
-                      <button 
-                        type="button"
-                        className="btn-voice-aquatech"
-                        style={{ background: 'rgba(88, 199, 255, 0.2)', borderColor: '#58c7ff' }}
-                        onClick={handleGetGPS}
-                      >
-                        📍 Capturar mi GPS
-                      </button>
+                      {isAdminView && (
+                        <button 
+                          type="button"
+                          className="btn-voice-aquatech"
+                          style={{ background: 'rgba(88, 199, 255, 0.2)', borderColor: '#58c7ff' }}
+                          onClick={handleGetGPS}
+                        >
+                          📍 Capturar mi GPS
+                        </button>
+                      )}
                     </div>
                     <input
                       className="form-input-aquatech"
                       type="text"
+                      readOnly={!isAdminView}
                       placeholder="Link de ubicación del operario..."
                       value={formData.operatorLocation || ''}
                       onChange={e => setFormData({...formData, operatorLocation: e.target.value})}
@@ -611,6 +619,7 @@ export default function AppointmentModal({
                       className="form-input-aquatech"
                       type="datetime-local"
                       required
+                      readOnly={!isAdminView}
                       value={formData.startTime}
                       onChange={e => setFormData({...formData, startTime: e.target.value})}
                     />
@@ -621,6 +630,7 @@ export default function AppointmentModal({
                       className="form-input-aquatech"
                       type="datetime-local"
                       required
+                      readOnly={!isAdminView}
                       value={formData.endTime}
                       onChange={e => setFormData({...formData, endTime: e.target.value})}
                     />
@@ -629,9 +639,10 @@ export default function AppointmentModal({
 
                 <div className="form-group-compact">
                   <label className="form-label-aquatech">📸 Adjuntos (Max 5MB)</label>
-                  <div className="attachment-actions-row">
-                    <button 
-                      type="button" 
+                  {isAdminView && (
+                    <div className="attachment-actions-row">
+                      <button 
+                        type="button" 
                       className="btn-attach-aquatech"
                       onClick={() => {
                         const input = document.createElement('input')
@@ -700,6 +711,7 @@ export default function AppointmentModal({
                       onChange={handleFileChange}
                     />
                   </div>
+                  )}
 
                   <div style={{ marginTop: '12px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '8px' }}>
@@ -846,6 +858,7 @@ export default function AppointmentModal({
                   </div>
                   <textarea 
                     className="form-textarea-aquatech"
+                    readOnly={!isAdminView}
                     value={formData.description}
                     onChange={e => setFormData({...formData, description: e.target.value})}
                     placeholder="Detalles..."
@@ -855,36 +868,38 @@ export default function AppointmentModal({
             </div>
           </div>
 
-          <div className="modal-footer" style={{ flexShrink: 0 }}>
-            {initialData?.id && onDelete && (
-              <button 
-                type="button" 
-                className="btn modal-btn" 
-                style={{ backgroundColor: 'var(--status-danger)', color: 'white' }} 
-                onClick={async () => {
-                  if (confirm('¿Estás seguro de eliminar esta tarea?')) {
-                    setLoading(true);
-                    try { 
-                      onDelete(initialData.id); 
-                      onClose(); 
-                    } catch (error) { 
-                      alert('Error eliminando'); 
-                      setLoading(false); 
+          {isAdminView && (
+            <div className="modal-footer" style={{ flexShrink: 0 }}>
+              {initialData?.id && onDelete && (
+                <button 
+                  type="button" 
+                  className="btn modal-btn" 
+                  style={{ backgroundColor: 'var(--status-danger)', color: 'white' }} 
+                  onClick={async () => {
+                    if (confirm('¿Estás seguro de eliminar esta tarea?')) {
+                      setLoading(true);
+                      try { 
+                        onDelete(initialData.id); 
+                        onClose(); 
+                      } catch (error) { 
+                        alert('Error eliminando'); 
+                        setLoading(false); 
+                      }
                     }
-                  }
-                }}
-                disabled={loading}
-              >
-                {loading ? 'Eliminando...' : 'Eliminar'}
+                  }}
+                  disabled={loading}
+                >
+                  {loading ? 'Eliminando...' : 'Eliminar'}
+                </button>
+              )}
+              <button type="button" className="btn btn-secondary modal-btn" onClick={onClose}>
+                Cancelar
               </button>
-            )}
-            <button type="button" className="btn btn-secondary modal-btn" onClick={onClose}>
-              Cancelar
-            </button>
-            <button type="submit" className="btn btn-primary modal-btn" disabled={loading}>
-              {loading ? 'Guardando...' : isEditing ? 'Actualizar' : 'Agendar'}
-            </button>
-          </div>
+              <button type="submit" className="btn btn-primary modal-btn" disabled={loading}>
+                {loading ? 'Guardando...' : isEditing ? 'Actualizar' : 'Agendar'}
+              </button>
+            </div>
+          )}
         </form>
       </div>
 
