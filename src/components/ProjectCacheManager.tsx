@@ -9,6 +9,8 @@ export default function ProjectCacheManager() {
   const [progress, setProgress] = useState({ current: 0, total: 0 })
   const [lastSync, setLastSync] = useState<number | null>(null)
   const [projectCount, setProjectCount] = useState(0)
+  const [syncLogs, setSyncLogs] = useState<string[]>([])
+  const [showLogs, setShowLogs] = useState(false)
 
   useEffect(() => {
     // 1. Cargar metadatos iniciales
@@ -36,15 +38,21 @@ export default function ProjectCacheManager() {
       setSyncComplete(true)
       setProjectCount(e.detail.count)
       setLastSync(Date.now())
-      // Resetear visualmente tras 5 segundos si se desea
+      setSyncLogs(prev => [`✓ Sincronización completada con éxito.`, ...prev].slice(0, 5))
+    }
+
+    const onLog = (e: any) => {
+      setSyncLogs(prev => [`[${new Date().toLocaleTimeString()}] ${e.detail.message}`, ...prev].slice(0, 5))
     }
 
     window.addEventListener('bulk-cache-sync-progress', onProgress)
     window.addEventListener('bulk-cache-sync-finished', onFinished)
+    window.addEventListener('bulk-cache-sync-log', onLog)
     
     return () => {
       window.removeEventListener('bulk-cache-sync-progress', onProgress)
       window.removeEventListener('bulk-cache-sync-finished', onFinished)
+      window.removeEventListener('bulk-cache-sync-log', onLog)
     }
   }, [])
 
@@ -139,6 +147,29 @@ export default function ProjectCacheManager() {
               ? `Último sync: ${formatTimeAgo(lastSync)} · ${projectCount} proyectos listos` 
               : 'No hay datos guardados para modo offline completo.'}
           </p>
+          {syncLogs.length > 0 && (
+            <button 
+              onClick={(e) => { e.stopPropagation(); setShowLogs(!showLogs); }}
+              style={{ 
+                background: 'none', border: 'none', color: '#38bdf8', 
+                fontSize: '0.7rem', cursor: 'pointer', padding: 0, marginTop: '4px',
+                textDecoration: 'underline'
+              }}
+            >
+              {showLogs ? 'Ocultar Detalle' : 'Ver Detalle'}
+            </button>
+          )}
+          {showLogs && syncLogs.length > 0 && (
+            <div style={{ 
+              marginTop: '8px', padding: '8px', background: 'rgba(0,0,0,0.2)', 
+              borderRadius: '8px', fontSize: '0.7rem', color: 'rgba(255,255,255,0.7)',
+              fontFamily: 'monospace'
+            }}>
+              {syncLogs.map((log, i) => (
+                <div key={i} style={{ marginBottom: '2px' }}>{log}</div>
+              ))}
+            </div>
+          )}
         </div>
 
         <button

@@ -38,6 +38,19 @@ export default function GlobalSyncWorker() {
       if (!res.ok) throw new Error('Error de red')
       const projects = await res.json()
       
+      // LOG de preparación
+      window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+        detail: { message: `Preparando descarga de ${projects.length} proyectos...` }
+      }))
+
+      // LIMPIEZA: Muy importante para que César pase de 20 a 7
+      await db.projectsCache.clear()
+      await db.chatCache.clear()
+
+      window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+        detail: { message: `Caché local limpiado. Iniciando guardado...` }
+      }))
+
       setBulkProgress({ current: 0, total: projects.length })
       
       const CHUNK_SIZE = 3
@@ -62,7 +75,13 @@ export default function GlobalSyncWorker() {
               await db.chatCache.put({ projectId: p.id, messages: chatMessages })
             }
             
-            const nextCurrent = Math.min(projects.length, i + chunk.length) // Simplified progress for events
+            const nextCurrent = Math.min(projects.length, i + chunk.length)
+            
+            // Emitir log para el usuario
+            window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+              detail: { message: `Sincronizados ${nextCurrent} de ${projects.length} proyectos...` }
+            }))
+
             window.dispatchEvent(new CustomEvent('bulk-cache-sync-progress', {
               detail: { current: nextCurrent, total: projects.length }
             }))

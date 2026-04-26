@@ -14,21 +14,26 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '50', 10)
     const safeLimit = Math.min(limit, 50) // Cap at 50 for cloud stability
     
-    // Logic: If NOT an Admin, filter by projects where the user is part of the team
     const rawRole = (session.user as any).role || ''
-    const userRole = String(rawRole).toUpperCase()
+    const userRole = String(rawRole).toUpperCase().trim()
     const userId = (session.user as any).id
+    
+    console.log(`[BulkCache] User: ${userId}, Role: ${userRole}`)
 
     const whereClause: any = {}
 
-    const isAdmin = userRole === 'ADMIN' || userRole === 'ADMINISTRADOR'
+    // Strict Admin check: Only ADMIN, ADMINISTRADOR, or SUPERADMIN get everything
+    const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN'].includes(userRole)
 
     if (!isAdmin) {
+      console.log(`[BulkCache] Applying operator filter for user ${userId}`)
       whereClause.team = {
         some: {
           userId: Number(userId)
         }
       }
+      // Match dashboard filter for operators
+      whereClause.status = { in: ['LEAD', 'ACTIVO', 'PENDIENTE'] }
     }
 
     const projects = await prisma.project.findMany({

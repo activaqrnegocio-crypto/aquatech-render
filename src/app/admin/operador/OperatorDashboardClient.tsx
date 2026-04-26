@@ -43,7 +43,17 @@ export default function OperatorDashboardClient({
   const [appointments, setAppointments] = useState(initialAppointments)
   // Use Dexie as live source for projects to support offline correctly
   const projectsFromCache = useLiveQuery(
-    () => db.projectsCache.toArray()
+    async () => {
+      const allProjects = await db.projectsCache.toArray()
+      if (!user?.id) return []
+      
+      // Filtrar localmente para asegurar que solo vea los suyos
+      return allProjects.filter(p => 
+        p.team?.some((m: any) => m.userId === Number(user.id)) ||
+        p.createdById === Number(user.id)
+      )
+    },
+    [user?.id]
   ) || []
 
   // Combine initial projects with cache
