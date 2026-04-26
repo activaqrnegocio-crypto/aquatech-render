@@ -115,7 +115,11 @@ self.addEventListener('fetch', (event) => {
     return; // Let browser handle other auth naturally
   }
 
-  // ── API requests
+  // ── API requests (Bypass SW for bulk-cache to avoid timeouts)
+  if (url.pathname.startsWith('/api/projects/bulk-cache')) {
+    return; // Let browser handle high-data sync directly
+  }
+
   if (url.pathname.startsWith('/api/')) {
     event.respondWith(networkFirst(request, 'aquatech-apis-v1', 15000));
     return;

@@ -89,7 +89,13 @@ export default function AppointmentModal({
         const inOneHour = new Date(now)
         inOneHour.setHours(now.getHours() + 1)
 
-        setSelectedOperatorIds([])
+        // If creating new and we have a valid userId prop, auto-select it
+        if (userId > 0) {
+          setSelectedOperatorIds([userId])
+        } else {
+          setSelectedOperatorIds([])
+        }
+        
         setFormData({
           title: '',
           description: '',
@@ -345,7 +351,12 @@ export default function AppointmentModal({
     const end = new Date(formData.endTime)
     if (end <= start) { alert('Error: La fecha de fin debe ser posterior.'); return; }
 
-    const targetUserIds = getTargetUserIds()
+    let targetUserIds = getTargetUserIds()
+    // Fallback if empty and we have a valid userId prop (especially for operators offline)
+    if (targetUserIds.length === 0 && userId > 0) {
+      targetUserIds = [userId]
+    }
+    
     if (targetUserIds.length === 0) { alert('Selecciona al menos un operador.'); return; }
 
     setLoading(true)

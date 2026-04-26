@@ -11,8 +11,8 @@ export async function GET(request: Request) {
     }
 
     const { searchParams } = new URL(request.url)
-    const limit = parseInt(searchParams.get('limit') || '50', 10)
-    const safeLimit = Math.min(limit, 50) // Cap at 50 for cloud stability
+    const limit = parseInt(searchParams.get('limit') || '100', 10)
+    const safeLimit = Math.min(limit, 100) // Optimized for speed
     
     const rawRole = (session.user as any).role || ''
     const userRole = String(rawRole).toUpperCase().trim()
@@ -43,20 +43,10 @@ export async function GET(request: Request) {
         client: true,
         phases: { orderBy: { displayOrder: 'asc' } },
         team: { include: { user: true } },
-        gallery: { 
-          orderBy: { createdAt: 'desc' },
-          select: { id: true, url: true, filename: true, mimeType: true, category: true, createdAt: true },
-          take: 10 // Meta-data for offline reference
-        },
-        expenses: { 
-          include: { user: true }, 
-          orderBy: { date: 'desc' },
-          take: 5 
-        },
         chatMessages: { 
-          include: { user: true, media: true }, 
+          include: { user: true }, 
           orderBy: { createdAt: 'desc' },
-          take: 30 // Recent chat messages
+          take: 15 // Recent chat messages (text only)
         }
       },
       orderBy: { createdAt: 'desc' }

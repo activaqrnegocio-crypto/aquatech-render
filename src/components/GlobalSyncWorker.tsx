@@ -38,8 +38,16 @@ export default function GlobalSyncWorker() {
         detail: { message: `Conectando con el servidor...` }
       }))
 
-      const res = await fetch('/api/projects/bulk-cache?limit=50')
+      const res = await fetch('/api/projects/bulk-cache?limit=100')
       if (!res.ok) throw new Error('Error de red o sesión expirada')
+      
+      const contentLength = res.headers.get('Content-Length')
+      const sizeMB = contentLength ? (parseInt(contentLength) / (1024 * 1024)).toFixed(2) : '?'
+      
+      window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+        detail: { message: `Datos recibidos (${sizeMB} MB). Procesando...` }
+      }))
+
       const projects = await res.json()
       
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
@@ -56,36 +64,37 @@ export default function GlobalSyncWorker() {
 
       setBulkProgress({ current: 0, total: projects.length })
       
-      const CHUNK_SIZE = 10 // Aumentamos a 10 para más velocidad
+      const CHUNK_SIZE = 15
       for (let i = 0; i < projects.length; i += CHUNK_SIZE) {
         const chunk = projects.slice(i, i + CHUNK_SIZE)
         
-        await Promise.all(chunk.map(async (p: any) => {
-          try {
-            const projectToCache = { ...p, lastAccessedAt: Date.now() }
-            const chatMessages = p.chatMessages || []
-            delete projectToCache.chatMessages
-            
-            await db.projectsCache.put(projectToCache)
-            
-            // Precarga de imágenes en paralelo (sin esperar)
-            if (p.gallery?.length > 0) {
-              p.gallery.slice(0, 3).forEach((img: any) => {
-                if (img.url) { const i = new Image(); i.src = img.url; }
-              });
-            }
-
-            if (chatMessages.length > 0) {
-              await db.chatCache.put({ projectId: p.id, messages: chatMessages })
-            }
-          } catch (e) { console.warn(`Error en proyecto ${p.id}`, e) }
-        }))
+        const projectsToCache: any[] = []
+        const chatsToCache: any[] = []
+        
+        chunk.forEach((p: any) => {
+          const projectToCache = { ...p, lastAccessedAt: Date.now() }
+          const chatMessages = p.chatMessages || []
+          delete projectToCache.chatMessages
+          
+          projectsToCache.push(projectToCache)
+          
+          if (chatMessages.length > 0) {
+            chatsToCache.push({ projectId: p.id, messages: chatMessages })
+          }
+          
+          // Parallel image preloading removed (as requested, only text chat)
+        })
+        
+        await Promise.all([
+          db.projectsCache.bulkPut(projectsToCache),
+          db.chatCache.bulkPut(chatsToCache)
+        ])
 
         const nextCurrent = Math.min(projects.length, i + chunk.length)
         setBulkProgress({ current: nextCurrent, total: projects.length })
         
         window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
-          detail: { message: `Sincronizados ${nextCurrent}/${projects.length}...` }
+          detail: { message: `✓ Guardado bloque ${Math.ceil(nextCurrent/CHUNK_SIZE)} (${nextCurrent}/${projects.length} proyectos)` }
         }))
 
         window.dispatchEvent(new CustomEvent('bulk-cache-sync-progress', {
