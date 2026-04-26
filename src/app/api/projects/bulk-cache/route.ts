@@ -14,15 +14,16 @@ export async function GET(request: Request) {
     const limit = parseInt(searchParams.get('limit') || '50', 10)
     const safeLimit = Math.min(limit, 50) // Cap at 50 for cloud stability
     
-    // For operators, only return their projects
+    // Logic: If NOT an Admin, filter by projects where the user is part of the team
     const rawRole = (session.user as any).role || ''
     const userRole = String(rawRole).toUpperCase()
     const userId = (session.user as any).id
 
     const whereClause: any = {}
 
-    // Only filter if it's explicitly an operator or subcontractor
-    if (userRole === 'OPERATOR' || userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA') {
+    const isAdmin = userRole === 'ADMIN' || userRole === 'ADMINISTRADOR'
+
+    if (!isAdmin) {
       whereClause.team = {
         some: {
           userId: Number(userId)

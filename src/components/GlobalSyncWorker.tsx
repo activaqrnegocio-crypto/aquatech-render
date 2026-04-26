@@ -9,7 +9,89 @@ export default function GlobalSyncWorker() {
   const { data: session } = useSession()
   const router = useRouter()
   const [isOnline, setIsOnline] = useState(typeof navigator !== 'undefined' ? navigator.onLine : true)
+  const [isSyncing, setIsSyncing] = useState(false)
   const syncLock = useRef(false)
+  
+  // States for bulk cache sync (background)
+  const [isBulkSyncing, setIsBulkSyncing] = useState(false)
+  const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 })
+
+  useEffect(() => {
+    // Escuchar el evento para iniciar sincronización masiva desde cualquier botón
+    const handleStartBulkSync = () => {
+      if (!isBulkSyncing) {
+        startBulkSync()
+      }
+    }
+    window.addEventListener('start-bulk-cache-sync', handleStartBulkSync)
+    return () => window.removeEventListener('start-bulk-cache-sync', handleStartBulkSync)
+  }, [isBulkSyncing])
+
+  const startBulkSync = async () => {
+    if (!navigator.onLine || isBulkSyncing) return
+    
+    setIsBulkSyncing(true)
+    setBulkProgress({ current: 0, total: 0 })
+    
+    try {
+      const res = await fetch('/api/projects/bulk-cache?limit=50')
+      if (!res.ok) throw new Error('Error de red')
+      const projects = await res.json()
+      
+      setBulkProgress({ current: 0, total: projects.length })
+      
+      const CHUNK_SIZE = 3
+      for (let i = 0; i < projects.length; i += CHUNK_SIZE) {
+        const chunk = projects.slice(i, i + CHUNK_SIZE)
+        
+        await Promise.all(chunk.map(async (p: any) => {
+          try {
+            const projectToCache = { ...p, lastAccessedAt: Date.now() }
+            const chatMessages = p.chatMessages || []
+            delete projectToCache.chatMessages
+            await db.projectsCache.put(projectToCache)
+            
+            // Precarga de imágenes
+            if (p.gallery?.length > 0) {
+              p.gallery.slice(0, 5).forEach((img: any) => {
+                if (img.url) { new Image().src = img.url }
+              });
+            }
+
+            if (chatMessages.length > 0) {
+              await db.chatCache.put({ projectId: p.id, messages: chatMessages })
+            }
+            
+            const nextCurrent = Math.min(projects.length, i + chunk.length) // Simplified progress for events
+            window.dispatchEvent(new CustomEvent('bulk-cache-sync-progress', {
+              detail: { current: nextCurrent, total: projects.length }
+            }))
+
+            setBulkProgress({ current: nextCurrent, total: projects.length })
+          } catch (e) { console.error(e) }
+        }))
+      }
+
+      const now = Date.now()
+      const finalCount = await db.projectsCache.count()
+      await db.cacheMetadata.put({
+        id: 'projects_bulk',
+        lastSync: now,
+        count: finalCount,
+        status: 'idle'
+      })
+      
+      // Notificar al sistema que terminó
+      window.dispatchEvent(new CustomEvent('bulk-cache-sync-finished', { 
+        detail: { count: finalCount } 
+      }))
+
+    } catch (err) {
+      console.error('Bulk sync background error:', err)
+    } finally {
+      setIsBulkSyncing(false)
+    }
+  }
 
   // Cache session info for offline role detection
   useEffect(() => {

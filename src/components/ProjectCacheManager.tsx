@@ -11,142 +11,56 @@ export default function ProjectCacheManager() {
   const [projectCount, setProjectCount] = useState(0)
 
   useEffect(() => {
+    // 1. Cargar metadatos iniciales
     const loadMetadata = async () => {
       try {
         const meta = await db.cacheMetadata.get('projects_bulk')
         if (meta) {
           setLastSync(meta.lastSync)
           setProjectCount(meta.count)
-        } else {
-          const count = await db.projectsCache.count()
-          setProjectCount(count)
         }
-      } catch (e) {
-        console.error('Error loading cache metadata:', e)
-      }
+      } catch (e) {}
     }
     loadMetadata()
+
+    // 2. Escuchar progreso global
+    const onProgress = (e: any) => {
+      setIsSyncing(true)
+      setSyncComplete(false)
+      setProgress(e.detail)
+    }
+    
+    // 3. Escuchar finalización global
+    const onFinished = (e: any) => {
+      setIsSyncing(false)
+      setSyncComplete(true)
+      setProjectCount(e.detail.count)
+      setLastSync(Date.now())
+      // Resetear visualmente tras 5 segundos si se desea
+    }
+
+    window.addEventListener('bulk-cache-sync-progress', onProgress)
+    window.addEventListener('bulk-cache-sync-finished', onFinished)
+    
+    return () => {
+      window.removeEventListener('bulk-cache-sync-progress', onProgress)
+      window.removeEventListener('bulk-cache-sync-finished', onFinished)
+    }
   }, [])
 
-  const handleManualSync = async () => {
-    if (isSyncing || syncComplete) return
+  const handleManualSync = () => {
+    if (isSyncing) return
     if (!navigator.onLine) {
-      alert('Debes estar conectado a internet para guardar el caché.')
+      alert('Debes estar conectado a internet para sincronizar.')
       return
     }
 
     setIsSyncing(true)
     setSyncComplete(false)
     setProgress({ current: 0, total: 0 })
-
-    try {
-      // 1. Obtener la lista primero
-      const limit = 50
-      const res = await fetch(`/api/projects/bulk-cache?limit=${limit}`)
-      
-      if (!res.ok) throw new Error('Error al conectar con el servidor')
-
-      const projects = await res.json()
-      
-      // 2. Establecer el total de inmediato para que el usuario lo vea
-      setProgress({ current: 0, total: projects.length })
-
-      if (projects.length === 0) {
-        // Guardar metadata aunque sea cero para quitar el mensaje de "no hay datos"
-        const now = Date.now()
-        await db.cacheMetadata.put({
-          id: 'projects_bulk',
-          lastSync: now,
-          count: 0,
-          status: 'idle'
-        })
-        setProjectCount(0)
-        setLastSync(now)
-        setSyncComplete(true)
-        setIsSyncing(false)
-        return
-      }
-
-      const CHUNK_SIZE = 3 // Más pequeño para no saturar memoria móvil
-      const TIMEOUT_MS = 30000 
-
-      for (let i = 0; i < projects.length; i += CHUNK_SIZE) {
-        const chunk = projects.slice(i, i + CHUNK_SIZE)
-        
-        const processChunk = async () => {
-          const chunkPromises = chunk.map(async (p: any) => {
-            try {
-              const projectToCache = { 
-                ...p,
-                lastAccessedAt: Date.now()
-              }
-              const chatMessages = p.chatMessages || []
-              delete projectToCache.chatMessages
-
-              await db.projectsCache.put(projectToCache)
-              
-              // Precarga de imágenes ULTRA segura (sin bloquear el hilo principal)
-              if (p.gallery && p.gallery.length > 0) {
-                setTimeout(() => {
-                  p.gallery.slice(0, 5).forEach((item: any) => {
-                    if (item.url && item.url.startsWith('http')) {
-                      const img = new Image();
-                      img.src = item.url;
-                    }
-                  });
-                }, 100);
-              }
-
-              if (chatMessages.length > 0) {
-                await db.chatCache.put({ projectId: p.id, messages: chatMessages })
-              }
-              
-              setProgress(prev => ({ ...prev, current: Math.min(prev.current + 1, prev.total) }))
-              return true
-            } catch (err) {
-              console.error(`Error caching project ${p.id}:`, err)
-              return false
-            }
-          })
-          await Promise.all(chunkPromises)
-        }
-
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Chunk Timeout')), TIMEOUT_MS)
-        )
-
-        try {
-          await Promise.race([processChunk(), timeoutPromise])
-        } catch (err) {
-          console.warn(`Lote demoró demasiado. Continuando...`)
-          const remainingInChunk = Math.min(CHUNK_SIZE, projects.length - i)
-          setProgress(prev => ({ 
-            ...prev, 
-            current: Math.min(prev.current + remainingInChunk, prev.total) 
-          }))
-        }
-      }
-
-      const now = Date.now()
-      const finalCount = await db.projectsCache.count()
-      setLastSync(now)
-      setProjectCount(finalCount)
-
-      await db.cacheMetadata.put({
-        id: 'projects_bulk',
-        lastSync: now,
-        count: finalCount,
-        status: 'idle'
-      })
-
-      setSyncComplete(true)
-
-    } catch (e: any) {
-      console.error('Manual sync failed:', e)
-      alert(`Error al guardar caché: ${e.message}`)
-    } finally {
-      setIsSyncing(false)
-    }
+    
+    // Disparar el evento que escucha el GlobalSyncWorker (que vive en el Layout)
+    window.dispatchEvent(new CustomEvent('start-bulk-cache-sync'))
   }
 
   const formatTimeAgo = (timestamp: number) => {
