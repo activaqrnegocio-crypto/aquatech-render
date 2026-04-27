@@ -29,7 +29,9 @@ export default async function AdminCalendarPage() {
     })
 
     projects = await prisma.project.findMany({
-      where: { status: { not: 'CANCELADO' } },
+      where: { status: { in: ['ACTIVO', 'PENDIENTE', 'LEAD'] } },
+      take: 100,
+      orderBy: { updatedAt: 'desc' },
       select: { id: true, title: true, status: true }
     })
   } catch (error) {

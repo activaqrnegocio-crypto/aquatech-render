@@ -5,6 +5,7 @@ import { isAdmin, canAccessProject } from '@/lib/rbac'
 import { prisma } from '@/lib/prisma'
 import { notFound } from 'next/navigation'
 import ProjectDetailClient from './ProjectDetailClient'
+import { deepSerialize } from '@/lib/serializable'
 
 export const dynamic = 'force-dynamic'
 
@@ -31,12 +32,8 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
         take: 50,
         select: { id: true, url: true, filename: true, mimeType: true, category: true, createdAt: true }
       },
-      expenses: { 
-        orderBy: { date: 'desc' },
-        select: { id: true, amount: true, description: true, date: true, isNote: true, category: true, receiptUrl: true, userId: true, createdAt: true, user: { select: { name: true } } }
-      },
       chatMessages: {
-        orderBy: { createdAt: 'asc' },
+        orderBy: { createdAt: 'desc' },
         take: 50,
         include: { 
           user: { select: { id: true, name: true, role: true } }, 
@@ -76,8 +73,8 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
     }
   })
 
-  // Serialize to plain JSON to handle Prisma Decimal objects
-  const serializedProject = JSON.parse(JSON.stringify(project))
+  // Serialize to plain JSON using fast serializer
+  const serializedProject = deepSerialize(project)
 
   return <ProjectDetailClient project={serializedProject} availableOperators={availableOperators} />
 }
