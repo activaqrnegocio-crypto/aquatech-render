@@ -81,6 +81,19 @@ export default function GlobalSyncWorker() {
           
           setBulkProgress(prev => ({ ...prev, current: i + 1 }));
         }
+
+        // v221: SHELL PRE-WARMING
+        // Background fetch the first project's HTML and RSC to ensure we have a Universal Shell
+        if (projects.length > 0) {
+          const firstId = projects[0].id;
+          const shellUrl = isAdmin ? `/admin/proyectos/${firstId}` : `/admin/operador/proyecto/${firstId}`;
+          console.log('[Sync] Pre-warming Universal Shell using ID:', firstId);
+          fetch(shellUrl, { priority: 'low' }).catch(() => {});
+          fetch(`${shellUrl}?_rsc=warmup`, { 
+            priority: 'low',
+            headers: { 'RSC': '1' } 
+          }).catch(() => {});
+        }
       }
 
       // 2. SYNC APPOINTMENTS (Calendar)

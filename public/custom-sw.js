@@ -191,6 +191,7 @@ self.addEventListener('fetch', (event) => {
  */
 async function rscNetworkFirst(request) {
   const url = new URL(request.url);
+  const originalUrl = url.toString();
   url.searchParams.delete('_rsc');
   const cacheKey = url.toString();
 
@@ -199,15 +200,39 @@ async function rscNetworkFirst(request) {
     if (response.ok && !response.redirected) {
       const cache = await caches.open(RSC_CACHE);
       cache.put(cacheKey, response.clone());
+      // Also cache with original URL to be safe
+      cache.put(originalUrl, response.clone());
     }
     return response;
   } catch (e) {
     const cache = await caches.open(RSC_CACHE);
-    const cached = await cache.match(cacheKey);
+    
+    // 1. Try exact match
+    let cached = await cache.match(cacheKey) || await cache.match(originalUrl);
     if (cached) return cached;
     
-    return new Response(JSON.stringify({ error: 'offline' }), {
-      status: 503,
+    // 2. v221: Universal RSC Shell for Projects
+    // If we are offline and don't have this specific project's data,
+    // we "trick" Next.js by giving it the data of ANY project we have.
+    const isProjectRsc = url.pathname.match(/\/admin\/proyectos\/\d+/) || url.pathname.match(/\/admin\/operador\/proyecto\/\d+/);
+    
+    if (isProjectRsc) {
+      console.log('[SW v221] RSC Cache miss for project, searching for Universal RSC Shell...');
+      const keys = await cache.keys();
+      const anyProjectRsc = keys.find(k => k.url.includes('/admin/proyectos/') || k.url.includes('/admin/operador/proyecto/'));
+      
+      if (anyProjectRsc) {
+        const shellMatch = await cache.match(anyProjectRsc);
+        if (shellMatch) {
+          console.log('[SW v221] Serving Shadow RSC from:', anyProjectRsc.url);
+          return shellMatch;
+        }
+      }
+    }
+    
+    // Final fallback: avoid 503 if possible for pages
+    return new Response(JSON.stringify({ error: 'offline', status: 'fallback' }), {
+      status: 200, // Return 200 to prevent Next.js from showing the error screen
       headers: { 'Content-Type': 'application/json' }
     });
   }
