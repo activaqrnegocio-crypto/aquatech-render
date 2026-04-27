@@ -12,7 +12,7 @@ export async function GET(request: Request) {
 
     const { searchParams } = new URL(request.url)
     const limit = parseInt(searchParams.get('limit') || '100', 10)
-    const safeLimit = Math.min(limit, 100) // Optimized for speed
+    const safeLimit = Math.min(limit, 200) // v222: Increased for Admin scale
     
     const rawRole = (session.user as any).role || ''
     const userRole = String(rawRole).toUpperCase().trim()

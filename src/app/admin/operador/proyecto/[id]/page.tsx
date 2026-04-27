@@ -53,12 +53,16 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
     }
   })
 
-  // Reload all chat messages for this project with user info
-  const chatMessages = await prisma.chatMessage.findMany({
+  // v222: Optimized for mobile speed - only fetch last 50 messages initially
+  const rawChatMessages = await prisma.chatMessage.findMany({
     where: { projectId },
-    orderBy: { createdAt: 'asc' },
+    orderBy: { createdAt: 'desc' },
+    take: 50,
     include: { user: { select: { name: true } }, media: true }
   })
+  
+  // Reverse to maintain chronological order [oldest -> newest] for the UI
+  const chatMessages = rawChatMessages.reverse()
 
   // Find if user has ANY active day record across ALL projects
   const globalActiveRecord = await prisma.dayRecord.findFirst({
@@ -78,7 +82,7 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
     orderBy: { createdAt: 'desc' }
   })
 
-  // Combine direct gallery uploads and chat media into a unified gallery with unique IDs
+  // Combine and limit to 60 items for performance
   const unifiedGallery = [
     ...(project.gallery || []),
     ...(chatMessages.flatMap((m: any) => m.media || []).map((m: any) => ({
@@ -86,6 +90,7 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
       isFromChat: true
     })))
   ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+   .slice(0, 60)
 
   // Manually build safe objects to ensure correct types and field names
   const safeProject = {

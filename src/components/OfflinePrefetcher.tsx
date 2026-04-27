@@ -49,7 +49,7 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         const runGarbageCollector = async () => {
           try {
-            const MAX_PROJECTS = 100;
+            const MAX_PROJECTS = 300; // v222: Increased for Admin scale
             const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
             const now = Date.now();
 

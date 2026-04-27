@@ -43,7 +43,7 @@ export default function GlobalSyncWorker() {
       }))
 
       // 1. SYNC PROJECTS & CHATS (Smart Merge)
-      const res = await fetch('/api/projects/bulk-cache?limit=100')
+      const res = await fetch('/api/projects/bulk-cache?limit=200')
       if (res.ok) {
         const projects = await res.json()
         setBulkProgress({ current: 0, total: projects.length })
@@ -116,7 +116,7 @@ export default function GlobalSyncWorker() {
         window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
           detail: { message: `Sincronizando cotizaciones...` }
         }))
-        const quoteRes = await fetch('/api/quotes?limit=50')
+        const quoteRes = await fetch('/api/quotes?limit=100')
         if (quoteRes.ok) {
           const quotes = await quoteRes.json()
           await db.quotesCache.bulkPut(quotes);

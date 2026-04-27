@@ -200,8 +200,8 @@ async function rscNetworkFirst(request) {
     if (response.ok && !response.redirected) {
       const cache = await caches.open(RSC_CACHE);
       cache.put(cacheKey, response.clone());
-      // v222: Increased limit for RSC to preserve project data shells
-      trimCache(RSC_CACHE, 200);
+      // v222: Increased limit for RSC to preserve project data shells (Admin scale)
+      trimCache(RSC_CACHE, 400);
     }
     return response;
   } catch (e) {
@@ -298,8 +298,8 @@ async function navigationHandler(request) {
             cache.put(finalUrl, response.clone());
           }
           console.log('[SW] Cached page:', url.pathname);
-          // v222: Increased limit to preserve project shells (100 projects + margin)
-          trimCache(PAGES_CACHE, 150);
+          // v222: Increased limit to preserve project shells (300 projects + margin)
+          trimCache(PAGES_CACHE, 400);
         }
       }
       return response;
