@@ -420,6 +420,7 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   else if (pathname.includes('/subcontratista')) shells.push('/admin/subcontratista', '/admin/subcontratista/');
   else if (pathname.includes('/admin/proyectos/nuevo')) shells.push('/admin/proyectos', '/admin/proyectos/');
   else if (pathname.includes('/admin/proyectos')) shells.push('/admin/proyectos', '/admin/proyectos/');
+  else if (pathname.includes('/admin/calendario')) shells.push('/admin/calendario', '/admin/calendario/');
   else {
     shells.push('/admin', '/admin/');
   }

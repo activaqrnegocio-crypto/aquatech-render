@@ -91,11 +91,18 @@ export default function GlobalSyncWorker() {
           for (let i = 0; i < warmUpCount; i++) {
             const pid = projects[i].id;
             const shellUrl = isAdmin ? `/admin/proyectos/${pid}` : `/admin/operador/proyecto/${pid}`;
-            fetch(shellUrl, { priority: 'low' }).catch(() => {});
+            fetch(shellUrl, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
             fetch(`${shellUrl}?_rsc=warmup`, { 
               priority: 'low',
               headers: { 'RSC': '1' } 
             }).catch(() => {});
+          }
+
+          // Pre-warm the calendar shell
+          if (isAdmin) {
+            const calendarUrl = '/admin/calendario';
+            fetch(calendarUrl, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
+            fetch(`${calendarUrl}?_rsc=warmup`, { priority: 'low', headers: { 'RSC': '1' } }).catch(() => {});
           }
         }
       }

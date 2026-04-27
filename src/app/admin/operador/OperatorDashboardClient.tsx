@@ -39,7 +39,17 @@ export default function OperatorDashboardClient({
   activeDayRecord,
   appointments: initialAppointments
 }: OperatorDashboardClientProps) {
-  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS'>('TAREAS')
+  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS'>(() => {
+    if (typeof window !== 'undefined') {
+      return (sessionStorage.getItem('operator_active_tab') as any) || 'TAREAS'
+    }
+    return 'TAREAS'
+  })
+
+  useEffect(() => {
+    sessionStorage.setItem('operator_active_tab', activeTab)
+  }, [activeTab])
+
   const [appointments, setAppointments] = useState(initialAppointments)
   // Use Dexie as live source for projects to support offline correctly
   const projectsFromCache = useLiveQuery(
@@ -54,13 +64,28 @@ export default function OperatorDashboardClient({
       )
     },
     [user?.id]
-  ) || []
+  )
 
-  // Combine initial projects with cache
+  // Merge server projects with cache projects (Smart Merge v223)
   const projects = useMemo(() => {
-    // If we have projects in cache, use them (they are more complete for offline)
-    if (projectsFromCache.length > 0) return projectsFromCache
-    return initialProjects
+    // If cache is still loading, show initial projects
+    if (projectsFromCache === undefined) return initialProjects
+
+    // Create a map to merge projects by ID, prioritizing the cache (it's more detailed)
+    const projectMap = new Map();
+    
+    // 1. Start with initial server projects
+    initialProjects.forEach((p: any) => projectMap.set(p.id, p));
+    
+    // 2. Overwrite/Add with cache projects (they have more offline data)
+    projectsFromCache.forEach((p: any) => {
+      const existing = projectMap.get(p.id);
+      projectMap.set(p.id, { ...(existing || {}), ...p });
+    });
+
+    return Array.from(projectMap.values()).sort((a, b) => 
+      new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
+    );
   }, [projectsFromCache, initialProjects])
 
   const [selectedTask, setSelectedTask] = useState<any>(null)

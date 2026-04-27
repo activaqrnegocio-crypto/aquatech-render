@@ -40,6 +40,13 @@ export async function GET(request: Request) {
       where.endTime = {
         lte: new Date(forceEcuadorTZ(end)),
       }
+    } else {
+      // Default optimized range: 1 month ago to 6 months ahead to prevent full DB scan
+      const now = new Date()
+      const defaultStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
+      const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 6, 0)
+      where.startTime = { gte: defaultStart }
+      where.endTime = { lte: defaultEnd }
     }
 
     const appointments = await prisma.appointment.findMany({
