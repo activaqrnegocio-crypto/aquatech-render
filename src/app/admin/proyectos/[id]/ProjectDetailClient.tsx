@@ -58,32 +58,51 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
 
   // --- OFFLINE STATE RECOVERY ---
   const [localProject, setLocalProject] = useState(project)
-  const [localChat, setLocalChat] = useState<any[]>(project.chatMessages || [])
+  const [localChat, setLocalChat] = useState<any[]>(project?.chatMessages || [])
   const [isOfflineMode, setIsOfflineMode] = useState(false)
+  const [isSyncingOffline, setIsSyncingOffline] = useState(false)
 
-  const id = project.id
+  const id = Number(project?.id || pathname.split('/').pop())
 
   useEffect(() => {
     async function handleOffline() {
-      const offline = typeof navigator !== 'undefined' && !navigator.onLine
-      setIsOfflineMode(offline)
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine
+      setIsOfflineMode(isOffline)
 
-      if (offline) {
-        // Try to load project from cache
-        const cachedProject = await db.projectsCache.get(Number(id))
-        if (cachedProject) {
-          setLocalProject(cachedProject)
-        }
-        // Load chat from cache
-        const cachedChat = await db.chatCache.get(Number(id))
-        if (cachedChat) {
-          setLocalChat(cachedChat.messages)
+      // v221: ID Consistency Check
+      // If we are offline OR the project prop doesn't match the URL ID (Universal Shell case)
+      const idFromUrl = Number(pathname.split('/').pop());
+      const needsCacheRecovery = isOffline || (project?.id && Number(project.id) !== idFromUrl);
+
+      if (needsCacheRecovery) {
+        setIsSyncingOffline(true);
+        console.log('[Offline] Recovery started for ID:', idFromUrl);
+        
+        try {
+          // 1. Try to load project from cache
+          const cachedProject = await db.projectsCache.get(idFromUrl)
+          if (cachedProject) {
+            setLocalProject(cachedProject)
+            // 2. Load chat from cache
+            const cachedChat = await db.chatCache.get(idFromUrl)
+            if (cachedChat) {
+              setLocalChat(cachedChat.messages)
+            }
+          } else {
+            console.warn('[Offline] No cache found for project:', idFromUrl);
+          }
+        } catch (err) {
+          console.error('[Offline] Error recovering project:', err);
+        } finally {
+          setIsSyncingOffline(false);
         }
       } else if (project) {
-        // Update cache when online
+        // Update cache when online and data is fresh
         setLocalProject(project)
         setLocalChat(project.chatMessages || [])
-        db.projectsCache.put(project).catch(err => console.error('Error caching project:', err))
+        db.projectsCache.put({ ...project, lastAccessedAt: Date.now() })
+          .catch(err => console.error('Error caching project:', err))
+        
         if (project.chatMessages && project.chatMessages.length > 0) {
           db.chatCache.put({ projectId: project.id, messages: project.chatMessages })
             .catch(err => console.error('Error caching chat:', err))
@@ -91,7 +110,16 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
       }
     }
     handleOffline()
-  }, [project, id])
+    
+    // Listen for connection changes
+    const handleStatus = () => handleOffline();
+    window.addEventListener('online', handleStatus);
+    window.addEventListener('offline', handleStatus);
+    return () => {
+      window.removeEventListener('online', handleStatus);
+      window.removeEventListener('offline', handleStatus);
+    }
+  }, [project, id, pathname])
 
   // --- CHAT STATE ---
   const [chatMessages, setChatMessages] = useState<any[]>([])

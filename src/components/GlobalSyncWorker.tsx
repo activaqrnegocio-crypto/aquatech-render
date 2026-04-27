@@ -16,16 +16,16 @@ export default function GlobalSyncWorker() {
   const [isBulkSyncing, setIsBulkSyncing] = useState(false)
   const [bulkProgress, setBulkProgress] = useState({ current: 0, total: 0 })
 
+  // Automatic Trigger: Start sync when session is available and we are online
   useEffect(() => {
-    // Escuchar el evento para iniciar sincronización masiva desde cualquier botón
-    const handleStartBulkSync = () => {
-      if (!isBulkSyncing) {
-        startBulkSync()
-      }
+    if (session?.user?.id && navigator.onLine && !isBulkSyncing) {
+      // Small delay to let the initial page load settle
+      const timer = setTimeout(() => {
+        startBulkSync();
+      }, 3000);
+      return () => clearTimeout(timer);
     }
-    window.addEventListener('start-bulk-cache-sync', handleStartBulkSync)
-    return () => window.removeEventListener('start-bulk-cache-sync', handleStartBulkSync)
-  }, [isBulkSyncing])
+  }, [session?.user?.id, isOnline]);
 
   const startBulkSync = async () => {
     if (!navigator.onLine || isBulkSyncing) return
@@ -34,73 +34,76 @@ export default function GlobalSyncWorker() {
     setBulkProgress({ current: 0, total: 0 })
     
     try {
+      const u = session?.user as any;
+      const userRole = (u?.role || 'OPERATOR').toUpperCase();
+      const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN'].includes(userRole);
+
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
-        detail: { message: `Conectando con el servidor...` }
+        detail: { message: `Iniciando sincronización de esqueleto (${userRole})...` }
       }))
 
+      // 1. SYNC PROJECTS & CHATS (Smart Merge)
       const res = await fetch('/api/projects/bulk-cache?limit=100')
-      if (!res.ok) throw new Error('Error de red o sesión expirada')
-
-      const projects = await res.json()
-      
-      // Calculate approximate size in MB from the object
-      const jsonString = JSON.stringify(projects)
-      const sizeMB = (jsonString.length / (1024 * 1024)).toFixed(2)
-      
-      window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
-        detail: { message: `Datos recibidos (${sizeMB} MB). Procesando...` }
-      }))
-      
-      window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
-        detail: { message: `Preparando descarga de ${projects.length} proyectos...` }
-      }))
-
-      // Limpieza rápida
-      await db.projectsCache.clear()
-      await db.chatCache.clear()
-
-      window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
-        detail: { message: `Iniciando transferencia de datos...` }
-      }))
-
-      setBulkProgress({ current: 0, total: projects.length })
-      
-      const CHUNK_SIZE = 15
-      for (let i = 0; i < projects.length; i += CHUNK_SIZE) {
-        const chunk = projects.slice(i, i + CHUNK_SIZE)
+      if (res.ok) {
+        const projects = await res.json()
+        setBulkProgress({ current: 0, total: projects.length })
         
-        const projectsToCache: any[] = []
-        const chatsToCache: any[] = []
-        
-        chunk.forEach((p: any) => {
-          const projectToCache = { ...p, lastAccessedAt: Date.now() }
-          const chatMessages = p.chatMessages || []
-          delete projectToCache.chatMessages
+        for (let i = 0; i < projects.length; i++) {
+          const p = projects[i];
+          const existing = await db.projectsCache.get(p.id);
           
-          projectsToCache.push(projectToCache)
+          // Preservar datos locales valiosos si existen (Smart Merge v221)
+          const mergedProject = {
+            ...(existing || {}),
+            ...p,
+            lastAccessedAt: Date.now()
+          };
           
-          if (chatMessages.length > 0) {
-            chatsToCache.push({ projectId: p.id, messages: chatMessages })
+          await db.projectsCache.put(mergedProject);
+
+          // Smart Merge for Chat: combine existing messages with new ones
+          if (p.chatMessages && p.chatMessages.length > 0) {
+            const existingChat = await db.chatCache.get(p.id);
+            const existingMessages = existingChat?.messages || [];
+            
+            // Create a Map of messages by ID to avoid duplicates
+            const messageMap = new Map();
+            existingMessages.forEach((m: any) => messageMap.set(m.id, m));
+            p.chatMessages.forEach((m: any) => messageMap.set(m.id, m));
+            
+            // Sort by date before saving
+            const finalMessages = Array.from(messageMap.values()).sort((a, b) => 
+              new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
+            );
+
+            await db.chatCache.put({ projectId: p.id, messages: finalMessages });
           }
           
-          // Parallel image preloading removed (as requested, only text chat)
-        })
-        
-        await Promise.all([
-          db.projectsCache.bulkPut(projectsToCache),
-          db.chatCache.bulkPut(chatsToCache)
-        ])
+          setBulkProgress(prev => ({ ...prev, current: i + 1 }));
+        }
+      }
 
-        const nextCurrent = Math.min(projects.length, i + chunk.length)
-        setBulkProgress({ current: nextCurrent, total: projects.length })
-        
+      // 2. SYNC APPOINTMENTS (Calendar)
+      window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+        detail: { message: `Sincronizando agenda...` }
+      }))
+      const appRes = await fetch('/api/appointments')
+      if (appRes.ok) {
+        const appointments = await appRes.json()
+        // Here we can use bulkPut as appointments are usually a fresh list
+        await db.appointmentsCache.bulkPut(appointments);
+      }
+
+      // 3. SYNC QUOTES (Only for Admin or if applicable)
+      if (isAdmin) {
         window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
-          detail: { message: `✓ Guardado bloque ${Math.ceil(nextCurrent/CHUNK_SIZE)} (${nextCurrent}/${projects.length} proyectos)` }
+          detail: { message: `Sincronizando cotizaciones...` }
         }))
-
-        window.dispatchEvent(new CustomEvent('bulk-cache-sync-progress', {
-          detail: { current: nextCurrent, total: projects.length }
-        }))
+        const quoteRes = await fetch('/api/quotes?limit=50')
+        if (quoteRes.ok) {
+          const quotes = await quoteRes.json()
+          await db.quotesCache.bulkPut(quotes);
+        }
       }
 
       const now = Date.now()
@@ -112,13 +115,15 @@ export default function GlobalSyncWorker() {
         status: 'idle'
       })
       
-      // Notificar al sistema que terminó
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-finished', { 
         detail: { count: finalCount } 
       }))
 
     } catch (err) {
-      console.error('Bulk sync background error:', err)
+      console.error('Skeleton sync error:', err)
+      window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+        detail: { message: `Error en sincronización: ${err instanceof Error ? err.message : 'Desconocido'}` }
+      }))
     } finally {
       setIsBulkSyncing(false)
     }
@@ -136,10 +141,7 @@ export default function GlobalSyncWorker() {
         lastLogin: Date.now()
       }
       
-      // Para uso interno de la app (UI)
       db.auth.put({ ...authData, id: 'last_session' }).catch(console.error)
-      
-      // Para uso exclusivo del Service Worker (Shadow Auth Proxy)
       db.authShadow.put({ ...authData, id: 'current' }).catch(console.error)
     }
   }, [session])

@@ -372,6 +372,24 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
 
   // Try app shell fallback (Specific for main sections)
   const shells = [];
+  
+  // v221: Universal Project Detail Shell
+  // If it's a numeric ID under proyectos, we can use ANY already cached project detail as a shell
+  // because the client-side code will swap the data.
+  const isProjectDetail = pathname.match(/\/admin\/proyectos\/\d+$/) || pathname.match(/\/admin\/operador\/proyecto\/\d+$/);
+  
+  if (isProjectDetail) {
+    console.log('[SW v221] Project detail detected, looking for a valid shell...');
+    // We try to find any cached page that looks like a project detail
+    const pagesCache = await caches.open(PAGES_CACHE);
+    const keys = await pagesCache.keys();
+    const detailShell = keys.find(k => k.url.match(/\/admin\/proyectos\/\d+/) || k.url.match(/\/admin\/operador\/proyecto\/\d+/));
+    if (detailShell) {
+      const match = await pagesCache.match(detailShell);
+      if (isValidHTMLResponse(match)) return match;
+    }
+  }
+
   if (pathname.includes('/operador/nuevo')) shells.push('/admin/operador', '/admin/operador/');
   else if (pathname.includes('/operador')) shells.push('/admin/operador', '/admin/operador/');
   else if (pathname.includes('/subcontratista')) shells.push('/admin/subcontratista', '/admin/subcontratista/');
@@ -395,13 +413,16 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
  * Update a page in the background (for stale-while-revalidate)
  */
 function updatePageInBackground(request, pathname) {
+  if (!navigator.onLine) return; // Don't even try if offline
+  
   fetch(request).then(response => {
     if (response.ok && !response.redirected) {
-      caches.open(PAGES_CACHE).then(cache => {
-        cache.put(request.url, response.clone());
-        const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
-        cache.put(alt, response.clone());
-      });
+      const ct = response.headers.get('Content-Type') || '';
+      if (ct.includes('text/html')) {
+        caches.open(PAGES_CACHE).then(cache => {
+          cache.put(request.url, response.clone());
+        });
+      }
     }
   }).catch(() => { /* offline, ignore */ });
 }
