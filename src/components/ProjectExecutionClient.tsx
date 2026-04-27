@@ -49,6 +49,12 @@ export default function ProjectExecutionClient({
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<any>(null)
   const [liveChat, setLiveChat] = useState<any[]>(initialChat || [])
   const liveChatInitialized = useRef(false)
+  // v222: Consistent ID derivation from URL for Operators
+  const idFromUrl = Number(pathname.split('/').pop());
+  const [localProject, setLocalProject] = useState<any>(null);
+  const [localChat, setLocalChat] = useState<any[]>([]);
+  const [isOfflineMode, setIsOfflineMode] = useState(false);
+  const [isSyncingOffline, setIsSyncingOffline] = useState(false);
   const [mounted, setMounted] = useState(false)
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [isOffline, setIsOffline] = useState(false)
@@ -58,7 +64,45 @@ export default function ProjectExecutionClient({
   const isSyncingRef = useRef(false)
 
   const GALLERY_LABEL = "Planos y Referencias"
-  
+
+  useEffect(() => {
+    async function initProject() {
+      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+      setIsOfflineMode(isOffline);
+
+      // Check if we need to recover from cache
+      const needsCacheRecovery = !project || Number(project?.id) !== idFromUrl;
+
+      if (needsCacheRecovery) {
+        setIsSyncingOffline(true);
+        console.log('[Operator-Offline] Universal Shell detected. Recovering ID:', idFromUrl);
+        try {
+          const cached = await db.projectsCache.get(idFromUrl);
+          if (cached) {
+            setLocalProject(cached);
+            const chat = await db.chatCache.get(idFromUrl);
+            setLocalChat(chat?.messages || []);
+          } else {
+            console.warn('[Operator-Offline] Project not found in local cache:', idFromUrl);
+          }
+        } catch (err) {
+          console.error('[Operator-Offline] Recovery error:', err);
+        } finally {
+          setIsSyncingOffline(false);
+        }
+      } else {
+        // Online or Correct Shell
+        setLocalProject(project);
+        setLocalChat(initialChat || []);
+        db.projectsCache.put({ ...project, lastAccessedAt: Date.now() }).catch(() => {});
+        if (initialChat?.length > 0) {
+          db.chatCache.put({ projectId: project.id, messages: initialChat }).catch(() => {});
+        }
+      }
+    }
+    initProject();
+  }, [project, idFromUrl, pathname, initialChat]);
+
   useEffect(() => {
     setMounted(true)
   }, [])
@@ -67,7 +111,7 @@ export default function ProjectExecutionClient({
   // --- INCREMENTAL FETCH: only gets NEW messages since last one ---
   const fetchMessages = async (since?: string): Promise<any[]> => {
     try {
-      const url = `/api/projects/${project.id}/messages?_t=${Date.now()}${since ? `&since=${since}` : ''}`
+      const url = `/api/projects/${idFromUrl}/messages?_t=${Date.now()}${since ? `&since=${since}` : ''}`
       const resp = await fetch(url, {
         cache: 'no-store',
         headers: { 'Cache-Control': 'no-cache' }
@@ -98,7 +142,7 @@ export default function ProjectExecutionClient({
         await fetch('/api/notifications/summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId: project.id })
+          body: JSON.stringify({ projectId: idFromUrl })
         })
       } catch (e) { /* silent */ }
     }
@@ -157,28 +201,28 @@ export default function ProjectExecutionClient({
         window.removeEventListener('focus', handleFocus)
       }
     }
-  }, [project.id])
+  }, [idFromUrl])
 
-  // Sync initialChat when server props update (RSC refresh)
+  // Sync localChat when server props update (RSC refresh) or from recovery
   useEffect(() => {
-    if (initialChat && initialChat.length > 0) {
+    if (localChat && localChat.length > 0) {
       setLiveChat(prev => {
         // If server has MORE messages than local, use the server data
-        if (initialChat.length > prev.length) {
-          return initialChat
+        if (localChat.length > prev.length) {
+          return localChat
         }
         // Otherwise merge in case local has optimistic adds
-        const serverIds = new Set(initialChat.map((m: any) => m.id))
+        const serverIds = new Set(localChat.map((m: any) => m.id))
         const localOnly = prev.filter((m: any) => typeof m.id === 'string' || !serverIds.has(m.id))
-        if (localOnly.length === 0) return initialChat
-        return [...initialChat, ...localOnly].sort((a: any, b: any) => 
+        if (localOnly.length === 0) return localChat
+        return [...localChat, ...localOnly].sort((a: any, b: any) => 
           new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
         )
       })
     }
-  }, [initialChat])
+  }, [localChat])
 
-  const pendingItems = useLiveQuery(() => db.outbox.where('projectId').equals(project.id).toArray(), [project.id]) || []
+  const pendingItems = useLiveQuery(() => db.outbox.where('projectId').equals(idFromUrl).toArray(), [idFromUrl]) || []
 
   const [localExpenses, setLocalExpenses] = useState<any[]>(expenses || [])
   const expensesInitialized = useRef(false)
@@ -190,7 +234,7 @@ export default function ProjectExecutionClient({
     const fetchExpenses = async () => {
       if (!navigator.onLine) return
       try {
-        const resp = await fetch(`/api/operator/projects/${project.id}/expenses?_t=${Date.now()}`, {
+        const resp = await fetch(`/api/operator/projects/${idFromUrl}/expenses?_t=${Date.now()}`, {
           cache: 'no-store'
         })
         if (resp.ok) {
@@ -204,7 +248,7 @@ export default function ProjectExecutionClient({
 
     const expInterval = setInterval(fetchExpenses, 5000)
     return () => clearInterval(expInterval)
-  }, [mounted, project.id])
+  }, [mounted, idFromUrl])
 
   const handleDeleteGalleryItem = async (itemId: number | string) => {
     if (!window.confirm('¿Estás seguro de eliminar este archivo?')) return

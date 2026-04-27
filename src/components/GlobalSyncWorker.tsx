@@ -82,17 +82,21 @@ export default function GlobalSyncWorker() {
           setBulkProgress(prev => ({ ...prev, current: i + 1 }));
         }
 
-        // v221: SHELL PRE-WARMING
-        // Background fetch the first project's HTML and RSC to ensure we have a Universal Shell
+        // v222: ROBUST SHELL PRE-WARMING
+        // Background fetch the first 3 projects' HTML and RSC to ensure we ALWAYS have a Universal Shell
         if (projects.length > 0) {
-          const firstId = projects[0].id;
-          const shellUrl = isAdmin ? `/admin/proyectos/${firstId}` : `/admin/operador/proyecto/${firstId}`;
-          console.log('[Sync] Pre-warming Universal Shell using ID:', firstId);
-          fetch(shellUrl, { priority: 'low' }).catch(() => {});
-          fetch(`${shellUrl}?_rsc=warmup`, { 
-            priority: 'low',
-            headers: { 'RSC': '1' } 
-          }).catch(() => {});
+          const warmUpCount = Math.min(projects.length, 3);
+          console.log(`[Sync] Pre-warming ${warmUpCount} Universal Shells for redundancy...`);
+          
+          for (let i = 0; i < warmUpCount; i++) {
+            const pid = projects[i].id;
+            const shellUrl = isAdmin ? `/admin/proyectos/${pid}` : `/admin/operador/proyecto/${pid}`;
+            fetch(shellUrl, { priority: 'low' }).catch(() => {});
+            fetch(`${shellUrl}?_rsc=warmup`, { 
+              priority: 'low',
+              headers: { 'RSC': '1' } 
+            }).catch(() => {});
+          }
         }
       }
 
