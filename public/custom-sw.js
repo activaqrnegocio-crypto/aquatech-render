@@ -618,7 +618,7 @@ self.addEventListener('message', (event) => {
           await new Promise(r => setTimeout(r, 200));
         }
         console.log('[SW] Pre-caching sequence finished');
-        trimCache(PAGES_CACHE, 60);
+        trimCache(PAGES_CACHE, 400); // FIX: Was 60, deleting needed shells
       })
     );
   }
