@@ -22,7 +22,7 @@ export default function GlobalSyncWorker() {
       // Small delay to let the initial page load settle
       const timer = setTimeout(() => {
         startBulkSync();
-      }, 3000);
+      }, 1000);
       return () => clearTimeout(timer);
     }
   }, [session?.user?.id, isOnline]);
@@ -39,11 +39,11 @@ export default function GlobalSyncWorker() {
       const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN'].includes(userRole);
 
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
-        detail: { message: `Iniciando sincronización de esqueleto (${userRole})...` }
+        detail: { message: `Iniciando sincronización optimizada (${userRole})...` }
       }))
 
-      // 1. SYNC PROJECTS & CHATS (Smart Merge)
-      const res = await fetch('/api/projects/bulk-cache?limit=200')
+      // 1. SYNC PROJECTS & CHATS (Smart Merge with Pacing)
+      const res = await fetch('/api/projects/bulk-cache?limit=200', { priority: 'low' })
       if (res.ok) {
         const projects = await res.json()
         setBulkProgress({ current: 0, total: projects.length })
@@ -52,7 +52,6 @@ export default function GlobalSyncWorker() {
           const p = projects[i];
           const existing = await db.projectsCache.get(p.id);
           
-          // Preservar datos locales valiosos si existen (Smart Merge v221)
           const mergedProject = {
             ...(existing || {}),
             ...p,
@@ -61,17 +60,14 @@ export default function GlobalSyncWorker() {
           
           await db.projectsCache.put(mergedProject);
 
-          // Smart Merge for Chat: combine existing messages with new ones
           if (p.chatMessages && p.chatMessages.length > 0) {
             const existingChat = await db.chatCache.get(p.id);
             const existingMessages = existingChat?.messages || [];
             
-            // Create a Map of messages by ID to avoid duplicates
             const messageMap = new Map();
             existingMessages.forEach((m: any) => messageMap.set(m.id, m));
             p.chatMessages.forEach((m: any) => messageMap.set(m.id, m));
             
-            // Sort by date before saving
             const finalMessages = Array.from(messageMap.values()).sort((a, b) => 
               new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
             );
@@ -80,14 +76,16 @@ export default function GlobalSyncWorker() {
           }
           
           setBulkProgress(prev => ({ ...prev, current: i + 1 }));
+          
+          // Artificial Pacing: Small pause every few items to keep the UI snappy
+          if (i % 3 === 0) {
+            await new Promise(resolve => setTimeout(resolve, 150)); 
+          }
         }
 
-        // v222: ROBUST SHELL PRE-WARMING
-        // Background fetch the first 3 projects' HTML and RSC to ensure we ALWAYS have a Universal Shell
+        // v222: ROBUST SHELL PRE-WARMING (Low Priority)
         if (projects.length > 0) {
-          const warmUpCount = Math.min(projects.length, 3);
-          console.log(`[Sync] Pre-warming ${warmUpCount} Universal Shells for redundancy...`);
-          
+          const warmUpCount = Math.min(projects.length, 5);
           for (let i = 0; i < warmUpCount; i++) {
             const pid = projects[i].id;
             const shellUrl = isAdmin ? `/admin/proyectos/${pid}` : `/admin/operador/proyecto/${pid}`;
@@ -96,9 +94,10 @@ export default function GlobalSyncWorker() {
               priority: 'low',
               headers: { 'RSC': '1' } 
             }).catch(() => {});
+            
+            await new Promise(resolve => setTimeout(resolve, 200)); // Pacing
           }
 
-          // Pre-warm the calendar shell
           if (isAdmin) {
             const calendarUrl = '/admin/calendario';
             fetch(calendarUrl, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
@@ -108,22 +107,23 @@ export default function GlobalSyncWorker() {
       }
 
       // 2. SYNC APPOINTMENTS (Calendar)
+      await new Promise(resolve => setTimeout(resolve, 500)); // Breathing room
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
         detail: { message: `Sincronizando agenda...` }
       }))
-      const appRes = await fetch('/api/appointments')
+      const appRes = await fetch('/api/appointments', { priority: 'low' })
       if (appRes.ok) {
         const appointments = await appRes.json()
-        // Here we can use bulkPut as appointments are usually a fresh list
         await db.appointmentsCache.bulkPut(appointments);
       }
 
-      // 3. SYNC QUOTES (Only for Admin or if applicable)
+      // 3. SYNC QUOTES
       if (isAdmin) {
+        await new Promise(resolve => setTimeout(resolve, 500));
         window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
           detail: { message: `Sincronizando cotizaciones...` }
         }))
-        const quoteRes = await fetch('/api/quotes?limit=100')
+        const quoteRes = await fetch('/api/quotes?limit=100', { priority: 'low' })
         if (quoteRes.ok) {
           const quotes = await quoteRes.json()
           await db.quotesCache.bulkPut(quotes);
