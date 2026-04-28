@@ -12,20 +12,16 @@ export default function ProjectCacheManager() {
   const [isDismissed, setIsDismissed] = useState(false)
 
   useEffect(() => {
-    const userId = (window as any)._userId; 
-
-    
     // 1. Load initial metadata
     const loadMetadata = async () => {
       try {
-        const metadataKey = userId ? `projects_bulk_${userId}` : 'projects_bulk';
-        const meta = await db.cacheMetadata.get(metadataKey)
+        const meta = await db.cacheMetadata.get('projects_bulk')
         if (meta) {
           setLastSync(meta.lastSync)
           setProjectCount(meta.count)
           
-          // If synced recently (within 60 mins), consider it complete initially
-          if (meta.lastSync && (Date.now() - meta.lastSync < 60 * 60 * 1000)) {
+          // If synced recently (within 30 mins), consider it complete initially
+          if (meta.lastSync && (Date.now() - meta.lastSync < 30 * 60 * 1000)) {
             setSyncComplete(true)
           }
         }

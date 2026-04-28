@@ -23,7 +23,7 @@ import { translateType, translateCategory } from '@/lib/constants'
 import { formatDate } from '@/lib/date-utils'
 
 export default function ProjectExecutionClient({ 
-  project, 
+  project: initialProject, 
   initialChat, 
   activeRecord, 
   expenses, 
@@ -38,20 +38,24 @@ export default function ProjectExecutionClient({
   const userRole = session?.user?.role
   const isFieldStaff = userRole === 'OPERATOR' || userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA'
   
-  const hasActiveRecordInThisProject = activeRecord && Number(activeRecord.projectId) === Number(project.id);
-  const hasActiveRecordInOtherProject = activeRecord && !hasActiveRecordInThisProject;
-  
   const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState<'records' | 'chat' | 'gallery'>('records')
   const pathname = usePathname()
+  const idFromUrl = Number(pathname.split('/').pop());
+  const [localProject, setLocalProject] = useState<any>(null);
+  
+  // Safe project resolution: prioritize local cache, fallback to initial IF it matches the URL
+  const project = localProject || (initialProject && Number(initialProject.id) === idFromUrl ? initialProject : null);
+
+  const hasActiveRecordInThisProject = activeRecord && project && Number(activeRecord.projectId) === Number(project.id);
+  const hasActiveRecordInOtherProject = activeRecord && !hasActiveRecordInThisProject;
+
   const [handleDownloadLoading, setHandleDownloadLoading] = useState<string | null>(null)
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<any>(null)
   const [liveChat, setLiveChat] = useState<any[]>(initialChat || [])
   const liveChatInitialized = useRef(false)
-  // v222: Consistent ID derivation from URL for Operators
-  const idFromUrl = Number(pathname.split('/').pop());
-  const [localProject, setLocalProject] = useState<any>(null);
+  
   const [localChat, setLocalChat] = useState<any[]>([]);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [isSyncingOffline, setIsSyncingOffline] = useState(false);
@@ -71,7 +75,7 @@ export default function ProjectExecutionClient({
       setIsOfflineMode(isOffline);
 
       // Check if we need to recover from cache
-      const needsCacheRecovery = !project || Number(project?.id) !== idFromUrl;
+      const needsCacheRecovery = !initialProject || Number(initialProject?.id) !== idFromUrl;
 
       if (needsCacheRecovery) {
         setIsSyncingOffline(true);
@@ -92,16 +96,16 @@ export default function ProjectExecutionClient({
         }
       } else {
         // Online or Correct Shell
-        setLocalProject(project);
+        setLocalProject(initialProject);
         setLocalChat(initialChat || []);
-        db.projectsCache.put({ ...project, lastAccessedAt: Date.now() }).catch(() => {});
+        db.projectsCache.put({ ...initialProject, lastAccessedAt: Date.now() }).catch(() => {});
         if (initialChat?.length > 0) {
-          db.chatCache.put({ projectId: project.id, messages: initialChat }).catch(() => {});
+          db.chatCache.put({ projectId: initialProject.id, messages: initialChat }).catch(() => {});
         }
       }
     }
     initProject();
-  }, [project, idFromUrl, pathname, initialChat]);
+  }, [initialProject, idFromUrl, initialChat]);
 
   useEffect(() => {
     setMounted(true)
@@ -1497,6 +1501,21 @@ export default function ProjectExecutionClient({
     }
   }
 
+  if (!project) {
+    return (
+      <div className="project-execution-container" style={{ 
+        display: 'flex', flexDirection: 'column', minHeight: '100vh', 
+        width: '100%', backgroundColor: 'var(--bg-deep)', alignItems: 'center', justifyContent: 'center' 
+      }}>
+        <div style={{ textAlign: 'center', padding: '20px' }}>
+          <div className="skeleton" style={{ width: '80px', height: '80px', borderRadius: '50%', margin: '0 auto 20px' }}></div>
+          <h2 style={{ color: 'var(--text-main)' }}>Recuperando proyecto...</h2>
+          <p style={{ color: 'var(--text-muted)' }}>Sincronizando base de datos local</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <>
     <div className="project-execution-container" style={{ 
@@ -2029,7 +2048,10 @@ export default function ProjectExecutionClient({
                         const fileName = cleanFilename(item.filename);
 
                         if (realMime.startsWith('image/')) {
-                          return <img src={item.url} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                          const thumbUrl = item.url.includes('b-cdn.net') && !item.url.includes('?width=') 
+                            ? `${item.url}?width=400` 
+                            : item.url;
+                          return <img src={thumbUrl} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
                         } else if (realMime.startsWith('video/')) {
                           return (
                             <div style={{ width: '100%', height: '100%', backgroundColor: 'black', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>

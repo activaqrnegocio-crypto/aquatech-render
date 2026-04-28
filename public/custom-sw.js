@@ -409,18 +409,16 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
     const keys = await pagesCache.keys();
     
     // Priority 1: Another project detail page (best shell)
-    const detailShell = keys.find(k => k.url.includes('/admin/proyectos/') || 
-                                       k.url.includes('/admin/operador/proyecto/'));
+    const detailShell = keys.find(k => k.url.match(/\/admin\/proyectos\/\d+/) || 
+                                       k.url.match(/\/admin\/operador\/proyecto\/\d+/));
     if (detailShell) {
       const match = await pagesCache.match(detailShell);
       if (isValidHTMLResponse(match)) return match;
     }
 
-    // Priority 2: Specific Dashboards
+    // Priority 2: The Operator Dashboard (better than offline.html)
     if (pathname.includes('/operador')) {
       shells.push('/admin/operador', '/admin/operador/');
-    } else {
-      shells.push('/admin', '/admin/');
     }
   }
 

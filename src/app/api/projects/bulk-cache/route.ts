@@ -22,11 +22,8 @@ export async function GET(request: Request) {
 
     const whereClause: any = {}
 
-    // v225: Even more robust Admin detection
-    const adminRoles = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN', 'ROOT', 'OWNER'];
-    const isAdmin = adminRoles.includes(userRole) || userRole.startsWith('ADMIN');
-
-    console.log(`[BulkCache] Detection: User=${userId}, Role=${userRole}, isAdmin=${isAdmin}`)
+    // Strict Admin check: Only ADMIN, ADMINISTRADOR, or SUPERADMIN get everything
+    const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN'].includes(userRole)
 
     if (!isAdmin) {
       console.log(`[BulkCache] Applying operator filter for user ${userId}`)
@@ -94,7 +91,7 @@ export async function GET(request: Request) {
             }
           },
           orderBy: { createdAt: 'desc' },
-          take: 50
+          take: 15
         }
       },
       orderBy: { createdAt: 'desc' }

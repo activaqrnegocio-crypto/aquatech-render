@@ -93,6 +93,7 @@ export default async function OperatorDashboard() {
 
   return (
     <>
+      <OfflinePrefetcher urls={prefetchUrls} />
       <OperatorDashboardClient 
         user={session.user}
         activeProjects={deepSerialize(activeProjects)}
