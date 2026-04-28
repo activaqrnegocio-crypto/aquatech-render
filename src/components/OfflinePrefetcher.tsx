@@ -31,25 +31,13 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
           type: 'PRECACHE_URLS',
           urls
         })
-
-        // RSC Payload Caching - IR UNO A UNO
-        const cacheRSC = async () => {
-          for (const url of urls) {
-            try {
-              await fetch(url, { headers: { 'RSC': '1' } })
-              // Esperar 300ms entre cada payload de Next.js
-              await new Promise(r => setTimeout(r, 300))
-            } catch (e) {}
-          }
-        }
-        cacheRSC()
       }
 
       // 3. DEEP DATA PREFETCH & CLEANUP
       if (typeof navigator !== 'undefined' && navigator.onLine) {
         const runGarbageCollector = async () => {
           try {
-            const MAX_PROJECTS = 300; // v222: Increased for Admin scale
+            const MAX_PROJECTS = 400; // v222: Increased for Admin scale
             const THIRTY_DAYS = 30 * 24 * 60 * 60 * 1000;
             const now = Date.now();
 
@@ -88,7 +76,7 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
           await runGarbageCollector(); // Limpiar antes de empezar
           
           try {
-            // ... (resto de la lógica de clientes y materiales se mantiene)
+            // v223: Only fetch basic lists if online
             const clientsResp = await fetch('/api/clients')
             if (clientsResp.ok) {
               const clients = await clientsResp.json()
@@ -97,7 +85,7 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
                 await db.clientsCache.bulkPut(clients)
               }
             }
-            await new Promise(r => setTimeout(r, 500))
+            await new Promise(r => setTimeout(r, 1000))
             
             const matResp = await fetch('/api/materials')
             if (matResp.ok) {
@@ -107,48 +95,57 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
                 await db.materialsCache.bulkPut(materials)
               }
             }
-            await new Promise(r => setTimeout(r, 500))
+            await new Promise(r => setTimeout(r, 1000))
 
             await fetch('/api/users?roles=OPERATOR,SUBCONTRATISTA').catch(() => {})
-            await new Promise(r => setTimeout(r, 500))
+            await new Promise(r => setTimeout(r, 1000))
 
           } catch (e) {
             console.warn('[Prefetch] Global data fetch failed', e)
           }
 
+          // v223: Sincronización TOTAL sin límites de slice
+          console.log(`[Prefetch] Iniciando sincronización de ${urls.length} proyectos...`);
+
           for (const url of urls) {
-            const projectMatch = url.match(/\/(admin|operador)\/proyectos\/(\d+)/) || url.match(/\/admin\/proyectos\/(\d+)/)
+            const projectMatch = url.match(/\/admin\/proyectos\/(\d+)/) || 
+                                 url.match(/\/admin\/operador\/proyecto\/(\d+)/) ||
+                                 url.match(/\/operador\/proyecto\/(\d+)/)
+
             if (projectMatch) {
-              const projectId = projectMatch[2] || projectMatch[1]
+              const projectId = projectMatch[1]
               
               const existing = await db.projectsCache.get(Number(projectId))
+              
+              // Solo sincronizar si no existe o si se actualizó hace más de 1 hora en el servidor
               if (existing && Date.now() - new Date(existing.updatedAt || 0).getTime() < 3600000) {
-                // Solo actualizar el lastAccessedAt si ya existe y es reciente
                 await db.projectsCache.update(Number(projectId), { lastAccessedAt: Date.now() });
                 continue
               }
 
               try {
+                // 1. Datos básicos y técnicos del proyecto
                 const pResp = await fetch(`/api/projects/${projectId}`)
                 if (pResp.ok) {
                   const projectData = await pResp.json()
-                  // Guardar con marca de tiempo de acceso
                   await db.projectsCache.put({ ...projectData, lastAccessedAt: Date.now() })
                 }
-                await new Promise(r => setTimeout(r, 400))
+                await new Promise(r => setTimeout(r, 1500)) // 1.5s delay por seguridad
 
+                // 2. Mensajes de chat (importante para historial offline)
                 const cResp = await fetch(`/api/projects/${projectId}/messages`)
                 if (cResp.ok) {
                   const messages = await cResp.json()
                   await db.chatCache.put({ projectId: Number(projectId), messages })
                 }
                 
-                await new Promise(r => setTimeout(r, 800))
+                await new Promise(r => setTimeout(r, 1500)) // 1.5s delay entre proyectos
               } catch (err) {
-                console.warn(`[Prefetch] Failed to cache project ${projectId}`, err)
+                console.warn(`[Prefetch] Error al sincronizar proyecto ${projectId}`, err)
               }
             }
           }
+          console.log('[Prefetch] Sincronización secuencial finalizada.');
         }
         prefetchSequentially()
       }

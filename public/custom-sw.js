@@ -401,7 +401,7 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   // v221: Universal Project Detail Shell
   // If it's a numeric ID under proyectos, we can use ANY already cached project detail as a shell
   // because the client-side code will swap the data.
-  const isProjectDetail = pathname.match(/\/admin\/proyectos\/\d+$/) || pathname.match(/\/admin\/operador\/proyecto\/\d+$/);
+  const isProjectDetail = pathname.match(/\/admin\/proyectos\/\d+/) || pathname.match(/\/admin\/operador\/proyecto\/\d+/);
   
   if (isProjectDetail) {
     console.log('[SW v221] Project detail detected, looking for a valid shell...');
@@ -582,44 +582,48 @@ self.addEventListener('message', (event) => {
   // Warm-up pre-caching — caches responses INCLUDING redirects (except login)
   if (event.data && event.data.type === 'PRECACHE_URLS') {
     const urls = event.data.urls || [];
-    console.log('[SW] Warm-up pre-caching', urls.length, 'URLs');
+    console.log('[SW] Warm-up pre-caching request for', urls.length, 'URLs');
     
     event.waitUntil(
       caches.open(PAGES_CACHE).then(async (cache) => {
-        // Procesar en pequeños grupos para no bloquear
-        const batchSize = 3;
-        for (let i = 0; i < urls.length; i += batchSize) {
-          const batch = urls.slice(i, i + batchSize);
-          await Promise.all(batch.map(async (url) => {
-            try {
-              const response = await fetchWithTimeout(new Request(url, { 
-                credentials: 'same-origin',
-                headers: { 'Cache-Control': 'no-cache', 'Accept': 'text/html' }
-              }), 8000);
-
-              if (response.ok) {
-                const contentType = response.headers.get('Content-Type') || '';
-                const isHTML = contentType.includes('text/html');
-                const finalUrl = response.url || '';
-                const isLoginRedirect = finalUrl.includes('/login');
-                
-                if (isHTML && !isLoginRedirect) {
-                  await cache.put(url, response.clone());
-                  // Guardar también la versión con/sin slash
-                  const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
-                  await cache.put(alt, response.clone());
-                  console.log('[SW] Warm-cached success:', url);
-                }
-              }
-            } catch (e) {
-              console.warn('[SW] Warm-cache failed for:', url);
+        // v223: Process one by one with longer delays to prevent Nginx 502/504 saturation
+        for (const url of urls) {
+          try {
+            // v223: Skip if already in cache and not forced
+            const existing = await cache.match(url);
+            if (existing && existing.ok) {
+               // If it's already cached, we might want to skip it to save bandwidth/server load
+               // console.log('[SW] Already cached, skipping:', url);
+               continue;
             }
-          }));
-          // Pequeño respiro
-          await new Promise(r => setTimeout(r, 200));
+
+            const response = await fetchWithTimeout(new Request(url, { 
+              credentials: 'same-origin',
+              headers: { 'Cache-Control': 'no-cache', 'Accept': 'text/html' }
+            }), 12000); // Increased timeout
+
+            if (response.ok) {
+              const contentType = response.headers.get('Content-Type') || '';
+              const isHTML = contentType.includes('text/html');
+              const finalUrl = response.url || '';
+              const isLoginRedirect = finalUrl.includes('/login');
+              
+              if (isHTML && !isLoginRedirect) {
+                await cache.put(url, response.clone());
+                const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
+                await cache.put(alt, response.clone());
+                console.log('[SW] Warm-cached success:', url);
+              }
+            }
+            
+            // v223: Longer delay between requests (800ms)
+            await new Promise(r => setTimeout(r, 800));
+          } catch (e) {
+            console.warn('[SW] Warm-cache failed for:', url);
+          }
         }
         console.log('[SW] Pre-caching sequence finished');
-        trimCache(PAGES_CACHE, 400); // FIX: Was 60, deleting needed shells
+        trimCache(PAGES_CACHE, 400); 
       })
     );
   }

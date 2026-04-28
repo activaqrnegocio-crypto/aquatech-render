@@ -518,8 +518,8 @@ export default function OperatorDashboardClient({
         {activeTab === 'PROYECTOS' && (
           <div className="grid-responsive">
             {projects.map(project => {
-              const completedPhases = project.phases.filter((p: any) => p.status === 'COMPLETADA').length
-              const totalPhases = project.phases.length
+              const completedPhases = (project.phases || []).filter((p: any) => p.status === 'COMPLETADA').length
+              const totalPhases = (project.phases || []).length
               const progress = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0
               
               return (

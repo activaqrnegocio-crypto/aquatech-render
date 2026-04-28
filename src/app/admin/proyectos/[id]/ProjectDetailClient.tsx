@@ -184,17 +184,17 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   const [isGenerating, setIsGenerating] = useState(false)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [isEditingTeam, setIsEditingTeam] = useState(false)
-  const [selectedTeam, setSelectedTeam] = useState<number[]>(project.team.map((t: any) => t.user.id))
+  const [selectedTeam, setSelectedTeam] = useState<number[]>((project?.team || []).map((t: any) => t.user?.id))
   const [isSavingTeam, setIsSavingTeam] = useState(false)
   
-  const initialGallery = (project.gallery || []).sort((a: any, b: any) => 
+  const initialGallery = (project?.gallery || []).sort((a: any, b: any) => 
     new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   )
 
   const [gallery, setGallery] = useState<any[]>(initialGallery)
   
   // --- EXPENSES STATE ---
-  const [expenses, setExpenses] = useState(project.expenses || [])
+  const [expenses, setExpenses] = useState(project?.expenses || [])
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<any>(null)
   const [expenseForm, setExpenseForm] = useState({
@@ -943,12 +943,12 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   }
 
   // --- MÉTRICAS ---
-  const totalPhases = project.phases.length
-  const completedPhases = project.phases.filter((p: any) => p.status === 'COMPLETADA').length
+  const totalPhases = (project?.phases || []).length
+  const completedPhases = (project?.phases || []).filter((p: any) => p.status === 'COMPLETADA').length
   const progressPercent = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0
 
   // Presupuesto vs Gastos (EstimatedBudget now includes 15% IVA)
-  const grandTotal = Number(project.estimatedBudget) || 0
+  const grandTotal = Number(project?.estimatedBudget) || 0
   const theoreticalBudget = grandTotal / 1.15
   const ivaAmount = grandTotal - theoreticalBudget
   const realExpenses = (expenses || [])

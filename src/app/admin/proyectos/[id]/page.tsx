@@ -39,6 +39,9 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
           user: { select: { id: true, name: true, role: true } }, 
           media: { select: { id: true, url: true, filename: true, mimeType: true } }
         }
+      },
+      expenses: {
+        orderBy: { date: 'desc' }
       }
     }
   })
