@@ -145,18 +145,6 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
                   const projectData = await pResp.json()
                   if (projectData && projectData.id) {
                     await db.projectsCache.put({ ...projectData, lastAccessedAt: Date.now() })
-                    
-                    // PREFETCH THUMBNAILS FOR GALLERY
-                    if (projectData.gallery && projectData.gallery.length > 0) {
-                      const thumbs = projectData.gallery
-                        .filter((g: any) => g.url && g.mimeType?.startsWith('image/'))
-                        .map((g: any) => g.url.includes('b-cdn.net') && !g.url.includes('?width=') ? `${g.url}?width=400` : g.url)
-                        .slice(0, 15); // Solo las últimas 15 miniaturas para no saturar
-                      
-                      for (const tUrl of thumbs) {
-                        fetch(tUrl, { mode: 'no-cors' }).catch(() => {});
-                      }
-                    }
                   }
                 }
                 await new Promise(r => setTimeout(r, 1200)) // Throttling

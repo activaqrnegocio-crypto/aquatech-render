@@ -95,23 +95,17 @@ export default function OperatorDashboardClient({
     // If cache is still loading, show initial projects
     if (projectsFromCache === undefined) return initialProjects
 
-    const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
-
-    // Create a map to merge projects by ID
+    // Create a map to merge projects by ID, prioritizing the cache (it's more detailed)
     const projectMap = new Map();
     
-    if (isOnline) {
-      // ONLINE: Server is source of truth. Only use initialProjects IDs.
-      initialProjects.forEach((p: any) => {
-        const cached = projectsFromCache.find(c => c.id === p.id);
-        projectMap.set(p.id, { ...(cached || {}), ...p });
-      });
-    } else {
-      // OFFLINE: Cache is source of truth. (initialProjects might be a stale shell)
-      projectsFromCache.forEach((p: any) => {
-        projectMap.set(p.id, p);
-      });
-    }
+    // 1. Start with initial server projects
+    initialProjects.forEach((p: any) => projectMap.set(p.id, p));
+    
+    // 2. Overwrite/Add with cache projects (they have more offline data)
+    projectsFromCache.forEach((p: any) => {
+      const existing = projectMap.get(p.id);
+      projectMap.set(p.id, { ...(existing || {}), ...p });
+    });
 
     return Array.from(projectMap.values()).map(p => ({
       ...p,
@@ -206,29 +200,15 @@ export default function OperatorDashboardClient({
 
         if (projRes.ok) {
           const freshProjects = await projRes.json()
-          if (Array.isArray(freshProjects)) {
-             const freshIds = new Set(freshProjects.map((p: any) => p.id));
-             
-             // Update cache with fresh basic data
-             if (freshProjects.length > 0) {
-               for (const p of freshProjects) {
-                 const existing = await db.projectsCache.get(p.id)
-                 await db.projectsCache.put({ 
-                   ...(existing || {}), 
-                   ...p, 
-                   lastAccessedAt: Date.now() 
-                 })
-               }
-             }
-             
-             // Cleanup stale projects from cache (Fixes "ghost projects" issue)
-             const allCached = await db.projectsCache.toArray();
-             for (const c of allCached) {
-                if (!freshIds.has(c.id)) {
-                   console.log(`[OperatorSync] Removing stale project ${c.id} from cache`);
-                   await db.projectsCache.delete(c.id);
-                   await db.chatCache.where('projectId').equals(c.id).delete().catch(()=>{});
-                }
+          // Update cache with fresh basic data if we are online
+          if (freshProjects.length > 0) {
+             for (const p of freshProjects) {
+               const existing = await db.projectsCache.get(p.id)
+               await db.projectsCache.put({ 
+                 ...(existing || {}), 
+                 ...p, 
+                 lastAccessedAt: Date.now() 
+               })
              }
           }
         }
