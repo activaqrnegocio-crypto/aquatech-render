@@ -128,16 +128,23 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
     }
   }, [localProject])
   
-  // Pending items from Dexie Outbox
+  // Pending items from Dexie Outbox (Safe ID check v224)
   const pendingItems = useLiveQuery(
-    () => db.outbox.where('projectId').equals(project.id).toArray(),
-    [project.id]
+    () => {
+      const targetId = Number(project?.id || idFromUrl);
+      if (!targetId) return [];
+      return db.outbox.where('projectId').equals(targetId).toArray();
+    },
+    [project?.id, idFromUrl]
   ) || []
 
-  const combinedChat = [
-    ...chatMessages,
-    ...liveChat,
-    ...pendingItems
+  const combinedChat = useMemo(() => {
+    const base = chatMessages || [];
+    const live = liveChat || [];
+    return [
+      ...base,
+      ...live,
+      ...pendingItems
       .filter((item: any) => item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD')
       .map((item: any) => {
         let mediaArr: any[] = [];
@@ -173,7 +180,8 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
           extraData: item.payload.extraData
         };
       })
-  ].sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime())
+    ].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+  }, [chatMessages, liveChat, pendingItems, session?.user?.id, session?.user?.name]);
 
   const [message, setMessage] = useState('')
   const [activePhase, setActivePhase] = useState<number | null>(null)

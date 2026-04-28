@@ -35,6 +35,25 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
 
       // 3. DEEP DATA PREFETCH & CLEANUP
       if (typeof navigator !== 'undefined' && navigator.onLine) {
+        const dispatchStatus = (status: any) => {
+          if (status.state === 'SYNCING' || status.state === 'STARTING') {
+            window.dispatchEvent(new CustomEvent('bulk-cache-sync-progress', { 
+              detail: { current: status.current, total: status.total } 
+            }));
+          } else if (status.state === 'COMPLETED') {
+            window.dispatchEvent(new CustomEvent('bulk-cache-sync-finished', { 
+              detail: { count: status.total } 
+            }));
+            // Save metadata for the green notice to persist
+            db.cacheMetadata.put({ 
+              id: 'projects_bulk', 
+              lastSync: Date.now(), 
+              count: status.total,
+              status: 'idle'
+            }).catch(() => {});
+          }
+        };
+
         const runGarbageCollector = async () => {
           try {
             const MAX_PROJECTS = 400; // v222: Increased for Admin scale
@@ -65,7 +84,6 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
                 await db.projectsCache.delete(p.id);
                 await db.chatCache.delete(p.id);
               }
-              console.log(`[GC] Limpiados ${toDeleteCount} proyectos antiguos para liberar espacio.`);
             }
           } catch (e) {
             console.error('[GC] Error en limpieza de caché:', e);
@@ -73,7 +91,8 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
         };
 
         const prefetchSequentially = async () => {
-          await runGarbageCollector(); // Limpiar antes de empezar
+          dispatchStatus({ state: 'STARTING', total: urls.length, current: 0 });
+          await runGarbageCollector();
           
           try {
             // v223: Only fetch basic lists if online
@@ -85,7 +104,6 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
                 await db.clientsCache.bulkPut(clients)
               }
             }
-            await new Promise(r => setTimeout(r, 1000))
             
             const matResp = await fetch('/api/materials')
             if (matResp.ok) {
@@ -95,18 +113,13 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
                 await db.materialsCache.bulkPut(materials)
               }
             }
-            await new Promise(r => setTimeout(r, 1000))
 
             await fetch('/api/users?roles=OPERATOR,SUBCONTRATISTA').catch(() => {})
-            await new Promise(r => setTimeout(r, 1000))
-
           } catch (e) {
             console.warn('[Prefetch] Global data fetch failed', e)
           }
 
-          // v223: Sincronización TOTAL sin límites de slice
-          console.log(`[Prefetch] Iniciando sincronización de ${urls.length} proyectos...`);
-
+          let completed = 0;
           for (const url of urls) {
             const projectMatch = url.match(/\/admin\/proyectos\/(\d+)/) || 
                                  url.match(/\/admin\/operador\/proyecto\/(\d+)/) ||
@@ -114,12 +127,14 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
 
             if (projectMatch) {
               const projectId = projectMatch[1]
+              dispatchStatus({ state: 'SYNCING', total: urls.length, current: completed + 1, projectId });
               
               const existing = await db.projectsCache.get(Number(projectId))
               
               // Solo sincronizar si no existe o si se actualizó hace más de 1 hora en el servidor
               if (existing && Date.now() - new Date(existing.updatedAt || 0).getTime() < 3600000) {
                 await db.projectsCache.update(Number(projectId), { lastAccessedAt: Date.now() });
+                completed++;
                 continue
               }
 
@@ -128,24 +143,27 @@ export default function OfflinePrefetcher({ urls }: { urls: string[] }) {
                 const pResp = await fetch(`/api/projects/${projectId}`)
                 if (pResp.ok) {
                   const projectData = await pResp.json()
-                  await db.projectsCache.put({ ...projectData, lastAccessedAt: Date.now() })
+                  if (projectData && projectData.id) {
+                    await db.projectsCache.put({ ...projectData, lastAccessedAt: Date.now() })
+                  }
                 }
-                await new Promise(r => setTimeout(r, 1500)) // 1.5s delay por seguridad
+                await new Promise(r => setTimeout(r, 1200)) // Throttling
 
-                // 2. Mensajes de chat (importante para historial offline)
+                // 2. Mensajes de chat
                 const cResp = await fetch(`/api/projects/${projectId}/messages`)
                 if (cResp.ok) {
                   const messages = await cResp.json()
-                  await db.chatCache.put({ projectId: Number(projectId), messages })
+                  await db.chatCache.put({ projectId: Number(projectId), messages: messages || [] })
                 }
                 
-                await new Promise(r => setTimeout(r, 1500)) // 1.5s delay entre proyectos
+                await new Promise(r => setTimeout(r, 1200))
               } catch (err) {
                 console.warn(`[Prefetch] Error al sincronizar proyecto ${projectId}`, err)
               }
             }
+            completed++;
           }
-          console.log('[Prefetch] Sincronización secuencial finalizada.');
+          dispatchStatus({ state: 'COMPLETED', total: urls.length, current: completed });
         }
         prefetchSequentially()
       }

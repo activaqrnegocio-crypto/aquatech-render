@@ -555,7 +555,7 @@ export default function OperatorDashboardClient({
                     <span className={`status-badge status-${project.status.toLowerCase()}`}>
                       {project.status}
                     </span>
-                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{project.phases.length} fases</span>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{(project.phases || []).length} fases</span>
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
                     <div style={{ flex: 1 }}>
