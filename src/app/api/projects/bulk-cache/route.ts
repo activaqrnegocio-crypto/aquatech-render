@@ -91,7 +91,7 @@ export async function GET(request: Request) {
             }
           },
           orderBy: { createdAt: 'desc' },
-          take: 15
+          take: 50
         }
       },
       orderBy: { createdAt: 'desc' }

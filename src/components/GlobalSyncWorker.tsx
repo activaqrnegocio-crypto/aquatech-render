@@ -18,6 +18,10 @@ export default function GlobalSyncWorker() {
 
   // Automatic Trigger: Start sync when session is available and we are online
   useEffect(() => {
+    if (session?.user?.id) {
+      (window as any)._userId = session.user.id;
+    }
+    
     if (session?.user?.id && navigator.onLine && !isBulkSyncing) {
       // Small delay to let the initial page load settle
       const timer = setTimeout(() => {
@@ -38,15 +42,19 @@ export default function GlobalSyncWorker() {
       const userRole = (u?.role || 'OPERATOR').toUpperCase();
       const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN'].includes(userRole);
 
+      const metadataKey = `projects_bulk_${session?.user?.id || 'global'}`;
+
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
         detail: { message: `Iniciando sincronización optimizada (${userRole})...` }
       }))
 
       // 1. SYNC PROJECTS & CHATS (Smart Merge with Pacing)
+      let totalProjects = 0;
       const res = await fetch('/api/projects/bulk-cache?limit=200', { priority: 'low' })
       if (res.ok) {
         const projects = await res.json()
-        setBulkProgress({ current: 0, total: projects.length })
+        totalProjects = projects.length;
+        setBulkProgress({ current: 0, total: totalProjects })
         
         for (let i = 0; i < projects.length; i++) {
           const p = projects[i];
@@ -83,25 +91,34 @@ export default function GlobalSyncWorker() {
           }
         }
 
-        // v222: ROBUST SHELL PRE-WARMING (Low Priority)
+        // v224: ROBUST SHELL PRE-WARMING (Low Priority)
         if (projects.length > 0) {
-          const warmUpCount = Math.min(projects.length, 5);
+          // If few projects (like operator), warm up ALL. If many (admin), warm up 5.
+          const warmUpCount = projects.length < 12 ? projects.length : 5;
+          
           for (let i = 0; i < warmUpCount; i++) {
             const pid = projects[i].id;
             const shellUrl = isAdmin ? `/admin/proyectos/${pid}` : `/admin/operador/proyecto/${pid}`;
+            
+            // Standard HTML page
             fetch(shellUrl, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
+            
+            // Next.js RSC data (Very important for fast navigation)
             fetch(`${shellUrl}?_rsc=warmup`, { 
               priority: 'low',
               headers: { 'RSC': '1' } 
             }).catch(() => {});
             
-            await new Promise(resolve => setTimeout(resolve, 200)); // Pacing
+            await new Promise(resolve => setTimeout(resolve, 300)); // Pacing
           }
 
+          // Also warm up the dashboard itself
+          const dashUrl = isAdmin ? '/admin' : '/admin/operador';
+          fetch(dashUrl, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
+          
           if (isAdmin) {
             const calendarUrl = '/admin/calendario';
             fetch(calendarUrl, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
-            fetch(`${calendarUrl}?_rsc=warmup`, { priority: 'low', headers: { 'RSC': '1' } }).catch(() => {});
           }
         }
       }
@@ -131,16 +148,17 @@ export default function GlobalSyncWorker() {
       }
 
       const now = Date.now()
-      const finalCount = await db.projectsCache.count()
+
+      
       await db.cacheMetadata.put({
-        id: 'projects_bulk',
+        id: metadataKey,
         lastSync: now,
-        count: finalCount,
+        count: totalProjects, // The count of projects synced THIS time
         status: 'idle'
       })
       
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-finished', { 
-        detail: { count: finalCount } 
+        detail: { count: totalProjects } 
       }))
 
     } catch (err) {
