@@ -31,13 +31,15 @@ interface OperatorDashboardClientProps {
   activeProjects: any[]
   activeDayRecord: any
   appointments: any[]
+  userViews: any[]
 }
 
 export default function OperatorDashboardClient({
   user,
   activeProjects: initialProjects,
   activeDayRecord,
-  appointments: initialAppointments
+  appointments: initialAppointments,
+  userViews
 }: OperatorDashboardClientProps) {
   const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS'>(() => {
     if (typeof window !== 'undefined') {
@@ -66,7 +68,29 @@ export default function OperatorDashboardClient({
     [user?.id]
   )
 
-  // Merge server projects with cache projects (Smart Merge v223)
+  // v224: Calculate unread counts locally (blazing fast)
+  const unreadCounts = useLiveQuery(async () => {
+    const counts: Record<number, number> = {};
+    const userId = Number(user?.id);
+    if (!userId) return counts;
+
+    for (const p of initialProjects) {
+      const view = userViews.find(v => v.projectId === p.id);
+      const lastSeen = view?.lastSeen ? new Date(view.lastSeen) : new Date(0);
+      
+      const chat = await db.chatCache.get(p.id);
+      if (chat && chat.messages) {
+        counts[p.id] = chat.messages.filter((m: any) => 
+          new Date(m.createdAt) > lastSeen && m.userId !== userId
+        ).length;
+      } else {
+        counts[p.id] = p.unreadCount || 0; // Fallback to server value if available
+      }
+    }
+    return counts;
+  }, [initialProjects, userViews, user?.id]);
+
+  // Merge server projects with cache projects (Smart Merge v224)
   const projects = useMemo(() => {
     // If cache is still loading, show initial projects
     if (projectsFromCache === undefined) return initialProjects
@@ -83,10 +107,13 @@ export default function OperatorDashboardClient({
       projectMap.set(p.id, { ...(existing || {}), ...p });
     });
 
-    return Array.from(projectMap.values()).sort((a, b) => 
+    return Array.from(projectMap.values()).map(p => ({
+      ...p,
+      unreadCount: unreadCounts?.[p.id] ?? p.unreadCount ?? 0
+    })).sort((a, b) => 
       new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
     );
-  }, [projectsFromCache, initialProjects])
+  }, [projectsFromCache, initialProjects, unreadCounts])
 
   const [selectedTask, setSelectedTask] = useState<any>(null)
 

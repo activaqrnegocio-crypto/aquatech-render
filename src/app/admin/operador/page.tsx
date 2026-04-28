@@ -33,14 +33,14 @@ export default async function OperatorDashboard() {
   let userViews: any[] = []
 
   try {
-    // Fetch data in parallel
+    // v224: Parallel fetching without unread counts (faster response)
     const results = await Promise.all([
       prisma.project.findMany({
         where: {
           team: { some: { userId } },
           status: { in: ['LEAD', 'ACTIVO', 'PENDIENTE'] }
         },
-        take: 20, // Only show recent active projects for speed
+        take: 30, // Increased slightly but kept fast
         orderBy: { updatedAt: 'desc' },
         select: {
           id: true,
@@ -64,7 +64,7 @@ export default async function OperatorDashboard() {
             startTime: { gte: new Date(new Date().setDate(new Date().getDate() - 7)) } // Last 7 days and future
           },
           orderBy: { startTime: 'asc' },
-          take: 30,
+          take: 40,
           include: { project: { select: { title: true } } }
       }),
       prisma.projectView.findMany({
@@ -77,37 +77,18 @@ export default async function OperatorDashboard() {
     appointments = results[2]
     userViews = results[3]
   } catch (err) {
-    console.warn("Offline or DB error, passing empty operator data to client for cache fallback")
+    console.warn("DB error in operator page", err)
   }
-
-  // Calculate unread counts for each project
-  const projectsWithUnread = await Promise.all(activeProjects.map(async (project: any) => {
-    const view = userViews.find((v: any) => v.projectId === project.id);
-    const lastSeen = view?.lastSeen || new Date(0);
-
-    const unreadCount = await prisma.chatMessage.count({
-      where: {
-        projectId: project.id,
-        userId: { not: userId },
-        createdAt: { gt: lastSeen }
-      }
-    });
-
-    return {
-      ...project,
-      unreadCount
-    };
-  }));
 
   // Build URLs for offline use
   const prefetchUrls = [
+    '/admin/operador',
     ...activeProjects.map((p: any) => `/admin/operador/proyecto/${p.id}`),
     '/admin/operador/nuevo',
     '/admin/inventario',
     '/admin/cotizaciones',
     '/admin/cotizaciones/nuevo',
     '/admin/cotizaciones/offline',
-    '/admin/recursos',
   ]
 
   return (
@@ -115,9 +96,10 @@ export default async function OperatorDashboard() {
       <OfflinePrefetcher urls={prefetchUrls} />
       <OperatorDashboardClient 
         user={session.user}
-        activeProjects={deepSerialize(projectsWithUnread)}
+        activeProjects={deepSerialize(activeProjects)}
         activeDayRecord={deepSerialize(activeDayRecord)}
         appointments={deepSerialize(appointments)}
+        userViews={deepSerialize(userViews)}
       />
     </>
   )

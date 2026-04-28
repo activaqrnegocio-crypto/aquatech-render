@@ -398,24 +398,32 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   // Try app shell fallback (Specific for main sections)
   const shells = [];
   
-  // v221: Universal Project Detail Shell
-  // If it's a numeric ID under proyectos, we can use ANY already cached project detail as a shell
-  // because the client-side code will swap the data.
-  const isProjectDetail = pathname.match(/\/admin\/proyectos\/\d+/) || pathname.match(/\/admin\/operador\/proyecto\/\d+/);
+  // v224: Improved Shell logic for Operators
+  const isProjectDetail = pathname.match(/\/admin\/proyectos\/\d+/) || 
+                          pathname.match(/\/admin\/operador\/proyecto\/\d+/) ||
+                          pathname.match(/\/operador\/proyecto\/\d+/);
   
   if (isProjectDetail) {
-    console.log('[SW v221] Project detail detected, looking for a valid shell...');
-    // We try to find any cached page that looks like a project detail
+    console.log('[SW v224] Project detail detected, looking for a valid shell...');
     const pagesCache = await caches.open(PAGES_CACHE);
     const keys = await pagesCache.keys();
-    const detailShell = keys.find(k => k.url.match(/\/admin\/proyectos\/\d+/) || k.url.match(/\/admin\/operador\/proyecto\/\d+/));
+    
+    // Priority 1: Another project detail page (best shell)
+    const detailShell = keys.find(k => k.url.match(/\/admin\/proyectos\/\d+/) || 
+                                       k.url.match(/\/admin\/operador\/proyecto\/\d+/));
     if (detailShell) {
       const match = await pagesCache.match(detailShell);
       if (isValidHTMLResponse(match)) return match;
     }
+
+    // Priority 2: The Operator Dashboard (better than offline.html)
+    if (pathname.includes('/operador')) {
+      shells.push('/admin/operador', '/admin/operador/');
+    }
   }
 
-  if (pathname.includes('/operador/nuevo')) shells.push('/admin/operador', '/admin/operador/');
+  if (pathname.includes('/admin/operador/nuevo')) shells.push('/admin/operador', '/admin/operador/');
+  else if (pathname.includes('/admin/operador')) shells.push('/admin/operador', '/admin/operador/');
   else if (pathname.includes('/operador')) shells.push('/admin/operador', '/admin/operador/');
   else if (pathname.includes('/subcontratista')) shells.push('/admin/subcontratista', '/admin/subcontratista/');
   else if (pathname.includes('/admin/proyectos/nuevo')) shells.push('/admin/proyectos', '/admin/proyectos/');
@@ -428,6 +436,7 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   for (const shell of shells) {
     const shellMatch = await caches.match(shell, { ignoreVary: true, ignoreSearch: true });
     if (isValidHTMLResponse(shellMatch)) {
+       console.log('[SW] Shell found for fallback:', shell);
        return shellMatch;
     }
   }
