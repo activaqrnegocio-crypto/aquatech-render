@@ -40,7 +40,8 @@ export default function GlobalSyncWorker() {
     try {
       const u = session?.user as any;
       const userRole = (u?.role || 'OPERATOR').toUpperCase();
-      const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN'].includes(userRole);
+      const adminRoles = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN', 'ROOT', 'OWNER'];
+      const isAdmin = adminRoles.includes(userRole) || userRole.startsWith('ADMIN');
 
       const metadataKey = `projects_bulk_${session?.user?.id || 'global'}`;
 
@@ -91,10 +92,14 @@ export default function GlobalSyncWorker() {
           }
         }
 
-        // v224: ROBUST SHELL PRE-WARMING (Low Priority)
+        // v225: ROBUST SHELL PRE-WARMING (Sequentially for performance)
         if (projects.length > 0) {
-          // If few projects (like operator), warm up ALL. If many (admin), warm up 5.
-          const warmUpCount = projects.length < 12 ? projects.length : 5;
+          // Warm up up to 100 projects to avoid blank screens
+          const warmUpCount = Math.min(projects.length, 100);
+          
+          window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+            detail: { message: `Preparando ${warmUpCount} vistas offline...` }
+          }))
           
           for (let i = 0; i < warmUpCount; i++) {
             const pid = projects[i].id;
@@ -148,17 +153,20 @@ export default function GlobalSyncWorker() {
       }
 
       const now = Date.now()
-
+      
+      // For Admin, we show the TOTAL count of projects in the cache (for pride/clarity)
+      // For Operator, we show the count of projects synced this time (their assigned ones)
+      const finalCount = isAdmin ? (await db.projectsCache.count()) : totalProjects;
       
       await db.cacheMetadata.put({
         id: metadataKey,
         lastSync: now,
-        count: totalProjects, // The count of projects synced THIS time
+        count: finalCount,
         status: 'idle'
       })
       
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-finished', { 
-        detail: { count: totalProjects } 
+        detail: { count: finalCount } 
       }))
 
     } catch (err) {
