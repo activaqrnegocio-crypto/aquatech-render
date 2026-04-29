@@ -58,14 +58,19 @@ export default function ProjectDetailClient({ project: initialProject, available
 
   // v227: Consistent ID derivation from URL (Primary Source of Truth)
   // v228: Robust ID extraction using regex to handle trailing slashes and Universal Shell
+  // v231: Enhanced regex to capture digits even in complex paths
   const idFromUrl = useMemo(() => {
     if (typeof window === 'undefined') return 0;
-    const match = window.location.pathname.match(/\/proyectos\/(\d+)/);
+    const path = window.location.pathname;
+    const match = path.match(/\/proyecto[s]?\/(\d+)/i);
     if (match) return Number(match[1]);
     
-    // Fallback for operator view if different path
-    const opMatch = window.location.pathname.match(/\/proyecto\/(\d+)/);
-    return opMatch ? Number(opMatch[1]) : 0;
+    // Ultimate fallback: check if the last segment is a number
+    const segments = path.split('/').filter(Boolean);
+    const last = segments[segments.length - 1];
+    if (last && /^\d+$/.test(last)) return Number(last);
+
+    return 0;
   }, []);
   const [localProject, setLocalProject] = useState<any>(null);
   const project = localProject || initialProject;
@@ -80,7 +85,7 @@ export default function ProjectDetailClient({ project: initialProject, available
       setIsOfflineMode(isOffline);
 
       // Check if we need to recover from cache (either offline OR we got the wrong shell props)
-      const needsCacheRecovery = !project || Number(project?.id) !== idFromUrl;
+      const needsCacheRecovery = (!project || Number(project?.id) !== idFromUrl) && idFromUrl > 0;
 
       if (needsCacheRecovery) {
         setIsSyncingOffline(true);
@@ -131,10 +136,10 @@ export default function ProjectDetailClient({ project: initialProject, available
   useEffect(() => {
     if (localProject) {
       setGallery((localProject.gallery || []).sort((a: any, b: any) => 
-        new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+        new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
       ))
       setExpenses(localProject.expenses || [])
-      setCurrentStatus(localProject.status)
+      setCurrentStatus(localProject.status || 'ACTIVO')
       setEditBudget(localProject.estimatedBudget || 0)
     }
   }, [localProject])
@@ -207,7 +212,7 @@ export default function ProjectDetailClient({ project: initialProject, available
   const [isSavingTeam, setIsSavingTeam] = useState(false)
   
   const initialGallery = (project?.gallery || []).sort((a: any, b: any) => 
-    new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
+    new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   )
 
   const [gallery, setGallery] = useState<any[]>(initialGallery)
@@ -316,6 +321,89 @@ export default function ProjectDetailClient({ project: initialProject, available
     )
   }, [chatMessages, pendingItems])
 
+  // --- SAFETY GUARD (v231) ---
+  if (!project && isMounted) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '20px', color: 'var(--text)' }}>
+        <div style={{ width: '40px', height: '40px', border: '3px solid var(--border-color)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        <p>Cargando información del proyecto...</p>
+        {isOfflineMode && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Buscando en almacenamiento local (ID: {idFromUrl})</p>}
+        {!idFromUrl && <p style={{ color: 'var(--error)' }}>Error: No se pudo identificar el ID del proyecto.</p>}
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
+  // --- METRICS CALCULATION (v230: Consolidated & Fixed) ---
+  const { 
+    totalPhases, 
+    completedPhases, 
+    progressPercent, 
+    grandTotal, 
+    theoreticalBudget, 
+    ivaAmount, 
+    realExpensesValue, 
+    expenseRatio, 
+    isCostoExcedido,
+    theoreticalDays,
+    realDays,
+    timeRatio,
+    isTiempoExcedido
+  } = useMemo(() => {
+    const phases = project?.phases || []
+    const exps = project?.expenses || []
+    
+    const total = phases.length
+    const completed = phases.filter((p: any) => p.status === 'COMPLETADA').length
+    const progress = total > 0 ? Math.round((completed / total) * 100) : 0
+
+    const gTotal = Number(project?.estimatedBudget || 0)
+    const tBudget = gTotal / 1.15
+    const iva = gTotal - tBudget
+
+    const realExp = exps
+      .filter((e: any) => !e.isNote)
+      .reduce((acc: number, curr: any) => acc + Number(curr.amount || 0), 0)
+
+    const eRatio = tBudget > 0 ? Math.min((realExp / tBudget) * 100, 100) : 0
+    const costExceeded = realExp > tBudget && tBudget > 0
+
+    const tDays = phases.reduce((acc: number, phase: any) => acc + (phase.estimatedDays || 0), 0)
+    
+    let rDays = 0
+    if (project?.startDate) {
+      const start = new Date(project.startDate)
+      const end = (project.status === 'COMPLETADA' || project.status === 'FINALIZADO') && project.endDate 
+        ? new Date(project.endDate) 
+        : new Date()
+      const diff = end.getTime() - start.getTime()
+      rDays = Math.max(0, Math.ceil(diff / (1000 * 60 * 60 * 24)))
+    }
+
+    const tRatio = tDays > 0 ? Math.min((rDays / tDays) * 100, 100) : 0
+    const timeExceeded = rDays > tDays && tDays > 0
+
+    return {
+      totalPhases: total,
+      completedPhases: completed,
+      progressPercent: progress,
+      grandTotal: gTotal,
+      theoreticalBudget: tBudget,
+      ivaAmount: iva,
+      realExpensesValue: realExp,
+      expenseRatio: eRatio,
+      isCostoExcedido: costExceeded,
+      theoreticalDays: tDays,
+      realDays: rDays,
+      timeRatio: tRatio,
+      isTiempoExcedido: timeExceeded
+    }
+  }, [project, project?.phases, project?.expenses, project?.estimatedBudget, project?.startDate, project?.endDate, project?.status])
+
+  // Alias for backward compatibility if needed
+  const realExpenses = realExpensesValue;
+
+
   const [isUploading, setIsUploading] = useState(false)
   const [showAllGallery, setShowAllGallery] = useState(false)
   const [showAllEvidence, setShowAllEvidence] = useState(false)
@@ -411,6 +499,7 @@ export default function ProjectDetailClient({ project: initialProject, available
   const [hasNewMessages, setHasNewMessages] = useState(false)
 
   useEffect(() => {
+    if (!project?.id || Number(project.id) === 0) return // v231: Prevent calls for ID 0
     if (activeTab === 'CHAT' && filteredChat.length > 0) {
       const container = chatContainerRef.current
       if (!container) return
@@ -440,6 +529,8 @@ export default function ProjectDetailClient({ project: initialProject, available
 
   // --- REAL-TIME POLLING: Incremental sync every 1s ---
   useEffect(() => {
+    if (!project?.id || Number(project.id) === 0) return // v231: Prevent calls for ID 0
+
     const markAsSeen = async () => {
       try {
         await fetch('/api/notifications/summary', {
@@ -961,36 +1052,6 @@ export default function ProjectDetailClient({ project: initialProject, available
     })
   }
 
-  // --- MÉTRICAS ---
-  const totalPhases = (project?.phases || []).length
-  const completedPhases = (project?.phases || []).filter((p: any) => p.status === 'COMPLETADA').length
-  const progressPercent = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0
-
-  // Presupuesto vs Gastos (EstimatedBudget now includes 15% IVA)
-  const grandTotal = Number(project?.estimatedBudget) || 0
-  const theoreticalBudget = grandTotal / 1.15
-  const ivaAmount = grandTotal - theoreticalBudget
-  const realExpenses = (expenses || [])
-    .filter((exp: any) => !exp.isNote)
-    .reduce((acc: number, exp: any) => acc + Number(exp.amount), 0)
-  const expenseRatio = theoreticalBudget > 0 ? Math.min((realExpenses / theoreticalBudget) * 100, 100) : 0
-  const isCostoExcedido = realExpenses > theoreticalBudget && theoreticalBudget > 0
-
-  // Tiempo: Días Est. vs Reales
-  const theoreticalDays = project.phases.reduce((acc: number, p: any) => acc + (p.estimatedDays || 0), 0)
-  
-  // Cálculo de Tiempo Real
-  let realDays = 0
-  if (project.startDate) {
-    const start = new Date(project.startDate)
-    const end = project.status === 'COMPLETADO' && project.endDate ? new Date(project.endDate) : new Date()
-    const diffTime = Math.abs(end.getTime() - start.getTime())
-    realDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24))
-  }
-  
-  const timeRatio = theoreticalDays > 0 ? Math.min((realDays / theoreticalDays) * 100, 100) : 0
-  const isTiempoExcedido = realDays > theoreticalDays && theoreticalDays > 0
-
   // --- FETCH FULL DATA FOR EXPORTS ---
   const fetchFullProjectData = async () => {
     try {
@@ -1409,7 +1470,7 @@ export default function ProjectDetailClient({ project: initialProject, available
       doc.setFont('helvetica', 'bold')
       doc.text('Detalle de Notas de Gastos Reportadas', 20, 20)
 
-      const expenseData = project.expenses.filter((e: any) => !e.isNote).map((exp: any) => [
+      const expenseData = (project?.expenses || []).filter((e: any) => !e.isNote).map((exp: any) => [
         formatDate(exp.date),
         exp.description,
         exp.category || 'General',
@@ -1421,7 +1482,7 @@ export default function ProjectDetailClient({ project: initialProject, available
         head: [['Fecha', 'Descripción', 'Categoría', 'Monto']],
         body: expenseData.length > 0 ? expenseData : [['—', 'Sin gastos', '', '']],
         styles: { fontSize: 9 },
-        foot: [['', '', 'TOTAL NOTAS DE GASTOS:', `$ ${realExpenses.toFixed(2)}`]],
+        foot: [['', '', 'TOTAL NOTAS DE GASTOS:', `$ ${realExpensesValue.toFixed(2)}`]],
         footStyles: { fillColor: [240, 240, 240], textColor: [0, 0, 0], fontStyle: 'bold' }
       })
 
@@ -1609,8 +1670,8 @@ export default function ProjectDetailClient({ project: initialProject, available
       doc.text('5. EQUIPO ASIGNADO', 20, y)
       y += 10
 
-      const teamData = fullProject.team.map((m: any, i: number) => [
-        (i + 1).toString(), m.user.name, m.user.role || 'Operador', m.user.phone || 'N/A'
+      const teamData = (fullProject.team || []).map((m: any, i: number) => [
+        (i + 1).toString(), m.user?.name || 'N/A', m.user?.role || 'Operador', m.user?.phone || 'N/A'
       ])
 
       autoTable(doc, {
@@ -1630,7 +1691,7 @@ export default function ProjectDetailClient({ project: initialProject, available
       doc.text('6. FASES DE TRABAJO', 20, y)
       y += 10
 
-      const phaseData = fullProject.phases.map((p: any, i: number) => [
+      const phaseData = (fullProject.phases || []).map((p: any, i: number) => [
         `${i + 1}`, p.title, p.description || '—', `${p.estimatedDays || 0} días`, p.status === 'COMPLETADA' ? 'Completada' : p.status === 'EN_PROGRESO' ? 'En Progreso' : 'Pendiente'
       ])
 
@@ -1720,7 +1781,7 @@ export default function ProjectDetailClient({ project: initialProject, available
   if (!isMounted) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: 'var(--bg-deep)', color: 'white' }}>Cargando proyecto...</div>;
 
   // v228: Loading guard while project data is fetched from Dexie or API
-  if (!project && idFromUrl !== 0) {
+  if ((!project || !project.title) && idFromUrl !== 0) {
     return (
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: 'var(--bg-deep)', color: 'white', padding: '20px', textAlign: 'center' }}>
         <div className="loading-spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(56, 189, 248, 0.1)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '20px' }}></div>
@@ -1759,7 +1820,7 @@ export default function ProjectDetailClient({ project: initialProject, available
               {project?.creator && (
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-                  Creado por: {project.creator.name}
+                  Creado por: {project?.creator?.name}
                 </span>
               )}
             </div>
@@ -1773,7 +1834,7 @@ export default function ProjectDetailClient({ project: initialProject, available
             )}
           </h2>
           <p style={{ color: 'var(--text-muted)', marginTop: '5px', fontSize: '1.1rem' }}>
-            {translateType(project?.type)} {project?.subtype ? `— ${project.subtype}` : ''}
+            {translateType(project?.type)} {project?.subtype ? `— ${project?.subtype}` : ''}
           </p>
         </div>
         <div style={{ textAlign: 'right', display: 'none' }}>
@@ -1891,7 +1952,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Título</span>
                     {!isEditingFicha ? (
-                      <span style={{ color: 'var(--text)', fontSize: '0.9rem', fontWeight: '500', textAlign: 'right', maxWidth: '60%' }}>{project.title}</span>
+                      <span style={{ color: 'var(--text)', fontSize: '0.9rem', fontWeight: '500', textAlign: 'right', maxWidth: '60%' }}>{project?.title}</span>
                     ) : (
                       <input type="text" value={editTitle} onChange={e => setEditTitle(e.target.value)} className="form-input" style={{ width: '60%', padding: '4px 8px', fontSize: '0.9rem' }} />
                     )}
@@ -1899,7 +1960,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Tipo</span>
                     {!isEditingFicha ? (
-                      <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{project.type || 'N/A'}</span>
+                      <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{project?.type || 'N/A'}</span>
                     ) : (
                       <select value={editType} onChange={e => setEditType(e.target.value as any)} className="form-input" style={{ width: '60%', padding: '4px 8px', fontSize: '0.9rem' }}>
                         <option value="PISCINA">Piscina</option>
@@ -1912,7 +1973,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Ciudad</span>
                     {!isEditingFicha ? (
-                      <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{project.city || 'N/A'}</span>
+                      <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{project?.city || 'N/A'}</span>
                     ) : (
                       <input type="text" value={editCity} onChange={e => setEditCity(e.target.value)} className="form-input" style={{ width: '60%', padding: '4px 8px', fontSize: '0.9rem' }} />
                     )}
@@ -1927,7 +1988,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                             const match = text.match(/https?:\/\/(?:www\.)?(?:google\.com\/maps|maps\.app\.goo\.gl)\/[^\s"']+/i)
                             return match ? match[0] : null
                           }
-                          const gpsLink = project.locationLink || findGpsLink(project.address) || findGpsLink(project.technicalSpecs?.locationLink) || findGpsLink(project.technicalSpecs)
+                          const gpsLink = project?.locationLink || findGpsLink(project?.address) || findGpsLink(project?.technicalSpecs?.locationLink) || findGpsLink(project?.technicalSpecs)
 
                           if (gpsLink) {
                             return (
@@ -1943,7 +2004,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                               </a>
                             )
                           }
-                          return <span style={{ color: 'var(--text)', fontSize: '0.9rem', textAlign: 'right' }}>{project.address || 'N/A'}</span>
+                          return <span style={{ color: 'var(--text)', fontSize: '0.9rem', textAlign: 'right' }}>{project?.address || 'N/A'}</span>
                         })()}
                       </div>
                     ) : (
@@ -1953,7 +2014,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Fecha Inicio</span>
                     {!isEditingFicha ? (
-                      <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{formatDate(project.startDate)}</span>
+                      <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{formatDate(project?.startDate)}</span>
                     ) : (
                       <input type="date" value={editStartDate} onChange={e => setEditStartDate(e.target.value)} className="form-input" style={{ width: '60%', padding: '4px 8px', fontSize: '0.9rem' }} />
                     )}
@@ -1961,14 +2022,14 @@ export default function ProjectDetailClient({ project: initialProject, available
                   <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', alignItems: 'center' }}>
                     <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Fecha Fin (Est.)</span>
                     {!isEditingFicha ? (
-                      <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{formatDate(project.endDate)}</span>
+                      <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{formatDate(project?.endDate)}</span>
                     ) : (
                       <input type="date" value={editEndDate} onChange={e => setEditEndDate(e.target.value)} className="form-input" style={{ width: '60%', padding: '4px 8px', fontSize: '0.9rem' }} />
                     )}
                   </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', padding: '10px 14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px' }}>
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Creado por</span>
-                  <span style={{ color: 'var(--primary)', fontSize: '0.9rem', fontWeight: '600' }}>{project.creator?.name || 'Admin'}</span>
+                  <span style={{ color: 'var(--primary)', fontSize: '0.9rem', fontWeight: '600' }}>{project?.creator?.name || 'Admin'}</span>
                 </div>
 
                 {/* Categorías */}
@@ -1977,7 +2038,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                   {!isEditingFicha ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {(() => {
-                        try { return JSON.parse(project.categoryList || '[]').map((c: string, i: number) => (
+                        try { return JSON.parse(project?.categoryList || '[]').map((c: string, i: number) => (
                           <span key={i} style={{ padding: '4px 12px', borderRadius: '16px', fontSize: '0.8rem', backgroundColor: 'rgba(56, 189, 248, 0.1)', color: 'var(--primary)', fontWeight: '600' }}>{translateCategory(c)}</span>
                         )) } catch { return null }
                       })()}
@@ -2007,7 +2068,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                   {!isEditingFicha ? (
                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
                       {(() => {
-                        try { return JSON.parse(project.contractTypeList || '[]').map((c: string, i: number) => (
+                        try { return JSON.parse(project?.contractTypeList || '[]').map((c: string, i: number) => (
                           <span key={i} style={{ padding: '4px 12px', borderRadius: '16px', fontSize: '0.8rem', backgroundColor: 'rgba(34, 197, 94, 0.1)', color: 'var(--success)', fontWeight: '600' }}>{translateType(c)}</span>
                         )) } catch { return null }
                       })()}
@@ -2084,9 +2145,9 @@ export default function ProjectDetailClient({ project: initialProject, available
                   <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem', fontWeight: '600' }}>Ubicación Proyecto</span>
                   <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '4px', maxWidth: '60%' }}>
                     {(() => {
-                      let locLink = project.locationLink;
+                      let locLink = project?.locationLink;
                       try {
-                        const specs = JSON.parse(project.technicalSpecs || '{}');
+                        const specs = JSON.parse(project?.technicalSpecs || '{}');
                         if (specs.locationLink) locLink = specs.locationLink;
                       } catch {}
 
@@ -2104,7 +2165,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                           </a>
                         );
                       }
-                      return <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{project.address || 'N/A'}</span>;
+                      return <span style={{ color: 'var(--text)', fontSize: '0.9rem' }}>{project?.address || 'N/A'}</span>;
                     })()}
                   </div>
                 </div>
@@ -2144,8 +2205,8 @@ export default function ProjectDetailClient({ project: initialProject, available
                   <div style={{ padding: '14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', fontSize: '0.9rem', color: 'var(--text)', lineHeight: '1.6', border: '1px solid var(--border-color)', minHeight: '100px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
                     {(() => {
                       try { 
-                        const specs = JSON.parse(project.technicalSpecs || '{}')
-                        return specs.description || project.specsTranscription || 'Sin especificaciones detalladas.'
+                        const specs = JSON.parse(project?.technicalSpecs || '{}')
+                        return specs.description || project?.specsTranscription || 'Sin especificaciones detalladas.'
                       } catch { return project.specsTranscription || 'Sin especificaciones detalladas.' }
                     })()}
                   </div>
@@ -2179,7 +2240,7 @@ export default function ProjectDetailClient({ project: initialProject, available
               </div>
               <div style={{ textAlign: 'center' }}>
                 <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', fontWeight: '600', marginBottom: '4px' }}>Gastado Real</div>
-                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: isCostoExcedido ? 'var(--danger)' : 'var(--success)' }}>$ {realExpenses.toFixed(2)}</div>
+                <div style={{ fontSize: '1.2rem', fontWeight: 'bold', color: isCostoExcedido ? 'var(--danger)' : 'var(--success)' }}>$ {realExpensesValue.toFixed(2)}</div>
               </div>
             </div>
           )}
@@ -2942,7 +3003,7 @@ export default function ProjectDetailClient({ project: initialProject, available
               <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)', display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                 Equipo Asignado
-                {localProject._pendingTeamSync && (
+                {project?._pendingTeamSync && (
                   <span style={{ fontSize: '0.65rem', padding: '1px 6px', backgroundColor: 'rgba(245, 158, 11, 0.1)', color: '#f59e0b', borderRadius: '8px', border: '1px solid rgba(245, 158, 11, 0.3)', animation: 'pulse 2s infinite' }}>
                     Sincronizando...
                   </span>

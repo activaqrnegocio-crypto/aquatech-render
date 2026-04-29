@@ -73,7 +73,18 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
           {!isDashboard && (
             <div style={{ padding: '10px 20px 0 20px', marginBottom: '-10px' }}>
               <button 
-                onClick={() => router.back()}
+                onClick={() => {
+                  // v233: Explicit back navigation to prevent getting stuck offline
+                  if (pathname.includes('/operador/proyecto')) {
+                    router.push('/admin/operador');
+                  } else if (pathname.includes('/admin/proyectos/')) {
+                    router.push('/admin/proyectos');
+                  } else if (pathname.includes('/admin/cotizaciones/')) {
+                    router.push('/admin/cotizaciones');
+                  } else {
+                    router.back();
+                  }
+                }}
                 className="btn btn-ghost btn-sm"
                 style={{ display: 'flex', alignItems: 'center', gap: '5px', color: 'var(--text-muted)' }}
               >

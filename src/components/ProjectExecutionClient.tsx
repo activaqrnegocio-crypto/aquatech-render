@@ -38,10 +38,21 @@ export default function ProjectExecutionClient({
   const [activeTab, setActiveTab] = useState<'records' | 'chat' | 'gallery'>('records')
   const pathname = usePathname()
 
-  // v227: Consistent ID derivation from URL (Primary Source of Truth)
-  const idFromUrl = typeof window !== 'undefined' 
-    ? Number(window.location.pathname.split('/').pop()) || 0
-    : 0;
+  // v230: Robust ID extraction using regex to handle trailing slashes and Universal Shell
+  // v231: Enhanced regex to capture digits even in complex paths
+  const idFromUrl = useMemo(() => {
+    if (typeof window === 'undefined') return 0;
+    const path = window.location.pathname;
+    const match = path.match(/\/proyecto[s]?\/(\d+)/i);
+    if (match) return Number(match[1]);
+
+    // Ultimate fallback: check if the last segment is a number
+    const segments = path.split('/').filter(Boolean);
+    const last = segments[segments.length - 1];
+    if (last && /^\d+$/.test(last)) return Number(last);
+
+    return 0;
+  }, []);
   const [localProject, setLocalProject] = useState<any>(null);
   const project = localProject || initialProject;
 
@@ -75,7 +86,7 @@ export default function ProjectExecutionClient({
       setIsOfflineMode(isOffline);
 
       // Check if we need to recover from cache
-      const needsCacheRecovery = !project || Number(project?.id) !== idFromUrl;
+      const needsCacheRecovery = (!project || Number(project?.id) !== idFromUrl) && idFromUrl > 0;
 
       if (needsCacheRecovery) {
         setIsSyncingOffline(true);
@@ -113,6 +124,19 @@ export default function ProjectExecutionClient({
     setMounted(true)
   }, [])
 
+  // --- SAFETY GUARD (v231) ---
+  if (!project && mounted) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', gap: '20px', color: 'var(--text)' }}>
+        <div style={{ width: '40px', height: '40px', border: '3px solid var(--border-color)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite' }}></div>
+        <p>Cargando proyecto...</p>
+        {isOfflineMode && <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Buscando en almacenamiento local (ID: {idFromUrl})</p>}
+        {!idFromUrl && <p style={{ color: 'var(--error)' }}>Error: No se pudo identificar el ID del proyecto.</p>}
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
 
   // --- INCREMENTAL FETCH: only gets NEW messages since last one ---
   const fetchMessages = async (since?: string): Promise<any[]> => {
@@ -143,6 +167,7 @@ export default function ProjectExecutionClient({
 
   // --- REAL-TIME POLLING: Aggressive polling for chat ---
   useEffect(() => {
+    if (!idFromUrl) return; // v231: Prevent calls for ID 0
     const markAsSeen = async () => {
       try {
         await fetch('/api/notifications/summary', {
@@ -235,7 +260,7 @@ export default function ProjectExecutionClient({
 
   // Polling for expenses to avoid "reverting to 0" on mobile state resets
   useEffect(() => {
-    if (!mounted) return
+    if (!mounted || !idFromUrl) return; // v231: Prevent calls for ID 0
     
     const fetchExpenses = async () => {
       if (!navigator.onLine) return
@@ -399,7 +424,7 @@ export default function ProjectExecutionClient({
       if (galleryFilter === 'DOCS') return !isImage && !isVideo && !isAudio;
       return true;
     })
-  }, [project.gallery, galleryFilter, localExpenses, pendingItems])
+  }, [project?.gallery, galleryFilter, localExpenses, pendingItems])
 
   const chatGallery = useMemo(() => {
     // Extract media from liveChat messages (persistent)
@@ -432,7 +457,7 @@ export default function ProjectExecutionClient({
 
   const [evidenceFilter, setEvidenceFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
   const evidenceGallery = useMemo(() => {
-    if (!project.gallery) return []
+    if (!project?.gallery) return []
     // Filter ONLY by EVIDENCE category (explicitly uploaded as finals)
     const list = [...project.gallery.filter((item: any) => !item.isFromChat && (item.category || '').toUpperCase() === 'EVIDENCE')]
     
@@ -468,7 +493,7 @@ export default function ProjectExecutionClient({
       if (evidenceFilter === 'DOCS') return !isImage && !isVideo && !isAudio;
       return true;
     })
-  }, [project.gallery, evidenceFilter, pendingItems])
+  }, [project?.gallery, evidenceFilter, pendingItems])
 
   const handleDownload = async (url: string, filename: string) => {
     setHandleDownloadLoading(url)

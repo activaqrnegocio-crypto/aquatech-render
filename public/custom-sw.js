@@ -18,9 +18,11 @@ const PRE_CACHE = [
   '/cotizacion.jpg'
 ];
 
+const VERSION = 'v233';
+
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
-  console.log('[SW v200] Installing...');
+  console.log(`[SW ${VERSION}] Installing...`);
   event.waitUntil(
     caches.open(STATIC_CACHE)
       .then(async (cache) => {
@@ -84,13 +86,15 @@ self.addEventListener('fetch', (event) => {
         try {
           const auth = await getAuthFromIndexedDB();
           if (auth) {
+            // v232: Include permissions so UI renders identically offline
             return new Response(JSON.stringify({
               user: {
                 name: auth.name,
                 email: auth.username,
                 role: auth.role,
                 image: null,
-                id: auth.userId
+                id: auth.userId,
+                permissions: auth.permissions || null
               },
               expires: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString()
             }), {
@@ -452,7 +456,40 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
     }
   }
 
-  return null;
+  // v233: ABSOLUTE FALLBACK (Memory-resident HTML)
+  // This prevents the "removeChild of null" and Next.js infinite loop errors
+  // by providing a valid, minimal HTML structure that doesn't trigger a router retry.
+  console.warn('[SW v233] No shell found in cache, serving absolute memory-fallback for:', pathname);
+  return new Response(`
+    <!DOCTYPE html>
+    <html lang="es">
+    <head>
+      <meta charset="UTF-8">
+      <meta name="viewport" content="width=device-width, initial-scale=1.0">
+      <title>Offline | Aquatech</title>
+      <style>
+        body { font-family: system-ui, sans-serif; display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; background: #0f172a; color: white; text-align: center; }
+        .card { background: #1e293b; padding: 2rem; border-radius: 1rem; box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1); max-width: 400px; }
+        h1 { margin-top: 0; color: #38bdf8; }
+        button { background: #38bdf8; color: #0f172a; border: none; padding: 0.75rem 1.5rem; border-radius: 0.5rem; font-weight: bold; cursor: pointer; margin-top: 1rem; }
+      </style>
+    </head>
+    <body>
+      <div class="card">
+        <h1>Sin Conexión</h1>
+        <p>Esta sección no está disponible offline todavía. Por favor, regresa cuando tengas internet.</p>
+        <button onclick="window.history.back()">Regresar</button>
+      </div>
+      <script>
+        // v233: Stop any Next.js router infinite loops
+        window.__NEXT_DATA__ = { props: { pageProps: {} }, page: "${pathname}", query: {}, buildId: "offline", isFallback: false, gip: true };
+        console.log("SW: Absolute fallback active.");
+      </script>
+    </body>
+    </html>
+  `, {
+    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+  });
 }
 
 /**
@@ -483,7 +520,9 @@ async function networkFirst(request, cacheName, timeout = 10000) {
 
   try {
     const response = await fetchWithTimeout(request, timeout);
-    if ((response.ok || response.status === 0) && !response.redirected) {
+    
+    // v233: NEVER cache errors (500) or redirects
+    if (response.ok && !response.redirected) {
       const cache = await caches.open(cacheName);
       cache.put(request, response.clone());
     }
@@ -539,7 +578,8 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await caches.match(request, { ignoreVary: true });
   
   const fetchPromise = fetch(request).then(response => {
-    if (response && (response.ok || response.status === 0)) {
+    // v233: Only cache valid, non-redirected responses
+    if (response && response.ok && !response.redirected) {
       const responseToCache = response.clone();
       caches.open(cacheName).then(cache => {
         cache.put(request, responseToCache).catch(() => {});
@@ -621,11 +661,10 @@ self.addEventListener('message', (event) => {
         // v223: Process one by one with longer delays to prevent Nginx 502/504 saturation
         for (const url of urls) {
           try {
-            // v223: Skip if already in cache and not forced
+            // v233: Strict skip if already in cache and response is valid
             const existing = await cache.match(url);
-            if (existing && existing.ok) {
-               // If it's already cached, we might want to skip it to save bandwidth/server load
-               // console.log('[SW] Already cached, skipping:', url);
+            if (existing && existing.ok && !existing.redirected) {
+               // console.log('[SW] Valid cache exists, skipping:', url);
                continue;
             }
 

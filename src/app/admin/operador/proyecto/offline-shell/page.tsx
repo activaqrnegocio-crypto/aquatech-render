@@ -9,10 +9,15 @@ function OperatorOfflineShellContent() {
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
-      const path = window.location.pathname
-      const parsedId = Number(path.split('/').pop())
-      if (parsedId && !isNaN(parsedId)) {
-        setIdFromUrl(parsedId)
+      const path = window.location.pathname;
+      const match = path.match(/\/proyecto[s]?\/(\d+)/i);
+      if (match) {
+        setIdFromUrl(Number(match[1]))
+      } else {
+        // Fallback: check if the last segment is a number
+        const segments = path.split('/').filter(Boolean);
+        const last = segments[segments.length - 1];
+        if (last && /^\d+$/.test(last)) setIdFromUrl(Number(last));
       }
     }
   }, [])

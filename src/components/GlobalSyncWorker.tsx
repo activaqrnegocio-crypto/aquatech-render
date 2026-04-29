@@ -97,33 +97,27 @@ export default function GlobalSyncWorker() {
           }
         }
 
-        // v227: ROBUST PRE-FETCHING (HTML + JS Chunks)
+        // v233: LIGHTWEIGHT PRE-FETCHING
+        // We only prefetch the universal shells and main sections.
+        // Projects data is already in IndexedDB; individual fetches are redundant and saturate the DB pool.
         if (projects.length > 0) {
           window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
-            detail: { message: `Preparando interfaces offline (${projects.length})...` }
+            detail: { message: `Preparando entorno offline...` }
           }))
 
-          // 1. Prefetch the shell templates once to cache their code
-          router.prefetch(isAdmin ? '/admin/proyectos/offline-shell' : '/admin/operador/proyecto/offline-shell');
+          const shellPath = isAdmin ? '/admin/proyectos/offline-shell' : '/admin/operador/proyecto/offline-shell';
+          router.prefetch(shellPath);
+          fetch(shellPath, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
 
-          // 2. Prefetch all projects (Next.js handles the queue)
-          for (let i = 0; i < projects.length; i++) {
-            const pid = projects[i].id;
-            const shellUrl = isAdmin ? `/admin/proyectos/${pid}` : `/admin/operador/proyecto/${pid}`;
-            
-            // HTML fetch (for SW)
-            fetch(shellUrl, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
-            
-            // JS Chunks + RSC prefetch
-            router.prefetch(shellUrl);
+          // Prefetch main sections only (max 3-4 requests)
+          const sections = isAdmin 
+            ? ['/admin/proyectos', '/admin/calendario', '/admin/inventario']
+            : ['/admin/operador', '/admin/inventario'];
 
-            // Small delay to prevent network contention
-            if (i % 5 === 0) await new Promise(resolve => setTimeout(resolve, 100));
-          }
-
-          if (isAdmin) {
-            router.prefetch('/admin/calendario');
-            fetch('/admin/calendario', { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
+          for (const section of sections) {
+            router.prefetch(section);
+            fetch(section, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
+            await new Promise(resolve => setTimeout(resolve, 200));
           }
         }
       }
@@ -177,6 +171,7 @@ export default function GlobalSyncWorker() {
   }
 
   // Cache session info for offline role detection
+  // v232: Include permissions so offline UI renders identically to online
   useEffect(() => {
     if (session?.user?.id && navigator.onLine) {
       const u = session.user
@@ -185,6 +180,7 @@ export default function GlobalSyncWorker() {
         name: u.name || '',
         role: (u.role as any) || 'OPERATOR',
         username: (u as any).username || '',
+        permissions: (u as any).permissions || null,
         lastLogin: Date.now()
       }
       

@@ -17,6 +17,7 @@ export interface AuthCache {
   name: string;
   role: 'ADMIN' | 'OPERATOR' | 'SUBCONTRATISTA' | 'SUPERADMIN' | 'ADMINISTRADORA';
   userId: string;
+  permissions?: string | null; // v232: Store permissions for consistent offline UI
   lastLogin: number;
 }
 

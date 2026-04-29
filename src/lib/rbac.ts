@@ -6,8 +6,8 @@ const ROLE_PERMISSIONS_DEFAULT: Record<string, string[]> = {
   'SUPERADMIN': ['dashboard', 'marketing', 'blog', 'calendario', 'proyectos', 'proyectos_admin', 'equipo', 'reportes', 'cotizaciones', 'inventario', 'recursos'],
   'ADMIN': ['dashboard', 'marketing', 'blog', 'calendario', 'proyectos', 'proyectos_admin', 'equipo', 'reportes', 'cotizaciones', 'inventario', 'recursos'],
   'ADMINISTRADORA': ['dashboard', 'marketing', 'blog', 'calendario', 'proyectos', 'proyectos_admin', 'equipo', 'reportes', 'cotizaciones', 'inventario', 'recursos'],
-  'OPERATOR': ['proyectos', 'cotizaciones', 'inventario', 'recursos'],
-  'OPERADOR': ['proyectos', 'cotizaciones', 'inventario', 'recursos'],
+  'OPERATOR': ['proyectos', 'cotizaciones', 'inventario', 'recursos', 'calendario'],
+  'OPERADOR': ['proyectos', 'cotizaciones', 'inventario', 'recursos', 'calendario'],
   'SUBCONTRATISTA': ['proyectos']
 }
 
