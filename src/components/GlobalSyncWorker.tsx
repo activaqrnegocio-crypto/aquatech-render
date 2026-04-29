@@ -87,8 +87,10 @@ export default function GlobalSyncWorker() {
           }
           
           setBulkProgress(prev => ({ ...prev, current: i + 1 }));
-          
-          // Artificial Pacing: Small pause every few items to keep the UI snappy
+          window.dispatchEvent(new CustomEvent('bulk-cache-sync-progress', { 
+            detail: { current: i + 1, total: totalToSync } 
+          }));
+                    // Artificial Pacing: Small pause every few items to keep the UI snappy
           if (i % 3 === 0) {
             await new Promise(resolve => setTimeout(resolve, 150)); 
           }

@@ -2,11 +2,20 @@
 
 import { usePathname } from 'next/navigation'
 import ProjectDetailClient from '../[id]/ProjectDetailClient'
-import { Suspense } from 'react'
+import { Suspense, useEffect, useState } from 'react'
 
 function AdminOfflineShellContent() {
-  const pathname = usePathname()
-  const idFromUrl = Number(pathname.split('/').pop()) || 0
+  const [idFromUrl, setIdFromUrl] = useState(0)
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const path = window.location.pathname
+      const parsedId = Number(path.split('/').pop())
+      if (parsedId && !isNaN(parsedId)) {
+        setIdFromUrl(parsedId)
+      }
+    }
+  }, [])
 
   const dummyProject = {
     id: idFromUrl,
