@@ -15,7 +15,7 @@ import { db } from '@/lib/db'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { compressImage as optimizedCompress, isCompressibleImage, blobToBase64 } from '@/lib/image-optimization'
 
-export default function ProjectDetailClient({ project, availableOperators = [] }: any) {
+export default function ProjectDetailClient({ project: initialProject, availableOperators = [] }: any) {
   const router = useRouter()
   const { data: session } = useSession()
   const searchParams = useSearchParams()
@@ -59,6 +59,8 @@ export default function ProjectDetailClient({ project, availableOperators = [] }
   // v222: Consistent ID derivation from URL (Primary Source of Truth)
   const idFromUrl = Number(pathname.split('/').pop());
   const [localProject, setLocalProject] = useState<any>(null);
+  const project = localProject || initialProject;
+  
   const [localChat, setLocalChat] = useState<any[]>([]);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [isSyncingOffline, setIsSyncingOffline] = useState(false);

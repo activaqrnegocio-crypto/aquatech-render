@@ -15,7 +15,9 @@ const PRE_CACHE = [
   '/manifest.json',
   '/favicon.ico',
   '/logo.jpg',
-  '/cotizacion.jpg'
+  '/cotizacion.jpg',
+  '/admin/proyectos/offline-shell',
+  '/admin/operador/proyecto/offline-shell'
 ];
 
 // ─── INSTALL ────────────────────────────────────────────────
@@ -211,22 +213,27 @@ async function rscNetworkFirst(request) {
     let cached = await cache.match(cacheKey) || await cache.match(originalUrl);
     if (cached) return cached;
     
-    // 2. v221: Universal RSC Shell for Projects
-    // If we are offline and don't have this specific project's data,
-    // we "trick" Next.js by giving it the data of ANY project we have.
-    const isProjectRsc = url.pathname.match(/\/admin\/proyectos\/\d+/) || url.pathname.match(/\/admin\/operador\/proyecto\/\d+/);
+    // 2. v225: Universal RSC Shell for Projects
+    // Instead of random project data, we serve the lightweight official shell
+    const isAdminProjectRsc = url.pathname.match(/\/admin\/proyectos\/\d+/);
+    const isOperatorProjectRsc = url.pathname.match(/\/admin\/operador\/proyecto\/\d+/) || url.pathname.match(/\/operador\/proyecto\/\d+/);
     
-    if (isProjectRsc) {
-      console.log('[SW v221] RSC Cache miss for project, searching for Universal RSC Shell...');
-      const keys = await cache.keys();
-      const anyProjectRsc = keys.find(k => k.url.includes('/admin/proyectos/') || k.url.includes('/admin/operador/proyecto/'));
+    if (isAdminProjectRsc || isOperatorProjectRsc) {
+      const staticCache = await caches.open(STATIC_CACHE);
+      const pagesCache = await caches.open(PAGES_CACHE);
       
-      if (anyProjectRsc) {
-        const shellMatch = await cache.match(anyProjectRsc);
-        if (shellMatch) {
-          console.log('[SW v221] Serving Shadow RSC from:', anyProjectRsc.url);
-          return shellMatch;
-        }
+      if (isAdminProjectRsc) {
+        console.log('[SW v225] RSC Cache miss for admin project, serving Universal RSC Shell...');
+        const shellMatch = await cache.match('/admin/proyectos/offline-shell?_rsc=1') || 
+                           await staticCache.match('/admin/proyectos/offline-shell') || 
+                           await pagesCache.match('/admin/proyectos/offline-shell');
+        if (shellMatch) return shellMatch;
+      } else if (isOperatorProjectRsc) {
+        console.log('[SW v225] RSC Cache miss for operator project, serving Universal RSC Shell...');
+        const shellMatch = await cache.match('/admin/operador/proyecto/offline-shell?_rsc=1') || 
+                           await staticCache.match('/admin/operador/proyecto/offline-shell') || 
+                           await pagesCache.match('/admin/operador/proyecto/offline-shell');
+        if (shellMatch) return shellMatch;
       }
     }
     
@@ -398,23 +405,27 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   // Try app shell fallback (Specific for main sections)
   const shells = [];
   
-  // v224: Improved Shell logic for Operators
-  const isProjectDetail = pathname.match(/\/admin\/proyectos\/\d+/) || 
-                          pathname.match(/\/admin\/operador\/proyecto\/\d+/) ||
-                          pathname.match(/\/operador\/proyecto\/\d+/);
+  // v225: Improved Shell logic for Projects
+  const isAdminProject = pathname.match(/\/admin\/proyectos\/\d+/);
+  const isOperatorProject = pathname.match(/\/admin\/operador\/proyecto\/\d+/) || pathname.match(/\/operador\/proyecto\/\d+/);
   
-  if (isProjectDetail) {
-    console.log('[SW v224] Project detail detected, looking for a valid shell...');
+  if (isAdminProject) {
+    console.log('[SW v225] Admin Project detail detected, looking for a valid shell...');
     const pagesCache = await caches.open(PAGES_CACHE);
-    const keys = await pagesCache.keys();
+    const staticCache = await caches.open(STATIC_CACHE);
     
-    // Priority 1: Another project detail page (best shell)
-    const detailShell = keys.find(k => k.url.match(/\/admin\/proyectos\/\d+/) || 
-                                       k.url.match(/\/admin\/operador\/proyecto\/\d+/));
-    if (detailShell) {
-      const match = await pagesCache.match(detailShell);
-      if (isValidHTMLResponse(match)) return match;
-    }
+    // Serve the official universal shell
+    const shellMatch = await staticCache.match('/admin/proyectos/offline-shell') || await pagesCache.match('/admin/proyectos/offline-shell');
+    if (isValidHTMLResponse(shellMatch)) return shellMatch;
+    
+  } else if (isOperatorProject) {
+    console.log('[SW v225] Operator Project detail detected, looking for a valid shell...');
+    const pagesCache = await caches.open(PAGES_CACHE);
+    const staticCache = await caches.open(STATIC_CACHE);
+    
+    // Serve the official universal shell
+    const shellMatch = await staticCache.match('/admin/operador/proyecto/offline-shell') || await pagesCache.match('/admin/operador/proyecto/offline-shell');
+    if (isValidHTMLResponse(shellMatch)) return shellMatch;
 
     // Priority 2: The Operator Dashboard (better than offline.html)
     if (pathname.includes('/operador')) {

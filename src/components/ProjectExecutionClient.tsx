@@ -23,7 +23,7 @@ import { translateType, translateCategory } from '@/lib/constants'
 import { formatDate } from '@/lib/date-utils'
 
 export default function ProjectExecutionClient({ 
-  project, 
+  project: initialProject, 
   initialChat, 
   activeRecord, 
   expenses, 
@@ -33,25 +33,27 @@ export default function ProjectExecutionClient({
   projectCity,
   panelBase = '/admin/operador'
 }: any) {
-  const router = useRouter()
-  const { data: session } = useSession()
-  const userRole = session?.user?.role
-  const isFieldStaff = userRole === 'OPERATOR' || userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA'
-  
-  const hasActiveRecordInThisProject = activeRecord && Number(activeRecord.projectId) === Number(project.id);
-  const hasActiveRecordInOtherProject = activeRecord && !hasActiveRecordInThisProject;
-  
   const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
   const [activeTab, setActiveTab] = useState<'records' | 'chat' | 'gallery'>('records')
   const pathname = usePathname()
+
+  // v222: Consistent ID derivation from URL for Operators
+  const idFromUrl = Number(pathname.split('/').pop());
+  const [localProject, setLocalProject] = useState<any>(null);
+  const project = localProject || initialProject;
+
+  const hasActiveRecordInThisProject = activeRecord && Number(activeRecord.projectId) === Number(project.id);
+  const hasActiveRecordInOtherProject = activeRecord && !hasActiveRecordInThisProject;
+  const router = useRouter()
+  const { data: session } = useSession()
+  const userRole = session?.user?.role
+  const isFieldStaff = userRole === 'OPERATOR' || userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA'
+
   const [handleDownloadLoading, setHandleDownloadLoading] = useState<string | null>(null)
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<any>(null)
   const [liveChat, setLiveChat] = useState<any[]>(initialChat || [])
   const liveChatInitialized = useRef(false)
-  // v222: Consistent ID derivation from URL for Operators
-  const idFromUrl = Number(pathname.split('/').pop());
-  const [localProject, setLocalProject] = useState<any>(null);
   const [localChat, setLocalChat] = useState<any[]>([]);
   const [isOfflineMode, setIsOfflineMode] = useState(false);
   const [isSyncingOffline, setIsSyncingOffline] = useState(false);
