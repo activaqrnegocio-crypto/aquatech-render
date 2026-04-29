@@ -27,16 +27,26 @@ export default function GlobalSyncWorker() {
     }
   }, [session?.user?.id, isOnline]);
 
-  const startBulkSync = async () => {
+  const startBulkSync = async (force = false) => {
     if (!navigator.onLine || isBulkSyncing) return
     
+    // v226: Check Freshness before syncing (Avoid loops)
+    if (!force) {
+      const meta = await db.cacheMetadata.get('projects_bulk');
+      const ONE_HOUR = 60 * 60 * 1000;
+      if (meta && (Date.now() - meta.lastSync) < ONE_HOUR) {
+        console.log('[Sync] Data is fresh, skipping automatic bulk sync.');
+        return;
+      }
+    }
+
     setIsBulkSyncing(true)
     setBulkProgress({ current: 0, total: 0 })
     
     try {
       const u = session?.user as any;
       const userRole = (u?.role || 'OPERATOR').toUpperCase();
-      const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN'].includes(userRole);
+      const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN', 'BOSS'].includes(userRole);
 
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
         detail: { message: `Iniciando sincronización optimizada (${userRole})...` }
@@ -46,7 +56,8 @@ export default function GlobalSyncWorker() {
       const res = await fetch('/api/projects/bulk-cache?limit=200', { priority: 'low' })
       if (res.ok) {
         const projects = await res.json()
-        setBulkProgress({ current: 0, total: projects.length })
+        const totalToSync = projects.length
+        setBulkProgress({ current: 0, total: totalToSync })
         
         for (let i = 0; i < projects.length; i++) {
           const p = projects[i];
@@ -131,7 +142,9 @@ export default function GlobalSyncWorker() {
       }
 
       const now = Date.now()
+      // v226: Get the real count from Dexie to ensure accurate reporting
       const finalCount = await db.projectsCache.count()
+      
       await db.cacheMetadata.put({
         id: 'projects_bulk',
         lastSync: now,
@@ -415,11 +428,15 @@ export default function GlobalSyncWorker() {
     const interval = setInterval(() => {
         if (navigator.onLine) {
             syncOutbox()
-            // We can keep refreshCaches slower to save battery, 
-            // but syncOutbox should be fast
-            if (Math.random() > 0.9) refreshCaches() 
         }
-    }, 15000) // 15 seconds for more responsive background sync
+    }, 60000) // 60 seconds for outbox sync (more conservative)
+
+    // v226: Periodic full refresh every 10 minutes
+    const bulkInterval = setInterval(() => {
+        if (navigator.onLine) {
+            startBulkSync() 
+        }
+    }, 10 * 60 * 1000) 
 
     // Keep-Alive Ping para base de datos (StackCP)
     const keepAliveInterval = setInterval(() => {
@@ -433,6 +450,7 @@ export default function GlobalSyncWorker() {
       window.removeEventListener('offline', handleStatusChange)
       document.removeEventListener('visibilitychange', handleVisibilityChange)
       clearInterval(interval)
+      clearInterval(bulkInterval)
       clearInterval(keepAliveInterval)
     }
   }, [])

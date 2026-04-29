@@ -133,9 +133,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // ── Next.js static assets → Cache First
+  // ── Next.js static assets → Cache First with auto-save
+  // v226: Use StaleWhileRevalidate for assets to ensure they are always updated 
+  // but available instantly. Added specific handling for chunks.
   if (url.pathname.startsWith('/_next/static/')) {
-    event.respondWith(cacheFirst(request, ASSETS_CACHE));
+    event.respondWith(staleWhileRevalidate(request, ASSETS_CACHE));
     return;
   }
 

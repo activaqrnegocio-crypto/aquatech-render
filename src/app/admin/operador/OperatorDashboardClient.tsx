@@ -187,43 +187,7 @@ export default function OperatorDashboardClient({
     }
   }, [])
 
-  // Polling for live project updates
-  useEffect(() => {
-    const fetchAllData = async () => {
-      if (document.visibilityState !== 'visible' || !navigator.onLine) return;
-      
-      try {
-        const [projRes, appRes] = await Promise.all([
-          fetch('/api/operator/projects'),
-          fetch(`/api/appointments?userId=${user.id}`)
-        ])
-
-        if (projRes.ok) {
-          const freshProjects = await projRes.json()
-          // Update cache with fresh basic data if we are online
-          if (freshProjects.length > 0) {
-             for (const p of freshProjects) {
-               const existing = await db.projectsCache.get(p.id)
-               await db.projectsCache.put({ 
-                 ...(existing || {}), 
-                 ...p, 
-                 lastAccessedAt: Date.now() 
-               })
-             }
-          }
-        }
-        if (appRes.ok) {
-          const freshApps = await appRes.json()
-          setAppointments(freshApps)
-        }
-      } catch (err) {
-        console.error('Error polling operator data:', err)
-      }
-    }
-    
-    const interval = setInterval(fetchAllData, 10000) // Slower poll to avoid excessive DB writes
-    return () => clearInterval(interval)
-  }, [user.id])
+  // Redundant polling removed - Handled by GlobalSyncWorker and live queries
 
   // Redundant sync removed - Handled by GlobalSyncWorker
 

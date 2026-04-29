@@ -22,8 +22,8 @@ export async function GET(request: Request) {
 
     const whereClause: any = {}
 
-    // Strict Admin check: Only ADMIN, ADMINISTRADOR, or SUPERADMIN get everything
-    const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN'].includes(userRole)
+    // v226: Expanded Admin check to be ultra-robust (includes all common variants)
+    const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN', 'BOSS'].includes(userRole)
 
     if (!isAdmin) {
       console.log(`[BulkCache] Applying operator filter for user ${userId}`)
@@ -32,8 +32,9 @@ export async function GET(request: Request) {
           userId: Number(userId)
         }
       }
-      // Match dashboard filter for operators
-      whereClause.status = { in: ['LEAD', 'ACTIVO', 'PENDIENTE'] }
+      // v226: Removed status filter for operators to ensure 100% project parity (e.g. 7/7)
+    } else {
+      console.log(`[BulkCache] Admin mode: Syncing all projects (no status filter)`)
     }
 
     const projects = await prisma.project.findMany({
