@@ -19,7 +19,7 @@ const PRE_CACHE = [
   '/cotizacion.jpg'
 ];
 
-const VERSION = 'v234';
+const VERSION = 'v236';
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -262,7 +262,19 @@ async function rscNetworkFirst(request) {
 async function navigationHandler(request) {
   try {
     const url = new URL(request.url);
-    console.log('[SW] Navigation:', url.pathname);
+    
+    // v236: NEVER intercept login or main entry points - let browser handle it directly
+    // This prevents the timeout from triggering the "Sin Conexión" fallback during slow redirects/logins
+    const isEntryPoint = url.pathname === '/admin' || url.pathname === '/admin/' || 
+                         url.pathname === '/admin/login' || url.pathname === '/admin/login/' ||
+                         url.pathname === '/admin/operador' || url.pathname === '/admin/operador/';
+
+    if (isEntryPoint) {
+      console.log(`[SW ${VERSION}] Entry point detected, bypassing SW completely`);
+      return fetch(request);
+    }
+
+    console.log(`[SW ${VERSION}] Navigation:`, url.pathname);
 
     // ── STEP 1: Check cache first for instant offline response
     let cached = await findCachedPage(request.url, url.pathname);
@@ -290,9 +302,9 @@ async function navigationHandler(request) {
       return cached;
     }
 
-    // ── STEP 2: Cache miss → try network with SHORT timeout (3s)
+    // ── STEP 2: Cache miss → try network with RELAXED timeout (15s)
     try {
-      const response = await fetchWithTimeout(request.clone(), 3000);
+      const response = await fetchWithTimeout(request.clone(), 15000);
       if (response.ok) {
         const contentType = response.headers.get('Content-Type') || '';
         const isHTML = contentType.includes('text/html');
@@ -463,7 +475,7 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   // v233: ABSOLUTE FALLBACK (Memory-resident HTML)
   // This prevents the "removeChild of null" and Next.js infinite loop errors
   // by providing a valid, minimal HTML structure that doesn't trigger a router retry.
-  console.warn('[SW v233] No shell found in cache, serving absolute memory-fallback for:', pathname);
+  console.warn('[SW ${VERSION}] No shell found in cache, serving absolute memory-fallback for:', pathname);
   return new Response(`
     <!DOCTYPE html>
     <html lang="es">

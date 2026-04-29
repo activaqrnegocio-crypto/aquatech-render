@@ -86,7 +86,6 @@ export default async function OperatorDashboard() {
   const prefetchUrls = [
     '/admin/operador',
     '/admin/operador/proyecto/offline-shell',
-    ...activeProjects.map((p: any) => `/admin/operador/proyecto/${p.id}`),
     '/admin/operador/nuevo',
     '/admin/inventario',
     '/admin/cotizaciones',
