@@ -297,6 +297,15 @@
   <script>
     // Auto-login offline if credentials exist
     (async function() {
+      // Prevent infinite redirect loops: if the SW served this offline page 
+      // on a dashboard URL (like /admin/operador), we shouldn't redirect again.
+      const isRootOrLogin = window.location.pathname === '/' || 
+                            window.location.pathname === '/admin/login' || 
+                            window.location.pathname === '/admin/login/' ||
+                            window.location.pathname === '/offline.html';
+                            
+      if (!isRootOrLogin) return; // We are already on the failed route
+
       try {
         const request = indexedDB.open('AquatechOfflineDB');
         request.onsuccess = () => {

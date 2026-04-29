@@ -418,6 +418,8 @@ export default function GlobalSyncWorker() {
       if (document.visibilityState === 'visible' && navigator.onLine) {
         console.log('[Sync] App visible, triggering sync...')
         syncOutbox()
+        // v237: Trigger bulk sync when returning to the app so data feels instantly fresh
+        startBulkSync()
       }
     }
     
