@@ -206,6 +206,14 @@ img, video { max-width: 100%; height: auto; }
   transition: margin-left var(--transition-base);
 }
 
+@media (max-width: 768px) {
+  .admin-content {
+    margin-left: 0;
+    padding-top: calc(var(--header-height) + 1rem);
+    padding-bottom: calc(var(--mobile-nav-height) + 2.5rem); /* Fix Error 1: Footer overlap */
+  }
+}
+
 /* Base rules override - Final mobile overrides are at the end */
 
 

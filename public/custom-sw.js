@@ -10,6 +10,8 @@ const RSC_CACHE    = 'aquatech-rsc';
 
 // Only pre-cache truly PUBLIC files (no auth required)
 const PRE_CACHE = [
+  '/admin',
+  '/admin/operador',
   '/admin/login',
   '/offline.html',
   '/app-start.html',
@@ -19,7 +21,18 @@ const PRE_CACHE = [
   '/cotizacion.jpg'
 ];
 
-const VERSION = 'v237';
+const VERSION = 'v242';
+
+// v242: Helper to bypass Chrome's "redirected response" security block
+function cleanResponse(response) {
+  if (!response || !response.redirected) return response;
+  const headers = new Headers(response.headers);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers: headers
+  });
+}
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -30,11 +43,11 @@ self.addEventListener('install', (event) => {
         for (const url of PRE_CACHE) {
           try {
             const response = await fetch(url);
-            if (response.ok && !response.redirected) {
+            // v239: Allow caching redirected responses for the entry points
+            if (response.ok) {
               await cache.put(url, response);
             }
           } catch (err) {
-            // Offline install — skip, existing cache survives
             console.warn(`[SW] Pre-cache skipped (offline?): ${url}`);
           }
         }
@@ -270,7 +283,17 @@ async function navigationHandler(request) {
     console.log(`[SW ${VERSION}] Navigation:`, url.pathname);
 
     // ── STEP 1: Check cache first for instant offline response
-    let cached = await findCachedPage(request.url, url.pathname);
+    // v238: For projects, if we are offline, we PREFER the shell even if we have a full page cached.
+    // This prevents hydration errors from 'real' pages that might be missing chunks.
+    const isProject = url.pathname.includes('/proyecto/');
+    let cached = null;
+    
+    if (isProject && !navigator.onLine) {
+      console.log(`[SW ${VERSION}] Project detected offline, forcing shell to avoid chunk errors`);
+      cached = await findCachedPage(request.url, url.pathname, true); // true = force shell
+    } else {
+      cached = await findCachedPage(request.url, url.pathname);
+    }
     
     if (cached) {
       // Validate: don't serve cached login pages for non-login URLs
@@ -292,7 +315,7 @@ async function navigationHandler(request) {
       console.log('[SW] Serving from cache:', url.pathname);
       // Update in background (stale-while-revalidate for pages)
       updatePageInBackground(request.clone(), url.pathname);
-      return cached;
+      return cleanResponse(cached);
     }
 
     // ── STEP 2: Cache miss → try network with RELAXED timeout (15s)
@@ -305,8 +328,7 @@ async function navigationHandler(request) {
         const isLoginRedirect = finalUrl.includes('/login');
         
         // ONLY cache actual HTML responses, never RSC payloads or JSON
-        // Exclude /admin/recursos to save memory and avoid massive caching of that page
-        if (isHTML && !isLoginRedirect && !url.pathname.includes('/admin/recursos')) {
+        if (isHTML && !isLoginRedirect) {
           const cache = await caches.open(PAGES_CACHE);
           cache.put(request.url, response.clone());
           const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
@@ -328,7 +350,7 @@ async function navigationHandler(request) {
     const shell = await findCachedPage(request.url, url.pathname, true); // true = force serve
     if (shell) {
       console.log('[SW] Network failed, serving shell as fallback');
-      return shell;
+      return cleanResponse(shell);
     }
 
     // ── STEP 4: Try offline.html
@@ -382,7 +404,7 @@ async function trimCache(cacheName, maxItems) {
  * Validate a cached response is actual HTML (not RSC or JSON)
  */
 function isValidHTMLResponse(response) {
-  if (!response) return false;
+  if (!response || !response.ok) return false; // v240: Ignore redirects (status 3xx)
   const ct = response.headers.get('Content-Type') || '';
   return ct.includes('text/html');
 }
@@ -419,8 +441,18 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   const isAdminProject = pathname.match(/\/admin\/proyectos\/\d+/);
   const isOperatorProject = pathname.match(/\/admin\/operador\/proyecto\/\d+/) || pathname.match(/\/operador\/proyecto\/\d+/);
   const isLoginPage = pathname === '/admin/login' || pathname === '/admin/login/';
+  const isRootAdmin = pathname === '/admin' || pathname === '/admin/';
   
-  if (isLoginPage) return null; // Never serve the memory-fallback for login
+  if (isLoginPage) return null; 
+
+  // v239: If we are hitting /admin offline, we most likely want the operator or admin dashboard
+  if (isRootAdmin && !navigator.onLine) {
+    console.log(`[SW ${VERSION}] Root /admin hit offline, trying to find a dashboard shell...`);
+    const opDashboard = await caches.match('/admin/operador', { ignoreVary: true, ignoreSearch: true });
+    if (isValidHTMLResponse(opDashboard)) return opDashboard;
+    const adminDashboard = await caches.match('/admin', { ignoreVary: true, ignoreSearch: true });
+    if (isValidHTMLResponse(adminDashboard)) return adminDashboard;
+  }
 
   if (isAdminProject) {
     console.log(`[SW ${VERSION}] Admin Project detail detected, looking for a valid shell...`);
@@ -460,7 +492,7 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   // v233: ABSOLUTE FALLBACK (Memory-resident HTML)
   // This prevents the "removeChild of null" and Next.js infinite loop errors
   // by providing a valid, minimal HTML structure that doesn't trigger a router retry.
-  console.warn('[SW ${VERSION}] No shell found in cache, serving absolute memory-fallback for:', pathname);
+  console.warn(`[SW ${VERSION}] No shell found in cache, serving absolute memory-fallback for: ${pathname}`);
   return new Response(`
     <!DOCTYPE html>
     <html lang="es">
