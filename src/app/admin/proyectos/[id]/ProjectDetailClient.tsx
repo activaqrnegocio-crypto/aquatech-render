@@ -56,8 +56,10 @@ export default function ProjectDetailClient({ project: initialProject, available
     }
   }, [searchParams])
 
-  // v222: Consistent ID derivation from URL (Primary Source of Truth)
-  const idFromUrl = Number(pathname.split('/').pop());
+  // v227: Consistent ID derivation from URL (Primary Source of Truth)
+  const idFromUrl = typeof window !== 'undefined' 
+    ? Number(window.location.pathname.split('/').pop()) || 0
+    : 0;
   const [localProject, setLocalProject] = useState<any>(null);
   const project = localProject || initialProject;
   

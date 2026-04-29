@@ -15,9 +15,7 @@ const PRE_CACHE = [
   '/manifest.json',
   '/favicon.ico',
   '/logo.jpg',
-  '/cotizacion.jpg',
-  '/admin/proyectos/offline-shell',
-  '/admin/operador/proyecto/offline-shell'
+  '/cotizacion.jpg'
 ];
 
 // ─── INSTALL ────────────────────────────────────────────────
@@ -480,6 +478,9 @@ function updatePageInBackground(request, pathname) {
  */
 async function networkFirst(request, cacheName, timeout = 10000) {
   if (request.method !== 'GET') return fetch(request);
+  const url = new URL(request.url);
+  const isNextChunk = url.pathname.includes('/_next/static/') && url.pathname.endsWith('.js');
+
   try {
     const response = await fetchWithTimeout(request, timeout);
     if ((response.ok || response.status === 0) && !response.redirected) {
@@ -491,6 +492,15 @@ async function networkFirst(request, cacheName, timeout = 10000) {
     const cached = await caches.match(request, { ignoreVary: true });
     if (cached) return cached;
     
+    // v227: Special fallback for JS chunks to prevent "Loading chunk failed" white screen
+    if (isNextChunk) {
+      console.warn('[SW] Critical chunk missing offline:', url.pathname);
+      return new Response(
+        'console.error("Aquatech: Chunk load failed offline. Please reconnect.");',
+        { status: 200, headers: { 'Content-Type': 'application/javascript' } }
+      );
+    }
+
     if (request.headers.get('Accept')?.includes('application/json') || request.url.includes('/api/')) {
        return new Response(JSON.stringify([]), {
          status: 200, 
@@ -634,7 +644,32 @@ self.addEventListener('message', (event) => {
                 await cache.put(url, response.clone());
                 const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
                 await cache.put(alt, response.clone());
-                console.log('[SW] Warm-cached success:', url);
+                
+                // v227: Extract and pre-cache JS chunks found in the HTML
+                try {
+                  const htmlText = await response.clone().text();
+                  // Find all _next/static/... references
+                  const chunkMatches = htmlText.matchAll(/\/_next\/static\/[^"'\s]+/g);
+                  const assetsCache = await caches.open(ASSETS_CACHE);
+                  
+                  for (const match of chunkMatches) {
+                    const chunkUrl = match[0];
+                    const fullChunkUrl = new URL(chunkUrl, self.location.origin).href;
+                    
+                    // Small check to avoid re-fetching if already in assets cache
+                    const hasChunk = await assetsCache.match(fullChunkUrl);
+                    if (!hasChunk) {
+                      fetch(fullChunkUrl, { priority: 'low' })
+                        .then(r => {
+                          if (r.ok) assetsCache.put(fullChunkUrl, r);
+                        }).catch(() => {});
+                    }
+                  }
+                } catch (err) {
+                  console.warn('[SW] Chunk extraction failed for:', url);
+                }
+
+                console.log('[SW] Warm-cached success (+chunks):', url);
               }
             }
             

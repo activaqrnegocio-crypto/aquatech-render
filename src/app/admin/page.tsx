@@ -56,7 +56,7 @@ export default async function AdminDashboard() {
       },
     }),
     prisma.project.findMany({
-      where: { status: { in: ['ACTIVO', 'LEAD'] } },
+      where: { status: { in: ['ACTIVO', 'LEAD', 'PENDIENTE', 'COMPLETADO'] } },
       take: 30,
       orderBy: { updatedAt: 'desc' },
       select: {

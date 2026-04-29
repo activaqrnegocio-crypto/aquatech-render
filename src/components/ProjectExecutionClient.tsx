@@ -38,8 +38,10 @@ export default function ProjectExecutionClient({
   const [activeTab, setActiveTab] = useState<'records' | 'chat' | 'gallery'>('records')
   const pathname = usePathname()
 
-  // v222: Consistent ID derivation from URL for Operators
-  const idFromUrl = Number(pathname.split('/').pop());
+  // v227: Consistent ID derivation from URL (Primary Source of Truth)
+  const idFromUrl = typeof window !== 'undefined' 
+    ? Number(window.location.pathname.split('/').pop()) || 0
+    : 0;
   const [localProject, setLocalProject] = useState<any>(null);
   const project = localProject || initialProject;
 

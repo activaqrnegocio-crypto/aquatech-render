@@ -53,9 +53,10 @@ export default function GlobalSyncWorker() {
       }))
 
       // 1. SYNC PROJECTS & CHATS (Smart Merge with Pacing)
+      let projects: any[] = [];
       const res = await fetch('/api/projects/bulk-cache?limit=200', { priority: 'low' })
       if (res.ok) {
-        const projects = await res.json()
+        projects = await res.json()
         const totalToSync = projects.length
         setBulkProgress({ current: 0, total: totalToSync })
         
@@ -96,25 +97,33 @@ export default function GlobalSyncWorker() {
           }
         }
 
-        // v222: ROBUST SHELL PRE-WARMING (Low Priority)
+        // v227: ROBUST PRE-FETCHING (HTML + JS Chunks)
         if (projects.length > 0) {
-          const warmUpCount = Math.min(projects.length, 5);
-          for (let i = 0; i < warmUpCount; i++) {
+          window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+            detail: { message: `Preparando interfaces offline (${projects.length})...` }
+          }))
+
+          // 1. Prefetch the shell templates once to cache their code
+          router.prefetch(isAdmin ? '/admin/proyectos/offline-shell' : '/admin/operador/proyecto/offline-shell');
+
+          // 2. Prefetch all projects (Next.js handles the queue)
+          for (let i = 0; i < projects.length; i++) {
             const pid = projects[i].id;
             const shellUrl = isAdmin ? `/admin/proyectos/${pid}` : `/admin/operador/proyecto/${pid}`;
-            fetch(shellUrl, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
-            fetch(`${shellUrl}?_rsc=warmup`, { 
-              priority: 'low',
-              headers: { 'RSC': '1' } 
-            }).catch(() => {});
             
-            await new Promise(resolve => setTimeout(resolve, 200)); // Pacing
+            // HTML fetch (for SW)
+            fetch(shellUrl, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
+            
+            // JS Chunks + RSC prefetch
+            router.prefetch(shellUrl);
+
+            // Small delay to prevent network contention
+            if (i % 5 === 0) await new Promise(resolve => setTimeout(resolve, 100));
           }
 
           if (isAdmin) {
-            const calendarUrl = '/admin/calendario';
-            fetch(calendarUrl, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
-            fetch(`${calendarUrl}?_rsc=warmup`, { priority: 'low', headers: { 'RSC': '1' } }).catch(() => {});
+            router.prefetch('/admin/calendario');
+            fetch('/admin/calendario', { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
           }
         }
       }
@@ -144,8 +153,7 @@ export default function GlobalSyncWorker() {
       }
 
       const now = Date.now()
-      // v226: Get the real count from Dexie to ensure accurate reporting
-      const finalCount = await db.projectsCache.count()
+      const finalCount = projects.length;
       
       await db.cacheMetadata.put({
         id: 'projects_bulk',

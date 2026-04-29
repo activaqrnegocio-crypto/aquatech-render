@@ -38,7 +38,7 @@ export default async function OperatorDashboard() {
       prisma.project.findMany({
         where: {
           team: { some: { userId } },
-          status: { in: ['LEAD', 'ACTIVO', 'PENDIENTE'] }
+          status: { in: ['LEAD', 'ACTIVO', 'PENDIENTE', 'COMPLETADO'] }
         },
         take: 30, // Increased slightly but kept fast
         orderBy: { updatedAt: 'desc' },
