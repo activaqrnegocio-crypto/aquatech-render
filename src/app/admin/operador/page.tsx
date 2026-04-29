@@ -68,7 +68,9 @@ export default async function OperatorDashboard() {
           include: { project: { select: { title: true } } }
       }),
       prisma.projectView.findMany({
-        where: { userId }
+        where: { userId },
+        orderBy: { lastSeen: 'desc' },
+        take: 50 // Limit to recent views for performance
       })
     ])
 

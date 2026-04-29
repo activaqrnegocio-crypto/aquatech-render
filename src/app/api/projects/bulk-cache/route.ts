@@ -85,6 +85,9 @@ export async function GET(request: Request) {
             content: true,
             createdAt: true,
             userId: true,
+            extraData: true,
+            type: true,
+            media: true,
             user: {
               select: {
                 name: true
@@ -92,10 +95,32 @@ export async function GET(request: Request) {
             }
           },
           orderBy: { createdAt: 'desc' },
-          take: 15
+          take: 30
+        },
+        expenses: {
+          select: {
+            id: true,
+            amount: true,
+            description: true,
+            category: true,
+            date: true,
+            receiptUrl: true,
+          },
+          take: 20
+        },
+        gallery: {
+          select: {
+            id: true,
+            url: true,
+            mimeType: true,
+            category: true,
+            createdAt: true,
+            filename: true
+          },
+          take: 30
         }
       },
-      orderBy: { createdAt: 'desc' }
+      orderBy: { updatedAt: 'desc' }
     })
 
     return NextResponse.json(projects)

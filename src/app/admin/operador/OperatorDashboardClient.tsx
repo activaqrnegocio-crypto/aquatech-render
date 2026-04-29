@@ -56,8 +56,13 @@ export default function OperatorDashboardClient({
   // Use Dexie as live source for projects to support offline correctly
   const projectsFromCache = useLiveQuery(
     async () => {
-      const allProjects = await db.projectsCache.toArray()
       if (!user?.id) return []
+      // v228: Only fetch recent projects from cache to keep it snappy
+      const allProjects = await db.projectsCache
+        .orderBy('lastAccessedAt')
+        .reverse()
+        .limit(50)
+        .toArray()
       
       // Filtrar localmente para asegurar que solo vea los suyos
       return allProjects.filter(p => 
@@ -68,25 +73,29 @@ export default function OperatorDashboardClient({
     [user?.id]
   )
 
-  // v224: Calculate unread counts locally (blazing fast)
+  // v228: Parallel calculation of unread counts (optimized)
   const unreadCounts = useLiveQuery(async () => {
     const counts: Record<number, number> = {};
     const userId = Number(user?.id);
-    if (!userId) return counts;
+    if (!userId || !initialProjects.length) return counts;
 
-    for (const p of initialProjects) {
-      const view = userViews.find(v => v.projectId === p.id);
-      const lastSeen = view?.lastSeen ? new Date(view.lastSeen) : new Date(0);
-      
-      const chat = await db.chatCache.get(p.id);
-      if (chat && chat.messages) {
-        counts[p.id] = chat.messages.filter((m: any) => 
-          new Date(m.createdAt) > lastSeen && m.userId !== userId
-        ).length;
-      } else {
-        counts[p.id] = p.unreadCount || 0; // Fallback to server value if available
+    // Use a single transaction for better performance
+    await db.transaction('r', [db.chatCache], async () => {
+      for (const p of initialProjects) {
+        const chat = await db.chatCache.get(p.id);
+        const view = userViews.find(v => v.projectId === p.id);
+        const lastSeen = view?.lastSeen ? new Date(view.lastSeen) : new Date(0);
+
+        if (chat && chat.messages) {
+          counts[p.id] = chat.messages.filter((m: any) => 
+            new Date(m.createdAt) > lastSeen && m.userId !== userId
+          ).length;
+        } else {
+          counts[p.id] = p.unreadCount || 0;
+        }
       }
-    }
+    });
+
     return counts;
   }, [initialProjects, userViews, user?.id]);
 

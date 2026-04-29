@@ -57,9 +57,16 @@ export default function ProjectDetailClient({ project: initialProject, available
   }, [searchParams])
 
   // v227: Consistent ID derivation from URL (Primary Source of Truth)
-  const idFromUrl = typeof window !== 'undefined' 
-    ? Number(window.location.pathname.split('/').pop()) || 0
-    : 0;
+  // v228: Robust ID extraction using regex to handle trailing slashes and Universal Shell
+  const idFromUrl = useMemo(() => {
+    if (typeof window === 'undefined') return 0;
+    const match = window.location.pathname.match(/\/proyectos\/(\d+)/);
+    if (match) return Number(match[1]);
+    
+    // Fallback for operator view if different path
+    const opMatch = window.location.pathname.match(/\/proyecto\/(\d+)/);
+    return opMatch ? Number(opMatch[1]) : 0;
+  }, []);
   const [localProject, setLocalProject] = useState<any>(null);
   const project = localProject || initialProject;
   
@@ -99,7 +106,7 @@ export default function ProjectDetailClient({ project: initialProject, available
         setLocalProject(project);
         setLocalChat(project.chatMessages || []);
         db.projectsCache.put({ ...project, lastAccessedAt: Date.now() }).catch(() => {});
-        if (project.chatMessages?.length > 0) {
+        if (project?.chatMessages?.length > 0) {
           db.chatCache.put({ projectId: project.id, messages: project.chatMessages }).catch(() => {});
         }
       }
@@ -196,7 +203,7 @@ export default function ProjectDetailClient({ project: initialProject, available
   const [isGenerating, setIsGenerating] = useState(false)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [isEditingTeam, setIsEditingTeam] = useState(false)
-  const [selectedTeam, setSelectedTeam] = useState<number[]>((project?.team || []).map((t: any) => t.user?.id))
+  const [selectedTeam, setSelectedTeam] = useState<number[]>(() => (project?.team || []).map((t: any) => t.user?.id))
   const [isSavingTeam, setIsSavingTeam] = useState(false)
   
   const initialGallery = (project?.gallery || []).sort((a: any, b: any) => 
@@ -213,7 +220,7 @@ export default function ProjectDetailClient({ project: initialProject, available
     amount: '',
     description: '',
     isNote: false,
-    date: new Date().toISOString().split('T')[0]
+    date: typeof window !== 'undefined' ? new Date().toISOString().split('T')[0] : ''
   })
   const [isSavingExpense, setIsSavingExpense] = useState(false)
   const [expenseImage, setExpenseImage] = useState<string | null>(null)
@@ -314,13 +321,13 @@ export default function ProjectDetailClient({ project: initialProject, available
   const [showAllEvidence, setShowAllEvidence] = useState(false)
   const [galleryFilter, setGalleryFilter] = useState('ALL')
   const [evidenceFilter, setEvidenceFilter] = useState('ALL')
-  const [currentStatus, setCurrentStatus] = useState(project.status)
+  const [currentStatus, setCurrentStatus] = useState(project?.status || 'ACTIVO')
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false)
   const GALLERY_LIMIT = 12
 
   
   const [isEditingBudget, setIsEditingBudget] = useState(false)
-  const [editBudget, setEditBudget] = useState(project.estimatedBudget || 0)
+  const [editBudget, setEditBudget] = useState(project?.estimatedBudget || 0)
 
   const [isFichaOpen, setIsFichaOpen] = useState(false)
   const [isEditingFicha, setIsEditingFicha] = useState(false)
@@ -338,24 +345,24 @@ export default function ProjectDetailClient({ project: initialProject, available
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [isDeleting, setIsDeleting] = useState(false)
 
-  // Form State for Ficha
-  const [editTitle, setEditTitle] = useState(project.title)
-  const [editType, setEditType] = useState(project.type)
-  const [editSubtype, setEditSubtype] = useState(project.subtype || '')
-  const [editCity, setEditCity] = useState(project.city || '')
-  const [editAddress, setEditAddress] = useState(project.address || '')
-  const [editStartDate, setEditStartDate] = useState(project.startDate ? new Date(project.startDate).toISOString().split('T')[0] : '')
-  const [editEndDate, setEditEndDate] = useState(project.endDate ? new Date(project.endDate).toISOString().split('T')[0] : '')
+  // Form State for Ficha (Safe access v228)
+  const [editTitle, setEditTitle] = useState(project?.title || '')
+  const [editType, setEditType] = useState(project?.type || 'CONSTRUCCION')
+  const [editSubtype, setEditSubtype] = useState(project?.subtype || '')
+  const [editCity, setEditCity] = useState(project?.city || '')
+  const [editAddress, setEditAddress] = useState(project?.address || '')
+  const [editStartDate, setEditStartDate] = useState(project?.startDate ? new Date(project.startDate).toISOString().split('T')[0] : '')
+  const [editEndDate, setEditEndDate] = useState(project?.endDate ? new Date(project.endDate).toISOString().split('T')[0] : '')
   const [editCategoryList, setEditCategoryList] = useState<string[]>(() => {
-    try { return JSON.parse(project.categoryList || '[]') } catch { return [] }
+    try { return JSON.parse(project?.categoryList || '[]') } catch { return [] }
   })
   const [editContractTypeList, setEditContractTypeList] = useState<string[]>(() => {
-    try { return JSON.parse(project.contractTypeList || '[]') } catch { return [] }
+    try { return JSON.parse(project?.contractTypeList || '[]') } catch { return [] }
   })
-  const [editSpecsTranscription, setEditSpecsTranscription] = useState(project.specsTranscription || '')
+  const [editSpecsTranscription, setEditSpecsTranscription] = useState(project?.specsTranscription || '')
   const [editTechnicalSpecs, setEditTechnicalSpecs] = useState(() => {
     try { 
-      const parsed = JSON.parse(project.technicalSpecs || '{}')
+      const parsed = JSON.parse(project?.technicalSpecs || '{}')
       return parsed.description || ''
     } catch { return '' }
   })
@@ -372,8 +379,8 @@ export default function ProjectDetailClient({ project: initialProject, available
   const fetchMessages = async (since?: string): Promise<any[]> => {
     try {
       const url = since 
-        ? `/api/projects/${project.id}/messages?since=${since}&_t=${Date.now()}`
-        : `/api/projects/${project.id}/messages?_t=${Date.now()}`
+        ? `/api/projects/${project?.id}/messages?since=${since}&_t=${Date.now()}`
+        : `/api/projects/${project?.id}/messages?_t=${Date.now()}`
         
       const resp = await fetch(url, {
         cache: 'no-store',
@@ -419,11 +426,11 @@ export default function ProjectDetailClient({ project: initialProject, available
         fetch('/api/notifications/summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId: project.id })
+          body: JSON.stringify({ projectId: project?.id })
         }).catch(() => {})
       }
     }
-  }, [filteredChat.length, activeTab, project.id])
+  }, [filteredChat.length, activeTab, project?.id])
 
   // --- Ref to access latest chatMessages without causing re-renders ---
   const chatMessagesRef = useRef(chatMessages)
@@ -438,7 +445,7 @@ export default function ProjectDetailClient({ project: initialProject, available
         await fetch('/api/notifications/summary', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId: project.id })
+          body: JSON.stringify({ projectId: project?.id })
         })
       } catch (e) { /* silent */ }
     }
@@ -481,7 +488,7 @@ export default function ProjectDetailClient({ project: initialProject, available
       clearInterval(pollInterval)
       window.removeEventListener('focus', handleFocus)
     }
-  }, [project.id])
+  }, [project?.id])
 
   const CATEGORIES = [
     { id: 'PISCINA', label: 'Piscina' },
@@ -596,7 +603,7 @@ export default function ProjectDetailClient({ project: initialProject, available
 
     setIsDeleting(true)
     try {
-      const resp = await fetch(`/api/projects/${project.id}`, {
+      const resp = await fetch(`/api/projects/${project?.id}`, {
         method: 'DELETE'
       })
 
@@ -689,7 +696,7 @@ export default function ProjectDetailClient({ project: initialProject, available
       try {
         await db.outbox.add({
           type: 'EXPENSE',
-          projectId: project.id,
+          projectId: project?.id || 0,
           payload: expensePayload,
           timestamp: Date.now(),
           status: 'pending'
@@ -1265,6 +1272,7 @@ export default function ProjectDetailClient({ project: initialProject, available
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...expenseForm,
+          projectId: project?.id,
           amount: Number(expenseForm.amount),
           receiptPhoto: expenseImage
         })
@@ -1293,7 +1301,7 @@ export default function ProjectDetailClient({ project: initialProject, available
   const handleDeleteExpense = async (expenseId: number) => {
     if (!confirm('¿Seguro que deseas eliminar este gasto?')) return
     try {
-      const res = await fetch(`/api/projects/${project.id}/expenses/${expenseId}`, {
+      const res = await fetch(`/api/projects/${project?.id}/expenses/${expenseId}`, {
         method: 'DELETE'
       })
       if (res.ok) {
@@ -1711,6 +1719,18 @@ export default function ProjectDetailClient({ project: initialProject, available
 
   if (!isMounted) return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: 'var(--bg-deep)', color: 'white' }}>Cargando proyecto...</div>;
 
+  // v228: Loading guard while project data is fetched from Dexie or API
+  if (!project && idFromUrl !== 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: 'var(--bg-deep)', color: 'white', padding: '20px', textAlign: 'center' }}>
+        <div className="loading-spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(56, 189, 248, 0.1)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '20px' }}></div>
+        <h2 style={{ fontSize: '1.5rem', marginBottom: '10px' }}>Cargando datos del proyecto...</h2>
+        <p style={{ color: 'var(--text-muted)' }}>Buscando en memoria local (Dexie)...</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
+  }
+
   return (
     <div className="p-6">
       {/* Header */}
@@ -1736,7 +1756,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                   <option value="ACTIVO" style={{ backgroundColor: '#0f172a', color: '#38bdf8' }}>Activo</option>
                   <option value="ARCHIVADO" style={{ backgroundColor: '#0f172a', color: '#9ca3af' }}>Archivado</option>
                 </select>
-              {project.creator && (
+              {project?.creator && (
                 <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '4px' }}>
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
                   Creado por: {project.creator.name}
@@ -1745,7 +1765,7 @@ export default function ProjectDetailClient({ project: initialProject, available
             </div>
           </div>
           <h2 style={{ fontSize: '2rem', margin: 0, display: 'flex', alignItems: 'center', gap: '10px' }}>
-            {localProject.title}
+            {project?.title || 'Cargando...'}
             {isOfflineMode && (
               <span style={{ fontSize: '0.7rem', padding: '2px 8px', backgroundColor: 'rgba(239, 68, 68, 0.2)', color: '#ef4444', borderRadius: '10px', border: '1px solid #ef4444', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
                 Offline
@@ -1753,7 +1773,7 @@ export default function ProjectDetailClient({ project: initialProject, available
             )}
           </h2>
           <p style={{ color: 'var(--text-muted)', marginTop: '5px', fontSize: '1.1rem' }}>
-            {translateType(localProject.type)} {localProject.subtype ? `— ${localProject.subtype}` : ''}
+            {translateType(project?.type)} {project?.subtype ? `— ${project.subtype}` : ''}
           </p>
         </div>
         <div style={{ textAlign: 'right', display: 'none' }}>
@@ -2994,12 +3014,12 @@ export default function ProjectDetailClient({ project: initialProject, available
             <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.9rem', color: 'var(--text-muted)' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/></svg>
-                {project.client?.phone || 'Sin teléfono'}
+                {project?.client?.phone || 'Sin teléfono'}
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
                 <span style={{ wordBreak: 'break-all', overflow: 'hidden', textOverflow: 'ellipsis' }}>
-                  {project.client?.email || 'Sin email'}
+                  {project?.client?.email || 'Sin email'}
                 </span>
               </div>
               <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
@@ -3011,13 +3031,13 @@ export default function ProjectDetailClient({ project: initialProject, available
                     return match ? match[0] : null
                   }
                   
-                  let locLink = project.locationLink
+                  let locLink = project?.locationLink
                   if (!locLink || locLink === 'N/A') {
                     try {
-                      const specs = JSON.parse(project.technicalSpecs || '{}')
-                      locLink = specs.locationLink || findGpsLink(project.address) || findGpsLink(project.technicalSpecs)
+                      const specs = JSON.parse(project?.technicalSpecs || '{}')
+                      locLink = specs.locationLink || findGpsLink(project?.address || '') || findGpsLink(project?.technicalSpecs || '')
                     } catch {
-                      locLink = findGpsLink(project.address) || findGpsLink(project.technicalSpecs)
+                      locLink = findGpsLink(project?.address || '') || findGpsLink(project?.technicalSpecs || '')
                     }
                   }
 
@@ -3036,7 +3056,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                     )
                   }
                   
-                  const addr = project.address || project.client?.address || 'Sin dirección'
+                  const addr = project?.address || project?.client?.address || 'Sin dirección'
                   return <span>{addr}</span>
                 })()}
               </div>
@@ -3176,7 +3196,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                 </div>
                 <h3 style={{ fontSize: '1.5rem', marginBottom: '15px' }}>¿Eliminar este proyecto?</h3>
                 <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', marginBottom: '30px' }}>
-                  Estás a punto de borrar <strong>{project.title}</strong>.<br/> Todos los datos asociados se destruirán de forma inmediata e irreversible.
+                  Estás a punto de borrar <strong>{project?.title}</strong>.<br/> Todos los datos asociados se destruirán de forma inmediata e irreversible.
                 </p>
                 <div style={{ display: 'flex', gap: '15px' }}>
                   <button onClick={() => setShowDeleteModal(false)} style={{ flex: 1, padding: '14px', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', color: 'white', cursor: 'pointer' }}>Cancelar</button>
@@ -3190,7 +3210,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                   Para confirmar la eliminación permanente, por favor escribe el nombre del proyecto:
                 </p>
                 <div style={{ backgroundColor: 'rgba(255,255,255,0.05)', padding: '12px', borderRadius: '8px', marginBottom: '20px', fontWeight: 'bold', color: 'var(--primary)', letterSpacing: '0.5px' }}>
-                  {project.title}
+                  {project?.title}
                 </div>
                 <input 
                   type="text" 
@@ -3198,7 +3218,7 @@ export default function ProjectDetailClient({ project: initialProject, available
                   placeholder="Escribe el nombre aquí..."
                   value={deleteConfirmText}
                   onChange={e => setDeleteConfirmText(e.target.value)}
-                  style={{ width: '100%', padding: '15px', backgroundColor: 'var(--bg-deep)', border: `2px solid ${deleteConfirmText === project.title ? 'var(--success)' : 'var(--border-color)'}`, borderRadius: '10px', color: 'white', textAlign: 'center', fontSize: '1.1rem', marginBottom: '25px', outline: 'none' }}
+                  style={{ width: '100%', padding: '15px', backgroundColor: 'var(--bg-deep)', border: `2px solid ${deleteConfirmText === project?.title ? 'var(--success)' : 'var(--border-color)'}`, borderRadius: '10px', color: 'white', textAlign: 'center', fontSize: '1.1rem', marginBottom: '25px', outline: 'none' }}
                 />
                 <div style={{ display: 'flex', gap: '15px' }}>
                   <button 
@@ -3212,8 +3232,8 @@ export default function ProjectDetailClient({ project: initialProject, available
                   </button>
                   <button 
                     onClick={handleDeleteProject}
-                    disabled={isDeleting || deleteConfirmText !== project.title}
-                    style={{ flex: 1, padding: '14px', borderRadius: '10px', backgroundColor: deleteConfirmText === project.title ? 'var(--danger)' : 'rgba(239, 68, 68, 0.3)', border: 'none', color: 'white', fontWeight: 'bold', cursor: deleteConfirmText === project.title ? 'pointer' : 'not-allowed', opacity: deleteConfirmText === project.title ? 1 : 0.6 }}
+                    disabled={isDeleting || deleteConfirmText !== project?.title}
+                    style={{ flex: 1, padding: '14px', borderRadius: '10px', backgroundColor: deleteConfirmText === project?.title ? 'var(--danger)' : 'rgba(239, 68, 68, 0.3)', border: 'none', color: 'white', fontWeight: 'bold', cursor: deleteConfirmText === project?.title ? 'pointer' : 'not-allowed', opacity: deleteConfirmText === project?.title ? 1 : 0.6 }}
                   >
                     {isDeleting ? 'Eliminando...' : 'BORRAR TODO'}
                   </button>

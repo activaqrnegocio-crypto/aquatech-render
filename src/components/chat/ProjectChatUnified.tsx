@@ -54,7 +54,7 @@ interface ProjectChatUnifiedProps {
 
 export default function ProjectChatUnified({
   project,
-  messages,
+  messages = [],
   userId,
   onSendMessage,
   onDayAction,
@@ -81,7 +81,7 @@ export default function ProjectChatUnified({
 
   const [autoScroll, setAutoScroll] = useState(true)
   const [showNewMsgBtn, setShowNewMsgBtn] = useState(false)
-  const [msgCount, setMsgCount] = useState(messages.length)
+  const [msgCount, setMsgCount] = useState(messages?.length || 0)
   const [gpsStatus, setGpsStatus] = useState<string | null>(null)
   const [filesFilter, setFilesFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS' | 'EXPENSES'>('ALL')
   const [showCamera, setShowCamera] = useState(false)
@@ -89,6 +89,8 @@ export default function ProjectChatUnified({
   
   const allMedia = useMemo(() => {
     const list: any[] = []
+    if (!messages) return list
+    
     messages.forEach(m => {
       // m.media can be an array of objects {url, name, type...} or a single object
       const parts = Array.isArray(m.media) ? m.media : (m.media ? [m.media] : [])
@@ -128,8 +130,19 @@ export default function ProjectChatUnified({
         })
       }
     })
-    return list;
-  }, [messages])
+
+    // Include gallery items if project exists
+    const galleryItems = (project?.gallery || []).map((g: any) => ({
+      ...g,
+      type: g.type === 'IMAGE' ? 'IMAGES' : g.type === 'VIDEO' ? 'VIDEOS' : g.type === 'AUDIO' ? 'AUDIOS' : 'DOCS',
+      timestamp: g.createdAt || new Date().toISOString(),
+      sender: 'Sistema (Ficha)'
+    }))
+
+    return [...list, ...galleryItems].sort((a, b) => 
+      new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime()
+    )
+  }, [messages, project?.gallery])
 
   const evidenceGallery = useMemo(() => {
     if (!project?.gallery) return []

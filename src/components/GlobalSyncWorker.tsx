@@ -33,8 +33,8 @@ export default function GlobalSyncWorker() {
     // v226: Check Freshness before syncing (Avoid loops)
     if (!force) {
       const meta = await db.cacheMetadata.get('projects_bulk');
-      const ONE_HOUR = 60 * 60 * 1000;
-      if (meta && (Date.now() - meta.lastSync) < ONE_HOUR) {
+      const SIX_HOURS = 6 * 60 * 60 * 1000;
+      if (meta && (Date.now() - meta.lastSync) < SIX_HOURS) {
         console.log('[Sync] Data is fresh, skipping automatic bulk sync.');
         return;
       }

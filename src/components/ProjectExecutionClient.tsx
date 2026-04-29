@@ -45,7 +45,7 @@ export default function ProjectExecutionClient({
   const [localProject, setLocalProject] = useState<any>(null);
   const project = localProject || initialProject;
 
-  const hasActiveRecordInThisProject = activeRecord && Number(activeRecord.projectId) === Number(project.id);
+  const hasActiveRecordInThisProject = activeRecord && Number(activeRecord.projectId) === Number(idFromUrl);
   const hasActiveRecordInOtherProject = activeRecord && !hasActiveRecordInThisProject;
   const router = useRouter()
   const { data: session } = useSession()
@@ -98,9 +98,11 @@ export default function ProjectExecutionClient({
         // Online or Correct Shell
         setLocalProject(project);
         setLocalChat(initialChat || []);
-        db.projectsCache.put({ ...project, lastAccessedAt: Date.now() }).catch(() => {});
-        if (initialChat?.length > 0) {
-          db.chatCache.put({ projectId: project.id, messages: initialChat }).catch(() => {});
+        if (project?.id) {
+          db.projectsCache.put({ ...project, lastAccessedAt: Date.now() }).catch(() => {});
+          if (initialChat?.length > 0) {
+            db.chatCache.put({ projectId: project.id, messages: initialChat }).catch(() => {});
+          }
         }
       }
     }
@@ -265,7 +267,7 @@ export default function ProjectExecutionClient({
     }
 
     try {
-      const res = await fetch(`/api/projects/${project.id}/gallery/${itemId}`, {
+      const res = await fetch(`/api/projects/${idFromUrl}/gallery/${itemId}`, {
         method: 'DELETE'
       })
       if (res.ok) {
@@ -341,7 +343,7 @@ export default function ProjectExecutionClient({
   // --- EXPENSE EDIT/DELETE STATE ---
   const [isExpenseModalOpen, setIsExpenseModalOpen] = useState(false)
   const [editingExpense, setEditingExpense] = useState<any>(null)
-  const [expenseFormFields, setExpenseFormFields, removeExpenseDraft] = useLocalStorage(`project_${project.id}_expense_draft`, {
+  const [expenseFormFields, setExpenseFormFields, removeExpenseDraft] = useLocalStorage(`project_${idFromUrl}_expense_draft`, {
     amount: '',
     description: '',
     isNote: false,
@@ -351,7 +353,7 @@ export default function ProjectExecutionClient({
   const [galleryFilter, setGalleryFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
 
   const masterGallery = useMemo(() => {
-    const baseFiles = project.gallery.filter((item: any) => {
+    const baseFiles = (project?.gallery || []).filter((item: any) => {
       if (item.isFromChat) return false
       const cat = (item.category || 'MASTER').toUpperCase()
       return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
@@ -526,13 +528,13 @@ export default function ProjectExecutionClient({
   const [waSending, setWaSending] = useState(false)
   const [waSuccess, setWaSuccess] = useState(false)
 
-  const waCategories = [
-    { id: 'urgencia', label: '🚨 Urgencia', color: '#ef4444', template: `⚠️ URGENCIA - Proyecto: ${project.title}\n\nDescripción: ` },
-    { id: 'material', label: '📦 Falta de Material', color: '#f59e0b', template: `📦 SOLICITUD DE MATERIAL - Proyecto: ${project.title}\n\nMaterial requerido: ` },
-    { id: 'cotizacion', label: '💰 Cotización', color: '#3b82f6', template: `💰 SOLICITUD DE COTIZACIÓN - Proyecto: ${project.title}\n\nDetalle: ` },
-    { id: 'reporte', label: '📋 Reporte', color: '#8b5cf6', template: `📋 REPORTE DE AVANCE - Proyecto: ${project.title}\n\nEstado: ` },
-    { id: 'otro', label: '💬 Otro', color: '#06b6d4', template: `📌 NOTIFICACIÓN - Proyecto: ${project.title}\n\n` },
-  ]
+  const waCategories = useMemo(() => [
+    { id: 'urgencia', label: '🚨 Urgencia', color: '#ef4444', template: `⚠️ URGENCIA - Proyecto: ${project?.title || ''}\n\nDescripción: ` },
+    { id: 'material', label: '📦 Falta de Material', color: '#f59e0b', template: `📦 SOLICITUD DE MATERIAL - Proyecto: ${project?.title || ''}\n\nMaterial requerido: ` },
+    { id: 'cotizacion', label: '💰 Cotización', color: '#3b82f6', template: `💰 SOLICITUD DE COTIZACIÓN - Proyecto: ${project?.title || ''}\n\nDetalle: ` },
+    { id: 'reporte', label: '📋 Reporte', color: '#8b5cf6', template: `📋 REPORTE DE AVANCE - Proyecto: ${project?.title || ''}\n\nEstado: ` },
+    { id: 'otro', label: '💬 Otro', color: '#06b6d4', template: `📌 NOTIFICACIÓN - Proyecto: ${project?.title || ''}\n\n` },
+  ], [project?.title])
 
   const handleWaSend = async () => {
     if (!waPhone.trim() || !waMessage.trim()) {
@@ -547,7 +549,7 @@ export default function ProjectExecutionClient({
         body: JSON.stringify({
           phone: waPhone.replace(/\D/g, ''),
           message: waMessage,
-          projectId: project.id,
+          projectId: idFromUrl,
           category: waCategory,
         })
       })
@@ -583,9 +585,9 @@ export default function ProjectExecutionClient({
   // Chat State
   // Instead of trying to find an active phase, default to null ("General")
   const [activePhase, setActivePhase] = useState<number | null>(null)
-  const [message, setMessage, removeMessageDraft] = useLocalStorage(`project_${project.id}_chat_draft`, '')
+  const [message, setMessage, removeMessageDraft] = useLocalStorage(`project_${idFromUrl}_chat_draft`, '')
   const [notePhase, setNotePhase] = useState<number | null>(activePhase)
-  const [note, setNote, removeNoteDraft] = useLocalStorage(`project_${project.id}_note_draft`, '')
+  const [note, setNote, removeNoteDraft] = useLocalStorage(`project_${idFromUrl}_note_draft`, '')
   const handleDayRecord = async () => {
     setLoading(true)
     try {
@@ -953,7 +955,7 @@ export default function ProjectExecutionClient({
 
          await db.outbox.add({
             type: 'MESSAGE',
-            projectId: project.id,
+            projectId: idFromUrl,
             payload: payload,
             timestamp: Date.now(),
             lat: location?.lat,
@@ -967,7 +969,7 @@ export default function ProjectExecutionClient({
       }
 
       try {
-        const res = await fetch(`/api/projects/${project.id}/messages`, {
+        const res = await fetch(`/api/projects/${idFromUrl}/messages`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ ...payload, lat: location?.lat, lng: location?.lng })
@@ -1499,6 +1501,22 @@ export default function ProjectExecutionClient({
     } finally {
       setIsSavingExpense(false)
     }
+  }
+
+  if (!mounted) {
+    return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: 'var(--bg-deep)', color: 'white' }}>Cargando operador...</div>;
+  }
+
+  // v228: Loading guard while project data is fetched from Dexie or API
+  if (!project && idFromUrl !== 0) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100vh', backgroundColor: 'var(--bg-deep)', color: 'white', padding: '20px', textAlign: 'center' }}>
+        <div className="loading-spinner" style={{ width: '40px', height: '40px', border: '3px solid rgba(56, 189, 248, 0.1)', borderTopColor: 'var(--primary)', borderRadius: '50%', animation: 'spin 1s linear infinite', marginBottom: '20px' }}></div>
+        <h2 style={{ fontSize: '1.5rem', marginBottom: '10px' }}>Preparando Proyecto...</h2>
+        <p style={{ color: 'var(--text-muted)' }}>Hidratando memoria local (Dexie)...</p>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    );
   }
 
   return (
