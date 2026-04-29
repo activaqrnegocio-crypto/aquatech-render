@@ -10,6 +10,7 @@ const RSC_CACHE    = 'aquatech-rsc';
 
 // Only pre-cache truly PUBLIC files (no auth required)
 const PRE_CACHE = [
+  '/admin/login',
   '/offline.html',
   '/app-start.html',
   '/manifest.json',
@@ -18,7 +19,7 @@ const PRE_CACHE = [
   '/cotizacion.jpg'
 ];
 
-const VERSION = 'v233';
+const VERSION = 'v234';
 
 // ─── INSTALL ────────────────────────────────────────────────
 self.addEventListener('install', (event) => {
@@ -412,7 +413,10 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   // v225: Improved Shell logic for Projects
   const isAdminProject = pathname.match(/\/admin\/proyectos\/\d+/);
   const isOperatorProject = pathname.match(/\/admin\/operador\/proyecto\/\d+/) || pathname.match(/\/operador\/proyecto\/\d+/);
+  const isLoginPage = pathname === '/admin/login' || pathname === '/admin/login/';
   
+  if (isLoginPage) return null; // Never serve the memory-fallback for login
+
   if (isAdminProject) {
     console.log('[SW v225] Admin Project detail detected, looking for a valid shell...');
     const pagesCache = await caches.open(PAGES_CACHE);
