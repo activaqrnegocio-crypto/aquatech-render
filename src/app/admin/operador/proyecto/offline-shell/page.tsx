@@ -46,6 +46,7 @@ function OperatorOfflineShellContent() {
         projectAddress=""
         projectCity=""
         panelBase="/admin/operador"
+        isOfflineShell={true} 
       />
     </div>
   )

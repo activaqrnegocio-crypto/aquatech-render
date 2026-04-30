@@ -34,35 +34,21 @@ function NewQuoteContent() {
            }
         }
 
-        // 3. Fetch project data for budget conversion (Online or Offline)
-        if (projectId) {
-          let project = null;
-          
-          if (navigator.onLine) {
-            try {
-              const res = await fetch(`/api/projects/${projectId}`)
-              if (res.ok) project = await res.json()
-            } catch (e) {
-              console.warn("Project fetch failed, falling back to cache")
-            }
-          }
-
-          if (!project) {
-            // Offline fallback or API failed
-            project = await db.projectsCache.get(Number(projectId))
-          }
-
-          if (project) {
+        // 3. If online and has projectId, try to fetch the specific project for budget conversion
+        if (projectId && navigator.onLine) {
+          const res = await fetch(`/api/projects/${projectId}`)
+          if (res.ok) {
+            const project = await res.json()
             setPrefetchedProject({
               id: project.id,
               clientId: project.clientId,
               title: project.title,
               items: (project.budgetItems || []).map((bi: any) => ({
                 materialId: bi.materialId,
-                description: bi.material?.name || bi.name || 'Material sin nombre',
+                description: bi.material?.name || 'Material sin nombre',
                 code: bi.material?.code || 'S/C',
                 quantity: Number(bi.quantity),
-                unitPrice: Number(bi.material?.unitPrice || bi.estimatedCost || 0)
+                unitPrice: Number(bi.material?.unitPrice || 0)
               }))
             })
           }

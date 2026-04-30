@@ -31,7 +31,8 @@ export default function ProjectExecutionClient({
   clientName,
   projectAddress,
   projectCity,
-  panelBase = '/admin/operador'
+  panelBase = '/admin/operador',
+  isOfflineShell = false
 }: any) {
   const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
@@ -79,48 +80,31 @@ export default function ProjectExecutionClient({
   const isSyncingRef = useRef(false)
   const hasRecoveredRef = useRef(false)
 
-  // v250: Continuous persistence while online - Ensure we always have the latest state
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.onLine && project?.id && !project.title?.includes('Cargando')) {
-      db.projectsCache.put({ ...project, lastAccessedAt: Date.now() }).catch(() => {});
-      console.log('[Operator-Sync] Auto-persisted project state to Dexie');
-    }
-  }, [project]);
-
-  // v250: Chat persistence
-  useEffect(() => {
-    if (typeof navigator !== 'undefined' && navigator.onLine && project?.id && liveChat.length > 0) {
-      db.chatCache.put({ projectId: Number(project.id), messages: liveChat }).catch(() => {});
-    }
-  }, [liveChat, project?.id]);
-
   const GALLERY_LABEL = "Planos y Referencias"
 
   useEffect(() => {
     async function initProject() {
-      // If we already recovered in this session, don't loop
       if (hasRecoveredRef.current) return;
-
+      
       const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
       setIsOfflineMode(isOffline);
 
       // Check if we need to recover from cache
-      const isShell = project?.title?.includes('Cargando Proyecto Offline');
+      const isShell = isOfflineShell || project?.title?.includes('Cargando Proyecto Offline');
       const needsCacheRecovery = (!project || Number(project?.id) !== idFromUrl || isShell) && idFromUrl > 0;
 
       if (needsCacheRecovery) {
         setIsSyncingOffline(true);
-        console.log('[Operator-Offline] Shell detected or ID mismatch. Recovering ID:', idFromUrl);
+        console.log('[Operator-Offline] Universal Shell detected. Recovering ID:', idFromUrl);
         try {
-          const cached = await db.projectsCache.get(Number(idFromUrl));
+          const cached = await db.projectsCache.get(idFromUrl);
           if (cached) {
             setLocalProject(cached);
-            const chat = await db.chatCache.get(Number(idFromUrl));
+            const chat = await db.chatCache.get(idFromUrl);
             setLocalChat(chat?.messages || []);
-            hasRecoveredRef.current = true;
-            console.log('[Operator-Offline] Success: Project recovered from Dexie');
+            hasRecoveredRef.current = true; // Mark as done
           } else {
-            console.warn('[Operator-Offline] Failure: Project NOT found in local cache:', idFromUrl);
+            console.warn('[Operator-Offline] Project not found in local cache:', idFromUrl);
           }
         } catch (err) {
           console.error('[Operator-Offline] Recovery error:', err);
@@ -134,13 +118,13 @@ export default function ProjectExecutionClient({
         if (project?.id) {
           db.projectsCache.put({ ...project, lastAccessedAt: Date.now() }).catch(() => {});
           if (initialChat?.length > 0) {
-            db.chatCache.put({ projectId: Number(project.id), messages: initialChat }).catch(() => {});
+            db.chatCache.put({ projectId: project.id, messages: initialChat }).catch(() => {});
           }
         }
       }
     }
     initProject();
-  }, [project, idFromUrl, pathname, initialChat]);
+  }, [project, idFromUrl, pathname, initialChat, isOfflineShell]);
 
   useEffect(() => {
     setMounted(true)
@@ -1641,15 +1625,7 @@ export default function ProjectExecutionClient({
               </h3>
             </div>
           </div>
-          <div onClick={(e) => e.stopPropagation()} style={{ display: 'flex', gap: '10px' }}>
-            <Link 
-              href={`/admin/cotizaciones/nuevo?projectId=${project.id}`}
-              className="btn btn-primary"
-              style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '8px 16px', borderRadius: '8px', fontSize: '0.75rem', fontWeight: 'bold' }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M12 5v14M5 12h14"/></svg>
-              Nueva Cotización
-            </Link>
+          <div onClick={(e) => e.stopPropagation()}>
             <button 
               className="btn btn-secondary" 
               onClick={generateProjectPDF}
