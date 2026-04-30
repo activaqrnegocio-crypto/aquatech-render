@@ -210,12 +210,16 @@ export default function Sidebar() {
       localStorage.clear()
       sessionStorage.clear()
 
-      // Flush Service Worker Caches
+      // Flush Service Worker Caches selectively
       if (typeof window !== 'undefined' && 'caches' in window) {
         try {
           const names = await caches.keys()
           for (const name of names) {
-            await caches.delete(name)
+            // Keep the static shell and fonts so the app structure remains available
+            // but clear everything else (private pages, assets, RSC, etc.)
+            if (name !== 'aquatech-static' && name !== 'aquatech-fonts') {
+              await caches.delete(name)
+            }
           }
         } catch (e) {}
       }

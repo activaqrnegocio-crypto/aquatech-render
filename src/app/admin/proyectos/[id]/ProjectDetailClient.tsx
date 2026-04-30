@@ -84,35 +84,37 @@ export default function ProjectDetailClient({ project: initialProject, available
       const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
       setIsOfflineMode(isOffline);
 
-      // Check if we need to recover from cache (either offline OR we got the wrong shell props)
-      const needsCacheRecovery = (!project || Number(project?.id) !== idFromUrl) && idFromUrl > 0;
+      // Check if we need to recover from cache (either offline OR we got the wrong shell props OR server failed)
+      // v244: Aggressive recovery for Admin mobile experience
+      const needsCacheRecovery = (!initialProject || Number(initialProject?.id) !== idFromUrl) && idFromUrl > 0;
 
       if (needsCacheRecovery) {
         setIsSyncingOffline(true);
-        console.log('[Offline] Universal Shell detected or Offline mode. Recovering ID:', idFromUrl);
+        console.log('[Recovery] No server project or mismatch. ID:', idFromUrl);
         try {
           const cached = await db.projectsCache.get(idFromUrl);
           if (cached) {
+            console.log('[Recovery] Found project in local cache:', idFromUrl);
             setLocalProject(cached);
             const chat = await db.chatCache.get(idFromUrl);
             setLocalChat(chat?.messages || []);
           } else {
-            console.warn('[Offline] Project not found in local cache:', idFromUrl);
-            // If we have props but IDs didn't match, at least show the props as a temporary fallback? 
-            // No, better to keep null or show an error later if we want to be strict.
+            console.warn('[Recovery] Project not found in local cache:', idFromUrl);
           }
         } catch (err) {
-          console.error('[Offline] Recovery error:', err);
+          console.error('[Recovery] Dexie error:', err);
         } finally {
           setIsSyncingOffline(false);
         }
-      } else {
+      } else if (initialProject) {
         // Online and correct ID: Update local state and refresh cache
-        setLocalProject(project);
-        setLocalChat(project.chatMessages || []);
-        db.projectsCache.put({ ...project, lastAccessedAt: Date.now() }).catch(() => {});
-        if (project?.chatMessages?.length > 0) {
-          db.chatCache.put({ projectId: project.id, messages: project.chatMessages }).catch(() => {});
+        setLocalProject(initialProject);
+        setLocalChat(initialProject.chatMessages || []);
+        
+        // Passive update to cache to keep it fresh
+        db.projectsCache.put({ ...initialProject, lastAccessedAt: Date.now() }).catch(() => {});
+        if (initialProject?.chatMessages?.length > 0) {
+          db.chatCache.put({ projectId: initialProject.id, messages: initialProject.chatMessages }).catch(() => {});
         }
       }
     }

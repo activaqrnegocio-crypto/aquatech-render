@@ -21,7 +21,7 @@ const PRE_CACHE = [
   '/cotizacion.jpg'
 ];
 
-const VERSION = 'v242';
+const VERSION = 'v246';
 
 // v242: Helper to bypass Chrome's "redirected response" security block
 function cleanResponse(response) {
@@ -169,7 +169,18 @@ self.addEventListener('fetch', (event) => {
                 url.searchParams.has('_rsc');
   
   if (isRSC) {
-    event.respondWith(rscNetworkFirst(request));
+    // v246: ONLY use SWR for routes exclusive to one role.
+    // Shared routes (inventario, cotizaciones, /admin) use network-first to avoid
+    // serving admin RSC payloads to operator users (causes Server Components render error).
+    const isAdminOnlyRoute = url.pathname === '/admin/proyectos' || 
+                             url.pathname === '/admin/calendario';
+    const isOperatorOnlyRoute = url.pathname === '/admin/operador';
+    
+    if (isAdminOnlyRoute || isOperatorOnlyRoute) {
+      event.respondWith(rscStaleWhileRevalidate(request));
+    } else {
+      event.respondWith(rscNetworkFirst(request));
+    }
     return;
   }
 
@@ -249,13 +260,35 @@ async function rscNetworkFirst(request) {
         if (shellMatch) return shellMatch;
       }
     }
-    
-    // Final fallback: avoid 503 if possible for pages
-    return new Response(JSON.stringify({ error: 'offline', status: 'fallback' }), {
-      status: 200, // Return 200 to prevent Next.js from showing the error screen
-      headers: { 'Content-Type': 'application/json' }
-    });
+    return undefined; // Let network error bubble up
   }
+}
+
+/**
+ * v245: RSC Stale While Revalidate — Instant response for core navigations.
+ */
+async function rscStaleWhileRevalidate(request) {
+  const url = new URL(request.url);
+  url.searchParams.delete('_rsc');
+  const cacheKey = url.toString();
+  
+  const cache = await caches.open(RSC_CACHE);
+  const cached = await cache.match(cacheKey);
+  
+  const fetchPromise = fetchWithTimeout(request.clone(), 10000).then(async (response) => {
+    if (response.ok && !response.redirected) {
+      const cacheToUpdate = await caches.open(RSC_CACHE);
+      cacheToUpdate.put(cacheKey, response.clone());
+    }
+    return response;
+  }).catch(() => null);
+
+  if (cached) {
+    console.log(`[SW ${VERSION}] Serving RSC from cache (SWR):`, url.pathname);
+    return cached;
+  }
+
+  return fetchPromise;
 }
 
 /**
@@ -285,7 +318,7 @@ async function navigationHandler(request) {
     // ── STEP 1: Check cache first for instant offline response
     // v238: For projects, if we are offline, we PREFER the shell even if we have a full page cached.
     // This prevents hydration errors from 'real' pages that might be missing chunks.
-    const isProject = url.pathname.includes('/proyecto/');
+    const isProject = url.pathname.includes('/proyecto/') || url.pathname.includes('/proyectos/');
     let cached = null;
     
     if (isProject && !navigator.onLine) {
@@ -349,8 +382,19 @@ async function navigationHandler(request) {
     // ── STEP 3: Last chance — Try shells if network failed or we are offline
     const shell = await findCachedPage(request.url, url.pathname, true); // true = force serve
     if (shell) {
-      console.log('[SW] Network failed, serving shell as fallback');
-      return cleanResponse(shell);
+      // v243: If we found a shell and it's NOT the absolute fallback, serve it.
+      // If it IS the absolute fallback (contains "Sin Conexión"), we only serve it if offline.
+      const isAbsoluteFallback = shell.headers.get('X-SW-Fallback') === 'absolute';
+      if (!isAbsoluteFallback || !navigator.onLine) {
+        console.log('[SW] Serving shell or offline fallback');
+        return cleanResponse(shell);
+      }
+    }
+
+    // v243: If we are online but everything failed, throw to catch and retry or show real error
+    if (navigator.onLine) {
+      console.warn('[SW] Online but navigation failed, letting browser handle error');
+      throw new Error('Network failed but online');
     }
 
     // ── STEP 4: Try offline.html
@@ -514,14 +558,16 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
         <button onclick="window.history.back()">Regresar</button>
       </div>
       <script>
-        // v233: Stop any Next.js router infinite loops
         window.__NEXT_DATA__ = { props: { pageProps: {} }, page: "${pathname}", query: {}, buildId: "offline", isFallback: false, gip: true };
         console.log("SW: Absolute fallback active.");
       </script>
     </body>
     </html>
   `, {
-    headers: { 'Content-Type': 'text/html; charset=utf-8' }
+    headers: { 
+      'Content-Type': 'text/html; charset=utf-8',
+      'X-SW-Fallback': 'absolute'
+    }
   });
 }
 

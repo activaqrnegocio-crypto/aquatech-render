@@ -76,28 +76,31 @@ export default function ProjectErrorFallback({
           <line x1="12" y1="16" x2="12.01" y2="16"></line>
         </svg>
       </div>
-      <h2 className="text-2xl font-bold text-white mb-3">Error de Conexión</h2>
+      <h2 className="text-2xl font-bold text-white mb-3">Error de Carga</h2>
       <p className="text-white/60 max-w-md mb-8">
-        No pudimos cargar la información del proyecto y no hay una versión guardada en tu dispositivo.
+        No pudimos conectar con el servidor para cargar este proyecto y no tienes una versión guardada en este dispositivo.
       </p>
       
       <div className="flex gap-4">
         <button
+          onClick={() => {
+            setLoading(true);
+            reset();
+          }}
+          className="px-6 py-3 rounded-xl font-bold text-[#0F172A] bg-primary hover:bg-primary/90 transition-colors shadow-lg shadow-primary/20"
+        >
+          Reintentar Carga
+        </button>
+        <button
           onClick={() => router.push('/admin/proyectos')}
           className="px-6 py-3 rounded-xl font-bold text-white/80 bg-white/5 hover:bg-white/10 transition-colors"
         >
-          Volver a Proyectos
-        </button>
-        <button
-          onClick={() => reset()}
-          className="px-6 py-3 rounded-xl font-bold text-[#0F172A] bg-primary hover:bg-primary/90 transition-colors"
-        >
-          Reintentar
+          Ver Lista de Proyectos
         </button>
       </div>
       
       <div className="mt-12 text-left bg-black/20 p-4 rounded-lg max-w-2xl w-full hidden md:block">
-        <p className="text-xs text-white/40 font-mono">Detalles técnicos (para soporte):</p>
+        <p className="text-xs text-white/40 font-mono">Detalles técnicos (Timeouts en móvil son comunes):</p>
         <p className="text-xs text-red-400/60 font-mono mt-1 break-all">{error.message}</p>
       </div>
     </div>

@@ -30,11 +30,12 @@ export default function GlobalSyncWorker() {
   const startBulkSync = async (force = false) => {
     if (!navigator.onLine || isBulkSyncing) return
     
-    // v226: Check Freshness before syncing (Avoid loops)
+    // v245: Check Freshness before syncing (Avoid loops)
+    // Reduced from 6h to 1h so new projects appear faster in offline cache
     if (!force) {
       const meta = await db.cacheMetadata.get('projects_bulk');
-      const SIX_HOURS = 6 * 60 * 60 * 1000;
-      if (meta && (Date.now() - meta.lastSync) < SIX_HOURS) {
+      const ONE_HOUR = 60 * 60 * 1000;
+      if (meta && (Date.now() - meta.lastSync) < ONE_HOUR) {
         console.log('[Sync] Data is fresh, skipping automatic bulk sync.');
         return;
       }
@@ -109,15 +110,26 @@ export default function GlobalSyncWorker() {
           router.prefetch(shellPath);
           fetch(shellPath, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
 
-          // Prefetch main sections only (max 3-4 requests)
+          // Prefetch main sections with BOTH HTML and RSC payloads for smooth navigation
+          // v244: Aggressive prefetch for "suave" offline experience
           const sections = isAdmin 
-            ? ['/admin/proyectos', '/admin/calendario', '/admin/inventario']
-            : ['/admin/operador', '/admin/inventario'];
+            ? ['/admin', '/admin/proyectos', '/admin/calendario', '/admin/inventario', '/admin/cotizaciones']
+            : ['/admin/operador', '/admin/inventario', '/admin/cotizaciones'];
 
           for (const section of sections) {
             router.prefetch(section);
+            
+            // 1. Fetch HTML Shell
             fetch(section, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
-            await new Promise(resolve => setTimeout(resolve, 200));
+            
+            // 2. Fetch RSC Payload (Crucial for soft navigation)
+            const rscUrl = section.includes('?') ? `${section}&_rsc=prefetch` : `${section}?_rsc=prefetch`;
+            fetch(rscUrl, { 
+              priority: 'low', 
+              headers: { 'RSC': '1', 'Next-Router-Prefetch': '1' } 
+            }).catch(() => {});
+
+            await new Promise(resolve => setTimeout(resolve, 300)); // Pacing to avoid network congestion
           }
         }
       }

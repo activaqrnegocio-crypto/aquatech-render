@@ -29,19 +29,20 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
       team: { include: { user: { select: { id: true, name: true, phone: true, role: true } } } },
       gallery: {
         orderBy: { createdAt: 'desc' },
-        take: 50,
+        take: 20,
         select: { id: true, url: true, filename: true, mimeType: true, category: true, createdAt: true }
       },
       chatMessages: {
         orderBy: { createdAt: 'desc' },
-        take: 50,
+        take: 20,
         include: { 
           user: { select: { id: true, name: true, role: true } }, 
           media: { select: { id: true, url: true, filename: true, mimeType: true } }
         }
       },
       expenses: {
-        orderBy: { date: 'desc' }
+        orderBy: { date: 'desc' },
+        take: 20
       }
     }
   })
