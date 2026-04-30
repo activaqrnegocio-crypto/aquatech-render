@@ -77,16 +77,20 @@ export default function ProjectExecutionClient({
   const [isFichaOpen, setIsFichaOpen] = useState(false)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const isSyncingRef = useRef(false)
+  const hasRecoveredRef = useRef(false)
 
   const GALLERY_LABEL = "Planos y Referencias"
 
   useEffect(() => {
     async function initProject() {
+      if (hasRecoveredRef.current) return;
+
       const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
       setIsOfflineMode(isOffline);
 
       // Check if we need to recover from cache
-      const needsCacheRecovery = (!project || Number(project?.id) !== idFromUrl) && idFromUrl > 0;
+      const isShell = project?.title?.includes('Cargando Proyecto Offline');
+      const needsCacheRecovery = (!project || Number(project?.id) !== idFromUrl || isShell) && idFromUrl > 0;
 
       if (needsCacheRecovery) {
         setIsSyncingOffline(true);
@@ -97,6 +101,7 @@ export default function ProjectExecutionClient({
             setLocalProject(cached);
             const chat = await db.chatCache.get(idFromUrl);
             setLocalChat(chat?.messages || []);
+            hasRecoveredRef.current = true; // MARK AS RECOVERED
           } else {
             console.warn('[Operator-Offline] Project not found in local cache:', idFromUrl);
           }
