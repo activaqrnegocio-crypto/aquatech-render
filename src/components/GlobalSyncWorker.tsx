@@ -27,27 +27,31 @@ export default function GlobalSyncWorker() {
     }
   }, [session?.user?.id, isOnline]);
 
-  const startBulkSync = async (force = false) => {
-    if (!navigator.onLine || isBulkSyncing) return
+  const startBulkSync = async (initialProjects: any[] = [], passedUserRole?: string, force = false) => {
+    if (syncLock.current) return;
     
-    // v245: Check Freshness before syncing (Avoid loops)
+    let projectsToProcess = [...initialProjects];
+    
+    setIsBulkSyncing(true)
+    if (!navigator.onLine) return
+
     const u = session?.user as any;
-    const userRole = (u?.role || 'OPERATOR').toUpperCase();
-    const isActuallyAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN', 'BOSS'].includes(userRole);
+    const userRole = (passedUserRole || u?.role || 'OPERATOR').toUpperCase();
+    const isAdmin = ['ADMIN', 'ADMINISTRADOR', 'ADMINISTRADORA', 'SUPERADMIN', 'BOSS'].includes(userRole);
     
     if (!force) {
       const meta = await db.cacheMetadata.get('projects_bulk');
-      // For Admins: 1h. For Operators: 10 mins (more aggressive to capture new assignments)
-      const FRESHNESS_WINDOW = isActuallyAdmin ? 60 * 60 * 1000 : 10 * 60 * 1000;
+      const FRESHNESS_WINDOW = isAdmin ? 60 * 60 * 1000 : 10 * 60 * 1000;
       
       if (meta && (Date.now() - meta.lastSync) < FRESHNESS_WINDOW) {
         console.log('[Sync] Data is fresh, skipping automatic bulk sync.');
+        setIsBulkSyncing(false);
         return;
       }
     }
 
-    setIsBulkSyncing(true)
     setBulkProgress({ current: 0, total: 0 })
+    syncLock.current = true;
     
     try {
       const u = session?.user as any;
@@ -59,15 +63,15 @@ export default function GlobalSyncWorker() {
       }))
 
       // 1. SYNC PROJECTS & CHATS (Smart Merge with Pacing)
-      let projects: any[] = [];
       const res = await fetch('/api/projects/bulk-cache?limit=500', { priority: 'low' })
       if (res.ok) {
-        projects = await res.json()
-        const totalToSync = projects.length
+        const fetchedProjects = await res.json()
+        projectsToProcess = fetchedProjects;
+        const totalToSync = projectsToProcess.length
         setBulkProgress({ current: 0, total: totalToSync })
         
-        for (let i = 0; i < projects.length; i++) {
-          const p = projects[i];
+        for (let i = 0; i < projectsToProcess.length; i++) {
+          const p = projectsToProcess[i];
           const existing = await db.projectsCache.get(p.id);
           
           const mergedProject = {
@@ -105,7 +109,7 @@ export default function GlobalSyncWorker() {
 
         // v252: INTELLIGENT PRE-FETCHING (Unified for all roles)
         // We prefetch universal shells and main sections with controlled pacing.
-        if (projects.length > 0) {
+        if (true) {
           window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
             detail: { message: `Preparando entorno offline inteligente...` }
           }))
@@ -135,12 +139,30 @@ export default function GlobalSyncWorker() {
           }
 
           // 3. Prioritize Top 5 Recent Projects (Instant Load)
-          const topProjects = projects.slice(0, 5);
+          // If the API returned nothing, use Dexie fallback to ensure we pre-cache SOMETHING
+          if (projectsToProcess.length === 0) {
+            projectsToProcess = await db.projectsCache
+              .orderBy('lastAccessedAt')
+              .reverse()
+              .limit(10)
+              .toArray();
+          }
+
+          const topProjects = projectsToProcess.slice(0, 10); // increased to 10 for better coverage
           for (const p of topProjects) {
+            // v253: Corrected path for operators (is /admin/operador/proyecto/[id])
             const projectPath = isAdmin ? `/admin/proyectos/${p.id}` : `/admin/operador/proyecto/${p.id}`;
+            
+            console.log(`[Sync] Paced pre-fetch for ${isAdmin ? 'Admin' : 'Operator'} project: ${p.id}`);
+            
             router.prefetch(projectPath);
+            // Fetch HTML Shell
             fetch(projectPath, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
-            await new Promise(r => setTimeout(r, 800)); // Careful pacing for deep pages
+            // Fetch RSC Payload
+            const rscUrl = `${projectPath}?_rsc=prefetch`;
+            fetch(rscUrl, { priority: 'low', headers: { 'RSC': '1', 'Next-Router-Prefetch': '1' } }).catch(() => {});
+            
+            await new Promise(r => setTimeout(r, 800)); // Careful pacing
           }
         }
       }
@@ -170,7 +192,7 @@ export default function GlobalSyncWorker() {
       }
 
       const now = Date.now()
-      const finalCount = projects.length;
+      const finalCount = projectsToProcess.length;
       
       await db.cacheMetadata.put({
         id: 'projects_bulk',

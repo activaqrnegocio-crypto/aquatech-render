@@ -21,7 +21,7 @@ const PRE_CACHE = [
   '/cotizacion.jpg'
 ];
 
-const VERSION = 'v251';
+const VERSION = 'v253';
 
 // v242: Helper to bypass Chrome's "redirected response" security block
 function cleanResponse(response) {
@@ -255,6 +255,7 @@ async function rscNetworkFirst(request) {
         if (shellMatch) return shellMatch;
       } else if (isOperatorProjectRsc) {
         console.log(`[SW ${VERSION}] RSC Cache miss for operator project, serving Universal RSC Shell...`);
+        // v253: Corrected operator shell path
         const shellMatch = await caches.match('/admin/operador/proyecto/offline-shell?_rsc=1', { ignoreVary: true }) || 
                            await caches.match('/admin/operador/proyecto/offline-shell', { ignoreVary: true, ignoreSearch: true });
         if (shellMatch) return shellMatch;
@@ -749,10 +750,13 @@ self.addEventListener('message', (event) => {
                continue;
             }
 
+            // v253: Skip data URIs to avoid console errors
+            if (url.startsWith('data:')) continue;
+
             const response = await fetchWithTimeout(new Request(url, { 
               credentials: 'same-origin',
               headers: { 'Cache-Control': 'no-cache', 'Accept': 'text/html' }
-            }), 12000); // Increased timeout
+            }), 15000); // Increased timeout for slow mobile networks
 
             if (response.ok) {
               const contentType = response.headers.get('Content-Type') || '';
@@ -768,13 +772,13 @@ self.addEventListener('message', (event) => {
                 // v227: Extract and pre-cache JS chunks found in the HTML
                 try {
                   const htmlText = await response.clone().text();
-                  // Find all _next/static/... references
-                  const chunkMatches = htmlText.matchAll(/\/_next\/static\/[^"'\s]+/g);
+                  // Find all _next/static/... references and catch more variants
+                  const chunkMatches = htmlText.matchAll(/\/(_next\/static\/[^"'\s>]+)/g);
                   const assetsCache = await caches.open(ASSETS_CACHE);
                   
                   for (const match of chunkMatches) {
-                    const chunkUrl = match[0];
-                    const fullChunkUrl = new URL(chunkUrl, self.location.origin).href;
+                    const chunkPath = match[1];
+                    const fullChunkUrl = new URL('/' + chunkPath, self.location.origin).href;
                     
                     // Small check to avoid re-fetching if already in assets cache
                     const hasChunk = await assetsCache.match(fullChunkUrl);
@@ -789,17 +793,17 @@ self.addEventListener('message', (event) => {
                   console.warn('[SW] Chunk extraction failed for:', url);
                 }
 
-                console.log('[SW] Warm-cached success (+chunks):', url);
+                console.log(`[SW ${VERSION}] Warm-cached success (+chunks):`, url);
               }
             }
             
-            // v223: Longer delay between requests (800ms)
-            await new Promise(r => setTimeout(r, 800));
+            // v223: Delay between requests to avoid saturation
+            await new Promise(r => setTimeout(r, 600)); 
           } catch (e) {
-            console.warn('[SW] Warm-cache failed for:', url);
+            console.warn(`[SW ${VERSION}] Warm-cache failed for:`, url);
           }
         }
-        console.log('[SW] Pre-caching sequence finished');
+        console.log(`[SW ${VERSION}] Pre-caching sequence finished`);
         trimCache(PAGES_CACHE, 400); 
       })
     );
