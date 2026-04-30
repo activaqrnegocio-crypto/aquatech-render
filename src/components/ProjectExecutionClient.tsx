@@ -31,8 +31,7 @@ export default function ProjectExecutionClient({
   clientName,
   projectAddress,
   projectCity,
-  panelBase = '/admin/operador',
-  isOfflineShell = false
+  panelBase = '/admin/operador'
 }: any) {
   const [isPending, startTransition] = useTransition()
   const searchParams = useSearchParams()
@@ -90,7 +89,7 @@ export default function ProjectExecutionClient({
       setIsOfflineMode(isOffline);
 
       // Check if we need to recover from cache
-      const isShell = isOfflineShell || project?.title?.includes('Cargando Proyecto Offline');
+      const isShell = project?.title?.includes('Cargando Proyecto Offline');
       const needsCacheRecovery = (!project || Number(project?.id) !== idFromUrl || isShell) && idFromUrl > 0;
 
       if (needsCacheRecovery) {
@@ -102,7 +101,7 @@ export default function ProjectExecutionClient({
             setLocalProject(cached);
             const chat = await db.chatCache.get(idFromUrl);
             setLocalChat(chat?.messages || []);
-            hasRecoveredRef.current = true; // Mark as done
+            hasRecoveredRef.current = true; // MARK AS RECOVERED
           } else {
             console.warn('[Operator-Offline] Project not found in local cache:', idFromUrl);
           }
@@ -124,7 +123,7 @@ export default function ProjectExecutionClient({
       }
     }
     initProject();
-  }, [project, idFromUrl, pathname, initialChat, isOfflineShell]);
+  }, [project, idFromUrl, pathname, initialChat]);
 
   useEffect(() => {
     setMounted(true)

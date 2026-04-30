@@ -1,5 +1,6 @@
-// Aquatech CRM — Custom Service Worker v260-FINAL-FIX
-// Added offline-shells to PRE_CACHE and fixed operator hydration
+// ============================================================
+// Aquatech CRM — Custom Service Worker v201-DEPLOY-FIX
+// CLEAN: Calendar removed, deploy pipeline fixed
 // ============================================================
 const STATIC_CACHE = 'aquatech-static';
 const PAGES_CACHE  = 'aquatech-pages';
@@ -17,12 +18,10 @@ const PRE_CACHE = [
   '/manifest.json',
   '/favicon.ico',
   '/logo.jpg',
-  '/cotizacion.jpg',
-  '/admin/operador/proyecto/offline-shell',
-  '/admin/proyectos/offline-shell'
+  '/cotizacion.jpg'
 ];
 
-const VERSION = 'v260';
+const VERSION = 'v246';
 
 // v242: Helper to bypass Chrome's "redirected response" security block
 function cleanResponse(response) {
