@@ -41,7 +41,7 @@ export default function OperatorDashboardClient({
   appointments: initialAppointments,
   userViews
 }: OperatorDashboardClientProps) {
-  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS'>(() => {
+  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS' | 'COTIZACIONES'>(() => {
     if (typeof window !== 'undefined') {
       return (sessionStorage.getItem('operator_active_tab') as any) || 'TAREAS'
     }
@@ -127,6 +127,7 @@ export default function OperatorDashboardClient({
   const [selectedTask, setSelectedTask] = useState<any>(null)
 
   const canManageCalendar = hasModuleAccess(user, 'calendario')
+  const canAccessQuotes = hasModuleAccess(user, 'cotizaciones')
 
   // 1. Initial hydration and offline cache for appointments
   useEffect(() => {
@@ -172,6 +173,11 @@ export default function OperatorDashboardClient({
     }))
     return [...merged, ...pendingMapped]
   }, [appointments, pendingTasksRaw, pendingStatusToggles, projects, user.id])
+
+  // 4. Pending Quotes (created offline)
+  const pendingQuotes = useLiveQuery(
+    () => db.outbox.where('type').equals('QUOTE').toArray()
+  ) || []
 
   const [pushDismissed, setPushDismissed] = useState(true)
   const { 
@@ -310,7 +316,10 @@ export default function OperatorDashboardClient({
             <p className="page-subtitle">Panel de Control de Operaciones</p>
           </div>
           <div style={{ display: 'flex', gap: '10px' }}>
-             <Link href="/admin/operador/nuevo" className="btn btn-secondary">
+             <Link href="/admin/cotizaciones/nuevo" className="btn btn-secondary" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                <Plus size={16} /> Cotizar
+             </Link>
+             <Link href="/admin/operador/nuevo" className="btn btn-primary" style={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', color: 'white' }}>
                Crear Proyecto
              </Link>
           </div>
@@ -420,9 +429,32 @@ export default function OperatorDashboardClient({
         >
            <ListTodo size={14} /> 
            <span style={{ whiteSpace: 'nowrap' }}>
-             Tareas <span className="d-none d-md-inline">de Hoy</span> ({todayTasks.length})
+             Tareas ({todayTasks.length})
            </span>
         </button>
+        
+        {canAccessQuotes && (
+          <button 
+            className={`tab ${activeTab === 'COTIZACIONES' ? 'active' : ''}`} 
+            onClick={() => setActiveTab('COTIZACIONES')}
+            style={{ 
+              flex: 1, 
+              padding: '10px 4px', 
+              fontSize: '0.75rem', 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'center',
+              gap: '6px',
+              position: 'relative'
+            }}
+          >
+             <MessageCircle size={14} /> 
+             <span style={{ whiteSpace: 'nowrap' }}>
+               Cotizar {pendingQuotes.length > 0 && <span className="tab-badge" style={{ position: 'static', marginLeft: '4px', transform: 'none' }}>{pendingQuotes.length}</span>}
+             </span>
+          </button>
+        )}
+
         <button 
           className={`tab ${activeTab === 'PROYECTOS' ? 'active' : ''}`} 
           onClick={() => setActiveTab('PROYECTOS')}
@@ -439,7 +471,7 @@ export default function OperatorDashboardClient({
         >
            <Briefcase size={14} /> 
            <span style={{ whiteSpace: 'nowrap' }}>
-             <span className="d-none d-md-inline">Mis</span> Proyectos ({projects.length})
+             Proyectos ({projects.length})
            </span>
            {totalUnread > 0 && (
              <span className="tab-badge" style={{ position: 'static', marginLeft: '4px', transform: 'none' }}>
@@ -512,6 +544,45 @@ export default function OperatorDashboardClient({
                 <p style={{ color: 'var(--text-muted)' }}>No tienes tareas agendadas para hoy.</p>
               </div>
             )}
+          </div>
+        )}
+
+        {activeTab === 'COTIZACIONES' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+            <div className="card" style={{ padding: '20px', textAlign: 'center', background: 'rgba(56, 189, 248, 0.05)', border: '1px dashed var(--primary)' }}>
+               <h3 style={{ margin: '0 0 10px 0', fontSize: '1.2rem' }}>Generar Nueva Propuesta</h3>
+               <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginBottom: '20px' }}>
+                 Crea cotizaciones rápidas para tus clientes incluso sin conexión.
+               </p>
+               <Link href="/admin/cotizaciones/nuevo" className="btn btn-primary" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 24px' }}>
+                 <Plus size={20} /> Nueva Cotización
+               </Link>
+            </div>
+
+            {pendingQuotes.length > 0 && (
+              <div style={{ marginTop: '20px' }}>
+                <h4 style={{ fontSize: '0.9rem', color: 'var(--warning)', marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <Clock size={16} /> Pendientes de Sincronización ({pendingQuotes.length})
+                </h4>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                  {pendingQuotes.map((q: any) => (
+                    <div key={q.id} className="card" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', opacity: 0.8 }}>
+                      <div>
+                        <h5 style={{ margin: 0 }}>Cotización Offline</h5>
+                        <p style={{ margin: 0, fontSize: '0.75rem', color: 'var(--text-muted)' }}>Creada: {new Date(q.timestamp).toLocaleString()}</p>
+                      </div>
+                      <span className="badge badge-warning">PENDIENTE</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div style={{ marginTop: '10px', textAlign: 'center' }}>
+               <Link href="/admin/cotizaciones" style={{ fontSize: '0.85rem', color: 'var(--primary)', textDecoration: 'none' }}>
+                 Ver historial completo de cotizaciones →
+               </Link>
+            </div>
           </div>
         )}
 
