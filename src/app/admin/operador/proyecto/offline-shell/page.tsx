@@ -3,12 +3,22 @@
 import { usePathname } from 'next/navigation'
 import ProjectExecutionClient from '@/components/ProjectExecutionClient'
 import { Suspense, useEffect, useState } from 'react'
+import { useSession } from 'next-auth/react'
 
 function OperatorOfflineShellContent() {
   const [idFromUrl, setIdFromUrl] = useState(0)
+  const { data: session } = useSession()
+  const userId = session?.user?.id ? Number(session.user.id) : 0
 
   useEffect(() => {
     if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const qId = params.get('id');
+      if (qId && /^\d+$/.test(qId)) {
+        setIdFromUrl(Number(qId));
+        return;
+      }
+
       const path = window.location.pathname;
       const match = path.match(/\/proyecto[s]?\/(\d+)/i);
       if (match) {
@@ -42,7 +52,7 @@ function OperatorOfflineShellContent() {
         initialChat={[]}
         activeRecord={null}
         expenses={[]}
-        userId={0}
+        userId={userId}
         clientName="Cargando..."
         projectAddress=""
         projectCity=""

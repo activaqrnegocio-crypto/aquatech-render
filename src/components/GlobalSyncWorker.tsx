@@ -33,7 +33,10 @@ export default function GlobalSyncWorker() {
     let projectsToProcess = [...initialProjects];
     
     setIsBulkSyncing(true)
-    if (!navigator.onLine) return
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      setIsBulkSyncing(false);
+      return;
+    }
 
     const u = session?.user as any;
     const userRole = (passedUserRole || u?.role || 'OPERATOR').toUpperCase();
@@ -486,11 +489,12 @@ export default function GlobalSyncWorker() {
     }
     
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && navigator.onLine) {
-        console.log('[Sync] App visible, triggering sync...')
-        syncOutbox()
-        // v237: Trigger bulk sync when returning to the app so data feels instantly fresh
-        startBulkSync()
+      if (document.visibilityState === 'visible' && typeof navigator !== 'undefined' && navigator.onLine) {
+        if (!syncLock.current) {
+          console.log('[Sync] App visible and online, checking for fresh data...');
+          syncOutbox()
+          startBulkSync()
+        }
       }
     }
     

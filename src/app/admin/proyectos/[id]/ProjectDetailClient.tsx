@@ -479,11 +479,13 @@ export default function ProjectDetailClient({ project: initialProject, available
         container.scrollTo({ top: container.scrollHeight, behavior: 'smooth' })
         setHasNewMessages(false)
         
-        fetch('/api/notifications/summary', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ projectId: project?.id })
-        }).catch(() => {})
+        if (typeof navigator !== 'undefined' && navigator.onLine) {
+          fetch('/api/notifications/summary', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ projectId: project?.id })
+          }).catch(() => {})
+        }
       }
     }
   }, [filteredChat.length, activeTab, project?.id])
@@ -499,6 +501,7 @@ export default function ProjectDetailClient({ project: initialProject, available
     if (!project?.id || Number(project.id) === 0) return // v231: Prevent calls for ID 0
 
     const markAsSeen = async () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
       try {
         await fetch('/api/notifications/summary', {
           method: 'POST',

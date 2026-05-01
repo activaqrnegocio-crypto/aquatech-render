@@ -75,13 +75,23 @@ export default function ProjectExecutionClient({
   // v253: Robust ID extraction
   const idFromUrl = useMemo(() => {
     if (typeof window === 'undefined') return 0;
+    
+    // 1. Try URL parameters (from search string)
+    const params = new URLSearchParams(window.location.search);
+    const qId = params.get('id');
+    if (qId && /^\d+$/.test(qId)) return Number(qId);
+
+    // 2. Try Regex from path
     const path = window.location.pathname;
     const match = path.match(/\/proyecto[s]?\/(\d+)/i);
     if (match) return Number(match[1]);
+
+    // 3. Last segment fallback
     const segments = path.split('/').filter(Boolean);
     const last = segments[segments.length - 1];
     return (last && /^\d+$/.test(last)) ? Number(last) : 0;
-  }, []);
+  }, [pathname, searchParams]); // v254: React to changes in path or params
+  
   const pendingItems = useLiveQuery(() => db.outbox.where('projectId').equals(idFromUrl).toArray(), [idFromUrl]) || []
 
   // Sync refs
@@ -171,20 +181,24 @@ export default function ProjectExecutionClient({
   // Initial project recovery effect — with polling for sync race conditions
   useEffect(() => {
     if (!mounted || !idFromUrl || idFromUrl <= 0) return;
-    if (hasRecoveredRef.current) return;
-
-    const needsCacheRecovery = !project || Number(project?.id) !== idFromUrl || project?.isSkeleton;
-    if (!needsCacheRecovery) return;
+    
+    // Si ya tenemos el proyecto correcto y no es un esqueleto, no hace falta recuperar nada
+    if (project && Number(project.id) === idFromUrl && !project.isSkeleton) {
+      setIsSyncingOffline(false);
+      hasRecoveredRef.current = true;
+      return;
+    }
 
     setIsSyncingOffline(true);
     let cancelled = false;
     let retries = 0;
-    const MAX_RETRIES = 8; // ~8 seconds total
+    const MAX_RETRIES = 10; // 10 segundos máximo
 
     async function tryRecover(): Promise<boolean> {
       try {
         const cached = await db.projectsCache.get(idFromUrl);
         if (cached && !cancelled) {
+          console.log('[Offline] Proyecto recuperado de IndexDB:', idFromUrl);
           setLocalProject(cached);
           const chat = await db.chatCache.get(idFromUrl);
           setLocalChat(chat?.messages || []);
@@ -194,12 +208,14 @@ export default function ProjectExecutionClient({
           return true;
         }
       } catch (err) {
-        console.warn('[ProjectClient] Dexie lookup error:', err);
+        console.warn('[ProjectClient] Error en Dexie:', err);
       }
       return false;
     }
 
-    // Polling: retry every second until data appears or we give up
+    // Intento inmediato
+    tryRecover();
+
     const pollInterval = setInterval(async () => {
       if (cancelled || hasRecoveredRef.current) {
         clearInterval(pollInterval);
@@ -216,15 +232,7 @@ export default function ProjectExecutionClient({
       }
     }, 1000);
 
-    // Immediate first try
-    tryRecover();
-
-    // Also listen for sync completion to retry immediately
-    const handleSyncDone = () => {
-      if (!hasRecoveredRef.current && !cancelled) {
-        tryRecover();
-      }
-    };
+    const handleSyncDone = () => { if (!hasRecoveredRef.current && !cancelled) tryRecover(); };
     window.addEventListener('bulk-cache-sync-finished', handleSyncDone);
 
     return () => {
@@ -232,7 +240,7 @@ export default function ProjectExecutionClient({
       clearInterval(pollInterval);
       window.removeEventListener('bulk-cache-sync-finished', handleSyncDone);
     };
-  }, [mounted, idFromUrl]);
+  }, [mounted, idFromUrl, project?.id, project?.isSkeleton]); // v255: Dependencias más precisas
 
   const userRole = session?.user?.role
   const isFieldStaff = userRole === 'OPERATOR' || userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA'
@@ -244,6 +252,7 @@ export default function ProjectExecutionClient({
   useEffect(() => {
     if (!idFromUrl) return; 
     const markAsSeen = async () => {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) return
       try {
         await fetch('/api/notifications/summary', {
           method: 'POST',
@@ -1579,7 +1588,7 @@ export default function ProjectExecutionClient({
         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
           <h2 style={{ fontSize: '1.2rem', fontWeight: 'bold', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{project.title}</h2>
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-            <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{clientName}</span>
+            <span style={{ color: 'var(--primary)', fontWeight: 'bold' }}>{project.clientName || project.client?.name || clientName}</span>
           </div>
         </div>
       </div>

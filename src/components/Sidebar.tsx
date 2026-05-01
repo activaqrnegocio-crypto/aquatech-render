@@ -165,14 +165,17 @@ export default function Sidebar() {
   // --- NOTIFICATION POLLING ---
   useEffect(() => {
     const fetchNotifications = async () => {
-      if (document.visibilityState !== 'visible') return
+      if (document.visibilityState !== 'visible' || (typeof navigator !== 'undefined' && !navigator.onLine)) return
       try {
         const resp = await fetch('/api/notifications/summary')
         if (resp.ok) {
           const data = await resp.json()
           setNotifications(data)
         }
-      } catch (e) { console.warn('Notification fetch failed', e) }
+      } catch (e) { 
+        // Silently fail if offline, only warn if we think we are online
+        if (navigator.onLine) console.warn('Notification fetch failed', e) 
+      }
     }
 
     fetchNotifications()
