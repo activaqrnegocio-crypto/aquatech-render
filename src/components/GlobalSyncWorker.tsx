@@ -41,10 +41,12 @@ export default function GlobalSyncWorker() {
     
     if (!force) {
       const meta = await db.cacheMetadata.get('projects_bulk');
-      const FRESHNESS_WINDOW = isAdmin ? 60 * 60 * 1000 : 10 * 60 * 1000;
+      // v257: Increased to 30 minutes for Operators to avoid "every time" feeling
+      const FRESHNESS_WINDOW = isAdmin ? 60 * 60 * 1000 : 30 * 60 * 1000;
       
       if (meta && (Date.now() - meta.lastSync) < FRESHNESS_WINDOW) {
-        console.log('[Sync] Data is fresh, skipping automatic bulk sync.');
+        const minsLeft = Math.round((FRESHNESS_WINDOW - (Date.now() - meta.lastSync)) / 60000);
+        console.log(`[Sync] Datos frescos. Siguiente sync automático en ${minsLeft} min.`);
         setIsBulkSyncing(false);
         return;
       }
@@ -107,6 +109,16 @@ export default function GlobalSyncWorker() {
           }
         }
 
+        // v257: SAVE METADATA HERE (After data, before expensive pre-fetches)
+        // This ensures that if the user closes the app during pre-fetching, 
+        // we don't restart the whole process immediately next time.
+        await db.cacheMetadata.put({
+          id: 'projects_bulk',
+          lastSync: Date.now(),
+          count: projectsToProcess.length,
+          status: 'idle'
+        })
+
         // v252: INTELLIGENT PRE-FETCHING (Unified for all roles)
         // We prefetch universal shells and main sections with controlled pacing.
         if (true) {
@@ -119,7 +131,7 @@ export default function GlobalSyncWorker() {
           for (const shell of shells) {
             router.prefetch(shell);
             fetch(shell, { priority: 'low', headers: { 'Accept': 'text/html' } }).catch(() => {});
-            await new Promise(r => setTimeout(r, 200));
+            await new Promise(r => setTimeout(r, 100)); // Optimized pacing
           }
 
           // 2. Main Sections (Role-Aware)
@@ -135,25 +147,30 @@ export default function GlobalSyncWorker() {
             const rscUrl = section.includes('?') ? `${section}&_rsc=prefetch` : `${section}?_rsc=prefetch`;
             fetch(rscUrl, { priority: 'low', headers: { 'RSC': '1', 'Next-Router-Prefetch': '1' } }).catch(() => {});
 
-            await new Promise(resolve => setTimeout(resolve, 500)); // Pacing
+            await new Promise(resolve => setTimeout(resolve, 300)); // Optimized pacing
           }
 
-          // 3. Prioritize Top 5 Recent Projects (Instant Load)
-          // If the API returned nothing, use Dexie fallback to ensure we pre-cache SOMETHING
+          // 3. Prioritize Top 30 Recent Projects (Full Offline Coverage)
+          // v254: Increased from 10 to 30 to ensure operators have ALL their projects cached
           if (projectsToProcess.length === 0) {
             projectsToProcess = await db.projectsCache
               .orderBy('lastAccessedAt')
               .reverse()
-              .limit(10)
+              .limit(30)
               .toArray();
           }
 
-          const topProjects = projectsToProcess.slice(0, 10); // increased to 10 for better coverage
-          for (const p of topProjects) {
-            // v253: Corrected path for operators (is /admin/operador/proyecto/[id])
+          const topProjects = projectsToProcess.slice(0, 30); 
+          for (let i = 0; i < topProjects.length; i++) {
+            const p = topProjects[i];
             const projectPath = isAdmin ? `/admin/proyectos/${p.id}` : `/admin/operador/proyecto/${p.id}`;
             
-            console.log(`[Sync] Paced pre-fetch for ${isAdmin ? 'Admin' : 'Operator'} project: ${p.id}`);
+            // v256: Added URL to logs for verification
+            const msg = `[Sync] Pre-cacheando ${i + 1}/${topProjects.length}: ${p.title || p.id} -> ${projectPath}`;
+            console.log(msg);
+            window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
+              detail: { message: msg }
+            }))
             
             router.prefetch(projectPath);
             // Fetch HTML Shell
@@ -162,7 +179,7 @@ export default function GlobalSyncWorker() {
             const rscUrl = `${projectPath}?_rsc=prefetch`;
             fetch(rscUrl, { priority: 'low', headers: { 'RSC': '1', 'Next-Router-Prefetch': '1' } }).catch(() => {});
             
-            await new Promise(r => setTimeout(r, 800)); // Careful pacing
+            await new Promise(r => setTimeout(r, 400)); // Optimized pacing for background sync
           }
         }
       }

@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { usePushNotifications } from '@/hooks/usePushNotifications'
 import { NotificationOnboarding } from '@/components/NotificationOnboarding'
 import { IosInstallBanner } from '@/components/IosInstallBanner'
+import ManualSyncButton from '@/components/ManualSyncButton'
 
 interface DashboardProps {
   stats: {
@@ -219,9 +220,12 @@ export default function DashboardClient({
   return (
     <div className="animate-fade-in">
       {/* Page Header */}
-      <div className="page-header">
-        <h1 className="page-title">Dashboard</h1>
-        <p className="page-subtitle">Resumen general de Aquatech</p>
+      <div className="page-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <h1 className="page-title">Dashboard</h1>
+          <p className="page-subtitle">Resumen general de Aquatech</p>
+        </div>
+        <ManualSyncButton />
       </div>
 
       {/* iOS Install Guide (Only if needed) */}

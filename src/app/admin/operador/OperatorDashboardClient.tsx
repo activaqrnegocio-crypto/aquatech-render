@@ -11,6 +11,7 @@ import { NotificationOnboarding } from '@/components/NotificationOnboarding'
 import { IosInstallBanner } from '@/components/IosInstallBanner'
 import { hasModuleAccess } from '@/lib/rbac'
 import ProjectCacheManager from '@/components/ProjectCacheManager'
+import ManualSyncButton from '@/components/ManualSyncButton'
 // Inline SVG icons to match project pattern
 const svgProps = (size: number, style?: React.CSSProperties, className?: string) => ({
   width: size, height: size, viewBox: '0 0 24 24', fill: 'none',
@@ -137,28 +138,9 @@ export default function OperatorDashboardClient({
   useEffect(() => {
     if (typeof window === 'undefined' || !navigator.onLine || !initialProjects.length) return;
 
-    const timer = setTimeout(async () => {
-      if (projectsFromCache === undefined) return; // Wait for Dexie to load
-      if (syncTriggeredRef.current) return; // Already triggered in this session
-
-      const missingProjects = initialProjects.filter(sp => 
-        !projectsFromCache.some(cp => cp.id === sp.id)
-      );
-
-      if (missingProjects.length > 0) {
-        console.log('[CacheGuard] Missing projects in local cache:', missingProjects.map(p => p.id));
-        syncTriggeredRef.current = true;
-        // Trigger a force sync to populate the cache
-        window.dispatchEvent(new CustomEvent('trigger-bulk-sync', { 
-          detail: { force: true } 
-        }));
-        
-        // Reset guard after 30s to allow retry if still missing
-        setTimeout(() => { syncTriggeredRef.current = false; }, 30000);
-      }
-    }, 2000); // 2s delay to let initial sync/load settle
-
-    return () => clearTimeout(timer);
+    // v258: Aggressive CacheGuard removed. 
+    // The GlobalSyncWorker already handles synchronization on mount and respects 
+    // the freshness window. This prevents the "sync on every navigation" loop.
   }, [initialProjects, projectsFromCache]);
 
   useEffect(() => {
@@ -341,7 +323,8 @@ export default function OperatorDashboardClient({
             <h1 className="page-title">Hola, {user.name.split(' ')[0]}</h1>
             <p className="page-subtitle">Panel de Control de Operaciones</p>
           </div>
-          <div style={{ display: 'flex', gap: '10px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+             <ManualSyncButton />
              <Link href="/admin/operador/nuevo" className="btn btn-secondary">
                Crear Proyecto
              </Link>
