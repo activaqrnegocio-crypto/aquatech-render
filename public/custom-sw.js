@@ -22,7 +22,7 @@ const PRE_CACHE = [
   '/cotizacion.jpg'
 ];
 
-const VERSION = 'v253';
+const VERSION = 'v254';
 
 // v242: Helper to bypass Chrome's "redirected response" security block
 function cleanResponse(response) {
@@ -967,71 +967,98 @@ async function processOutboxSync() {
             endpoint = '/api/projects';
           }
 
-          // Special handling for TASK with base64 media
-          if (item.type === 'TASK' && item.payload && (item.payload.attachments?.some(a => a.base64) || item.payload.attachmentLinks?.some(l => l.base64))) {
-            try {
-              console.log('[SW] Processing base64 media for TASK...');
-              const configResp = await fetch('/api/storage/config');
-              if (configResp.ok) {
-                const config = await configResp.json();
-                
-                // Helper to upload base64 to Bunny from SW
-                const uploadBase64 = async (base64, name) => {
-                  const parts = base64.split(';base64,');
-                  const contentType = parts[0].split(':')[1];
-                  const raw = atob(parts[1]);
-                  const rawLength = raw.length;
-                  const uInt8Array = new Uint8Array(rawLength);
-                  for (let i = 0; i < rawLength; ++i) { uInt8Array[i] = raw.charCodeAt(i); }
-                  const blob = new Blob([uInt8Array], { type: contentType });
-                  
-                  const timestamp = Date.now();
-                  const safeName = name.replace(/[^a-zA-Z0-9.-]/g, '_');
-                  const path = `/${config.storageZone}/appointments/${timestamp}-${safeName}`;
-                  const uploadUrl = `https://${config.storageHost}${path}`;
-                  
-                  const res = await fetch(uploadUrl, {
-                    method: 'PUT',
-                    headers: { 'AccessKey': config.accessKey, 'Content-Type': 'application/octet-stream' },
-                    body: blob
-                  });
-                  if (!res.ok) throw new Error('Bunny upload failed');
-                  return `${config.pullZoneUrl}/appointments/${timestamp}-${safeName}`;
-                };
+          // --- NEW: UNIFIED MEDIA SYNC LOGIC FOR SERVICE WORKER ---
+          const processMedia = async (item) => {
+            const configResp = await fetch('/api/storage/config');
+            if (!configResp.ok) return item.payload;
+            const config = await configResp.json();
+            const payload = { ...item.payload };
 
-                if (item.payload.attachments) {
-                  for (let a of item.payload.attachments) {
-                    if (a.base64) {
-                      a.data = await uploadBase64(a.base64, a.name);
-                      delete a.base64;
-                    }
-                  }
-                }
-                if (item.payload.attachmentLinks) {
-                  for (let l of item.payload.attachmentLinks) {
-                    if (l.base64) {
-                      l.url = await uploadBase64(l.base64, l.name);
-                      delete l.base64;
-                    }
+            const uploadBase64 = async (base64, name, subfolder = 'general') => {
+              try {
+                const parts = base64.split(';base64,');
+                const contentType = parts[0].split(':')[1];
+                const raw = atob(parts[1]);
+                const uInt8Array = new Uint8Array(raw.length);
+                for (let i = 0; i < raw.length; ++i) { uInt8Array[i] = raw.charCodeAt(i); }
+                const blob = new Blob([uInt8Array], { type: contentType });
+                
+                const timestamp = Date.now();
+                const safeName = (name || `file_${timestamp}`).replace(/[^a-zA-Z0-9.-]/g, '_');
+                const folderPath = item.projectId ? `projects/${item.projectId}` : subfolder;
+                const path = `/${config.storageZone}/${folderPath}/${timestamp}-${safeName}`;
+                const uploadUrl = `https://${config.storageHost}${path}`;
+                
+                const res = await fetch(uploadUrl, {
+                  method: 'PUT',
+                  headers: { 'AccessKey': config.accessKey, 'Content-Type': 'application/octet-stream' },
+                  body: blob
+                });
+                if (!res.ok) throw new Error('Bunny upload failed');
+                return `${config.pullZoneUrl}/${folderPath}/${timestamp}-${safeName}`;
+              } catch (e) {
+                console.error('[SW] Upload failed:', e);
+                return null;
+              }
+            };
+
+            // 1. Handle MESSAGE / MEDIA_UPLOAD
+            if ((item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD') && payload.media?.base64) {
+              const url = await uploadBase64(payload.media.base64, payload.media.filename, 'messages');
+              if (url) {
+                payload.media.url = url;
+                delete payload.media.base64;
+              }
+            }
+
+            // 2. Handle EXPENSE
+            if (item.type === 'EXPENSE' && payload.receiptPhoto?.startsWith('data:')) {
+              const url = await uploadBase64(payload.receiptPhoto, 'receipt.jpg', 'expenses');
+              if (url) payload.receiptPhoto = url;
+            }
+
+            // 3. Handle GALLERY_UPLOAD
+            if (item.type === 'GALLERY_UPLOAD' && payload.url?.startsWith('data:')) {
+              const url = await uploadBase64(payload.url, payload.filename || 'gallery_item.jpg', 'gallery');
+              if (url) payload.url = url;
+            }
+
+            // 4. Handle TASK (Attachments & Links)
+            if (item.type === 'TASK') {
+              if (payload.attachments) {
+                for (let a of payload.attachments) {
+                  if (a.base64) {
+                    const url = await uploadBase64(a.base64, a.name, 'appointments');
+                    if (url) { a.data = url; delete a.base64; }
                   }
                 }
               }
-            } catch (mediaErr) {
-              console.error('[SW] Media sync failed, sending without media or retrying', mediaErr);
+              if (payload.attachmentLinks) {
+                for (let l of payload.attachmentLinks) {
+                  if (l.base64) {
+                    const url = await uploadBase64(l.base64, l.name, 'appointments');
+                    if (url) { l.url = url; delete l.base64; }
+                  }
+                }
+              }
             }
-          }
+
+            return payload;
+          };
+
+          const finalPayload = await processMedia(item);
 
           if (endpoint) {
             const res = await fetch(endpoint, {
               method,
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ 
-                ...item.payload, 
+                ...finalPayload, 
                 lat: item.lat, 
                 lng: item.lng, 
                 createdAt: new Date(item.timestamp).toISOString(),
                 isOfflineSync: true,
-                isNew: item.payload.isNew // Carry over the flag for the API
+                isNew: finalPayload.isNew // Carry over the flag for the API
               })
             });
 

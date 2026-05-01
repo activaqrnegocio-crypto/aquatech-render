@@ -190,8 +190,8 @@ export async function POST(request: Request) {
       }
     }
 
-    // Iniciar notificaciones sin esperar
-    sendNotifications()
+    // Iniciar notificaciones esperando a que terminen (necesario en serverless)
+    await sendNotifications()
 
     return NextResponse.json(results.length === 1 ? results[0] : results, { status: 201 })
   } catch (error) {
