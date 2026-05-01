@@ -169,17 +169,22 @@ export default function AdminCalendarClient({
         })
         setIsModalOpen(false)
         
-        // Register background sync if available
-        if ('serviceWorker' in navigator && 'SyncManager' in window) {
-          try {
-            const reg = await navigator.serviceWorker.ready;
-            await (reg as any).sync.register('sync-outbox');
-          } catch (e) {
-            console.warn('Sync registration failed:', e);
+        // v268: Aggressive Background Sync Trigger
+        if ('serviceWorker' in navigator) {
+          const reg = await navigator.serviceWorker.ready;
+          
+          // 1. Register standard background sync (for OS wakeup)
+          if ('sync' in reg) {
+            try { await (reg as any).sync.register('sync-outbox'); } catch(e){}
+          }
+          
+          // 2. Immediate "Kick" to Service Worker (Force upload before app suspends)
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
           }
         }
 
-        alert('Tarea guardada localmente. Se sincronizará y notificará a los operadores cuando vuelvas a tener internet.')
+        alert('📅 Tarea guardada localmente. El sistema la subirá en segundo plano automáticamente.')
         return
       }
 

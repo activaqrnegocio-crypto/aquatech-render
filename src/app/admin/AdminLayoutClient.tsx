@@ -55,9 +55,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
       <ServiceWorkerRegistration />
       <GlobalSyncWorker />
       <OfflinePrefetcher urls={pagesToPrefetch} />
-      <Suspense fallback={<div style={{ width: '260px', height: '100vh', background: 'var(--bg-card)' }} />}>
-        <Sidebar />
-      </Suspense>
+      <Sidebar />
       <main className="admin-content">
         {!isOnline && (
           <div style={{

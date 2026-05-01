@@ -3,8 +3,9 @@
 import { usePathname, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 import { signOut, useSession } from 'next-auth/react'
-import { useEffect, useState } from 'react'
+import { useEffect, useState, useMemo } from 'react'
 import { hasModuleAccess } from '@/lib/rbac'
+import { useLocalStorage } from '@/hooks/useLocalStorage'
 
 type NavItem = {
   label: string
@@ -146,12 +147,9 @@ const adminNavItems: NavSection[] = [
   },
 ]
 
-import { useLocalStorage } from '@/hooks/useLocalStorage'
-
 export default function Sidebar() {
   const pathname = usePathname()
   const searchParams = useSearchParams()
-  const chatView = searchParams.get('view') === 'chat' || pathname.includes('/proyecto/') && (pathname.endsWith('/chat') || searchParams.get('view') === 'chat')
   const { data: session, status } = useSession()
   const [mobileOpen, setMobileOpen] = useState(false)
   const [openMenus, setOpenMenus] = useLocalStorage<Record<string, boolean>>('sidebar_open_menus', {
@@ -162,7 +160,170 @@ export default function Sidebar() {
   const [offlineUser, setOfflineUser] = useState<any>(null)
   const [notifications, setNotifications] = useState<any>({ totalUnread: 0, byProject: {} })
 
-  // --- NOTIFICATION POLLING ---
+  // Hooks para datos de sesión y permisos (Siempre al principio)
+  const effectiveRole = useMemo(() => String(session?.user?.role || offlineUser?.role || 'OPERATOR').toUpperCase(), [session, offlineUser])
+  const effectiveName = useMemo(() => session?.user?.name || offlineUser?.name || 'Usuario', [session, offlineUser])
+  const isAdmin = useMemo(() => effectiveRole.includes('ADMIN') || effectiveRole === 'SUPERADMIN', [effectiveRole])
+  const isSubcontratista = useMemo(() => effectiveRole === 'SUBCONTRATISTA', [effectiveRole])
+  const userPermissions = useMemo(() => (session?.user as any)?.permissions || offlineUser?.permissions || null, [session, offlineUser])
+  
+  const userInitials = useMemo(() => effectiveName
+    ?.split(' ')
+    .map((n: any) => n[0])
+    .join('')
+    .slice(0, 2)
+    .toUpperCase() || 'AD', [effectiveName])
+
+  const projectIdMatch = pathname.match(/\/admin\/(operador|subcontratista)\/proyecto\/(\d+)/)
+  const projectId = projectIdMatch ? projectIdMatch[2] : null
+
+  const navItems = useMemo(() => {
+    const panelBase = isSubcontratista ? '/admin/subcontratista' : '/admin/operador'
+    const currentProjectId = projectId
+
+    if (isAdmin) {
+      return adminNavItems.map(section => ({
+        ...section,
+        items: section.items.filter(item => {
+          const moduleSlug = item.label.toLowerCase().replace(/\s+/g, '_')
+          const slugMap: Record<string, string> = {
+            'dashboard': 'dashboard',
+            'marketing': 'marketing',
+            'blog': 'blog',
+            'calendario_maestro': 'calendario',
+            'proyectos': 'proyectos',
+            'cotizaciones': 'cotizaciones',
+            'inventario': 'inventario',
+            'recursos': 'recursos',
+            'conectar_telefono': 'whatsapp'
+          }
+          const slug = slugMap[moduleSlug] || moduleSlug
+          if (slug === 'whatsapp' && effectiveRole !== 'SUPERADMIN') return false
+          return hasModuleAccess(userPermissions, slug, effectiveRole)
+        })
+      })).filter(section => section.items.length > 0)
+    }
+
+    // Operator Logic
+    const dynamicOperatorNavItems: NavSection[] = [
+      {
+        section: 'Workspace',
+        items: [
+          {
+            label: 'Mis Proyectos',
+            href: panelBase,
+            icon: (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <rect x="14" y="14" width="7" height="7" rx="1" />
+              </svg>
+            ),
+          },
+          ...(currentProjectId ? [{
+            label: 'Proyecto Actual',
+            href: `${panelBase}/proyecto/${currentProjectId}`,
+            icon: (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" />
+              </svg>
+            ),
+            subItems: [
+              { label: 'Registros', href: `${panelBase}/proyecto/${currentProjectId}?view=records` },
+              { label: 'Chat', href: `${panelBase}/proyecto/${currentProjectId}?view=chat` },
+            ],
+          }] : []),
+        ],
+      },
+      ...(!isSubcontratista ? [{
+        section: 'Herramientas y Recursos',
+        items: [
+          {
+            label: 'Cotizaciones',
+            href: '/admin/cotizaciones',
+            icon: (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+                <path d="M14 2v6h6" />
+                <path d="M16 13H8" />
+                <path d="M16 17H8" />
+                <path d="M10 9H8" />
+              </svg>
+            ),
+          },
+          {
+            label: 'Inventario',
+            href: '/admin/inventario',
+            icon: (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z" />
+                <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
+              </svg>
+            ),
+          },
+          {
+            label: 'Recursos',
+            href: '/admin/recursos',
+            icon: (
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+                <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
+              </svg>
+            ),
+          },
+        ]
+      }] : [])
+    ]
+
+    const additionalAdminItemsReady = adminNavItems.flatMap(sec => sec.items).filter(item => {
+      const moduleSlug = item.label.toLowerCase().replace(/\s+/g, '_')
+      const slugMap: Record<string, string> = {
+        'dashboard': 'dashboard',
+        'marketing': 'marketing',
+        'blog': 'blog',
+        'calendario_maestro': 'calendario',
+        'proyectos': 'proyectos_admin'
+      }
+      const slug = slugMap[moduleSlug] || moduleSlug
+      if (['cotizaciones', 'inventario', 'recursos', 'conectar_telefono'].includes(slug)) return false;
+      return hasModuleAccess(userPermissions, slug, effectiveRole)
+    }).map(item => {
+      if (item.subItems) {
+         const newSubs = item.subItems.filter(sub => {
+           const l = sub.label.toLowerCase().replace(/\s+/g, '_')
+           const sSlug = l === 'gestión_de_equipo' ? 'equipo' : l;
+           return hasModuleAccess(userPermissions, sSlug, effectiveRole)
+         })
+         return { ...item, subItems: newSubs }
+      }
+      return item;
+    }).filter(item => item.label !== 'Proyectos' || (item.subItems && item.subItems.length > 0));
+
+    const finalOperatorNav = [...dynamicOperatorNavItems];
+    if (additionalAdminItemsReady.length > 0) {
+      finalOperatorNav.push({ section: 'MÓDULOS ADMINISTRATIVOS', items: additionalAdminItemsReady });
+    }
+
+    return finalOperatorNav.map(section => ({
+      ...section,
+      items: section.items.filter(item => {
+        if (additionalAdminItemsReady.some(a => a.label === item.label)) return true;
+        const moduleSlug = item.label.toLowerCase().replace(/\s+/g, '_')
+        const slugMap: Record<string, string> = {
+          'mis_proyectos': 'proyectos',
+          'proyecto_actual': 'proyectos',
+          'cotizaciones': 'cotizaciones',
+          'inventario': 'inventario',
+          'recursos': 'recursos'
+        }
+        const slug = slugMap[moduleSlug] || moduleSlug
+        return hasModuleAccess(userPermissions, slug, effectiveRole)
+      })
+    })).filter(section => section.items.length > 0)
+  }, [session, offlineUser, pathname, effectiveRole, isSubcontratista, isAdmin, userPermissions, projectId])
+
+  // Efectos (Después de useMemo)
   useEffect(() => {
     const fetchNotifications = async () => {
       if (document.visibilityState !== 'visible' || (typeof navigator !== 'undefined' && !navigator.onLine)) return
@@ -173,13 +334,12 @@ export default function Sidebar() {
           setNotifications(data)
         }
       } catch (e) { 
-        // Silently fail if offline, only warn if we think we are online
         if (navigator.onLine) console.warn('Notification fetch failed', e) 
       }
     }
 
     fetchNotifications()
-    const interval = setInterval(fetchNotifications, 60000) // v267: 60s to reduce server load and navigation jank
+    const interval = setInterval(fetchNotifications, 60000)
     return () => clearInterval(interval)
   }, [status])
   
@@ -195,47 +355,31 @@ export default function Sidebar() {
 
   const handleLogout = async () => {
     try {
-      // Unsubscribe from push if active
       if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
-        try {
-          const reg = await navigator.serviceWorker.ready
-          const sub = await reg.pushManager.getSubscription()
-          if (sub) await sub.unsubscribe()
-        } catch (e) {}
+        const reg = await navigator.serviceWorker.ready
+        const sub = await reg.pushManager.getSubscription()
+        if (sub) await sub.unsubscribe()
       }
-      
-      // Clear offline db immediately
       import('dexie').then((m) => {
         const Dexie = m.default;
         Dexie.delete('AquatechOfflineDB').catch(() => {})
       }).catch(() => {})
-      
       localStorage.clear()
       sessionStorage.clear()
-
-      // Flush Service Worker Caches selectively
       if (typeof window !== 'undefined' && 'caches' in window) {
-        try {
-          const names = await caches.keys()
-          for (const name of names) {
-            // Keep the static shell and fonts so the app structure remains available
-            // but clear everything else (private pages, assets, RSC, etc.)
-            if (name !== 'aquatech-static' && name !== 'aquatech-fonts') {
-              await caches.delete(name)
-            }
-          }
-        } catch (e) {}
+        const names = await caches.keys()
+        for (const name of names) {
+          if (name !== 'aquatech-static' && name !== 'aquatech-fonts') await caches.delete(name)
+        }
       }
-      
-      // Attempt NextAuth signout (will fail if fully offline, but that's fine)
       await signOut({ redirect: false })
     } catch (e) {
       console.warn('Offline logout fallback', e)
     }
-    
-    // Force hard reload to login page
     window.location.href = '/admin/login'
   }
+
+  // Early Return (Después de todos los Hooks)
   if (status === 'loading' && !offlineUser) {
     return (
       <>
@@ -261,183 +405,6 @@ export default function Sidebar() {
     )
   }
 
-  const effectiveRole = String(session?.user?.role || offlineUser?.role || 'OPERATOR').toUpperCase()
-  const effectiveName = session?.user?.name || offlineUser?.name || 'Usuario'
-  const isAdmin = effectiveRole.includes('ADMIN') || effectiveRole === 'SUPERADMIN'
-  const isSuperAdmin = effectiveRole === 'SUPERADMIN'
-  const isSubcontratista = effectiveRole === 'SUBCONTRATISTA'
-  const userPermissions = (session?.user as any)?.permissions || offlineUser?.permissions || null
-
-  const projectIdMatch = pathname.match(/\/admin\/(operador|subcontratista)\/proyecto\/(\d+)/)
-  const projectId = projectIdMatch ? projectIdMatch[2] : null
-  const panelBase = isSubcontratista ? '/admin/subcontratista' : '/admin/operador'
-
-  const dynamicOperatorNavItems: NavSection[] = [
-    {
-      section: 'Workspace',
-      items: [
-        {
-          label: 'Mis Proyectos',
-          href: panelBase,
-          icon: (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="3" y="3" width="7" height="7" rx="1" />
-              <rect x="14" y="3" width="7" height="7" rx="1" />
-              <rect x="3" y="14" width="7" height="7" rx="1" />
-              <rect x="14" y="14" width="7" height="7" rx="1" />
-            </svg>
-          ),
-        },
-        ...(projectId ? [{
-          label: 'Proyecto Actual',
-          href: `${panelBase}/proyecto/${projectId}`,
-          icon: (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z" />
-            </svg>
-          ),
-          subItems: [
-            { label: 'Registros', href: `${panelBase}/proyecto/${projectId}?view=records` },
-            { label: 'Chat', href: `${panelBase}/proyecto/${projectId}?view=chat` },
-          ],
-        }] : []),
-      ],
-    },
-    ...(!isSubcontratista ? [{
-      section: 'Herramientas y Recursos',
-      items: [
-
-        {
-          label: 'Cotizaciones',
-          href: '/admin/cotizaciones',
-          icon: (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
-              <path d="M14 2v6h6" />
-              <path d="M16 13H8" />
-              <path d="M16 17H8" />
-              <path d="M10 9H8" />
-            </svg>
-          ),
-        },
-        {
-          label: 'Inventario',
-          href: '/admin/inventario',
-          icon: (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z" />
-              <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16" />
-            </svg>
-          ),
-        },
-        {
-          label: 'Recursos',
-          href: '/admin/recursos',
-          icon: (
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
-              <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" />
-            </svg>
-          ),
-        },
-      ]
-    }] : [])
-  ]
-
-  const filteredAdminNavItems = adminNavItems.map(section => ({
-    ...section,
-    items: section.items.filter(item => {
-      const moduleSlug = item.label.toLowerCase().replace(/\s+/g, '_')
-      
-      const slugMap: Record<string, string> = {
-        'dashboard': 'dashboard',
-        'marketing': 'marketing',
-        'blog': 'blog',
-        'calendario_maestro': 'calendario',
-        'proyectos': 'proyectos',
-        'cotizaciones': 'cotizaciones',
-        'inventario': 'inventario',
-        'recursos': 'recursos',
-        'conectar_telefono': 'whatsapp'
-      }
-      
-      const slug = slugMap[moduleSlug] || moduleSlug
-      
-      if (slug === 'whatsapp' && effectiveRole !== 'SUPERADMIN') {
-        return false
-      }
-      
-      if (!hasModuleAccess(userPermissions, slug, effectiveRole)) {
-        return false
-      }
-
-      return true
-    })
-  })).filter(section => section.items.length > 0)
-
-  const additionalAdminItems = adminNavItems.flatMap(sec => sec.items).filter(item => {
-    const moduleSlug = item.label.toLowerCase().replace(/\s+/g, '_')
-    const slugMap: Record<string, string> = {
-      'dashboard': 'dashboard',
-      'marketing': 'marketing',
-      'blog': 'blog',
-      'calendario_maestro': 'calendario',
-      'proyectos': 'proyectos_admin'
-    }
-    const slug = slugMap[moduleSlug] || moduleSlug
-    
-    // Skip operator base modules
-    if (['cotizaciones', 'inventario', 'recursos', 'conectar_telefono'].includes(slug)) return false;
-    
-    return hasModuleAccess(userPermissions, slug, effectiveRole)
-  });
-
-  const additionalAdminItemsReady = additionalAdminItems.map(item => {
-    if (item.subItems) {
-       const newSubs = item.subItems.filter(sub => {
-         const l = sub.label.toLowerCase().replace(/\s+/g, '_')
-         const sSlug = l === 'gestión_de_equipo' ? 'equipo' : l;
-         return hasModuleAccess(userPermissions, sSlug, effectiveRole)
-       })
-       return { ...item, subItems: newSubs }
-    }
-    return item;
-  }).filter(item => {
-    if (item.label === 'Proyectos' && (!item.subItems || item.subItems.length === 0)) {
-        // Operators have their own "Mis Proyectos", hide default admin "Proyectos" unless it has allowed subItems (like Reportes, Equipo)
-        return false; 
-    }
-    return true;
-  });
-
-  const operatorWithExtras = [...dynamicOperatorNavItems];
-  if (additionalAdminItemsReady.length > 0) {
-    operatorWithExtras.push({
-      section: 'MÓDULOS ADMINISTRATIVOS',
-      items: additionalAdminItemsReady
-    });
-  }
-
-  const filteredOperatorNavItems = operatorWithExtras.map(section => ({
-    ...section,
-    items: section.items.filter(item => {
-      if (additionalAdminItemsReady.includes(item)) return true;
-
-      const moduleSlug = item.label.toLowerCase().replace(/\s+/g, '_')
-      const slugMap: Record<string, string> = {
-        'mis_proyectos': 'proyectos',
-        'proyecto_actual': 'proyectos',
-        'cotizaciones': 'cotizaciones',
-        'inventario': 'inventario',
-        'recursos': 'recursos'
-      }
-      const slug = slugMap[moduleSlug] || moduleSlug
-      return hasModuleAccess(userPermissions, slug, effectiveRole)
-    })
-  })).filter(section => section.items.length > 0)
-
-  const navItems = isAdmin ? filteredAdminNavItems : filteredOperatorNavItems as NavSection[]
-
   const isActive = (href: string) => {
     if (href === '/admin') return pathname === '/admin'
     return pathname === href || pathname.startsWith(href + '/')
@@ -454,16 +421,8 @@ export default function Sidebar() {
     setOpenMenus(prev => ({ ...prev, [label]: !prev[label] }))
   }
 
-  const userInitials = effectiveName
-    ?.split(' ')
-    .map((n: any) => n[0])
-    .join('')
-    .slice(0, 2)
-    .toUpperCase() || 'AD'
-
   return (
     <>
-      {/* Mobile Header */}
       <div className="mobile-header">
         <button className="mobile-header-menu" onClick={() => setMobileOpen(true)}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
@@ -472,25 +431,16 @@ export default function Sidebar() {
             <line x1="3" y1="18" x2="21" y2="18" />
           </svg>
         </button>
-        <div className="mobile-header-title">
-          A<span>Q</span>UATECH
-        </div>
+        <div className="mobile-header-title">A<span>Q</span>UATECH</div>
       </div>
 
-      {/* Overlay */}
-      <div
-        className={`sidebar-overlay ${mobileOpen ? 'open' : ''}`}
-        onClick={() => setMobileOpen(false)}
-      />
+      <div className={`sidebar-overlay ${mobileOpen ? 'open' : ''}`} onClick={() => setMobileOpen(false)} />
 
-      {/* Sidebar */}
       <aside className={`sidebar ${mobileOpen ? 'open' : ''}`}>
         <div className="sidebar-brand">
           <img src="/logo.jpg" alt="Aquatech" className="sidebar-brand-logo" />
           <div>
-            <div className="sidebar-brand-text">
-              A<span>Q</span>UATECH
-            </div>
+            <div className="sidebar-brand-text">A<span>Q</span>UATECH</div>
             <span className="sidebar-brand-sub">innovación hidráulica</span>
           </div>
         </div>
@@ -514,9 +464,6 @@ export default function Sidebar() {
                           {item.label === 'Proyectos' && (notifications?.totalUnread || 0) > 0 && (
                             <span className="notification-badge">{notifications.totalUnread}</span>
                           )}
-                          {item.label === 'Mis Proyectos' && (notifications?.totalUnread || 0) > 0 && (
-                            <span className="notification-badge">{notifications.totalUnread}</span>
-                          )}
                         </div>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ transform: openMenus[item.label] ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }}>
                           <polyline points="6 9 12 15 18 9"/>
@@ -535,9 +482,6 @@ export default function Sidebar() {
                               style={{ padding: '8px 12px', fontSize: '0.85rem' }}
                             >
                               {subItem.label}
-                              {subItem.label === 'Chat' && projectId && (notifications?.byProject?.[projectId] || 0) > 0 && (
-                                <span className="notification-badge small">{notifications.byProject[projectId]}</span>
-                              )}
                             </Link>
                           ))}
                         </div>
@@ -594,7 +538,6 @@ export default function Sidebar() {
         </div>
       </aside>
 
-      {/* Mobile Bottom Nav */}
       <nav className="mobile-nav">
         {isAdmin ? (
           <>
@@ -602,9 +545,6 @@ export default function Sidebar() {
               { label: 'Dashboard', href: '/admin', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
               { label: 'Proyectos', href: '/admin/proyectos', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 20a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V8l-7 5V8l-7 5V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2Z"/></svg> },
               { label: 'Inventario', href: '/admin/inventario', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> },
-              ...(effectiveRole === 'SUPERADMIN' ? [
-                { label: 'Marketing', href: '/admin/marketing', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="20 12 20 22 4 22 4 12" /><rect x="2" y="7" width="20" height="5" /><line x1="12" y1="22" x2="12" y2="7" /><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" /></svg> },
-              ] : []),
               { label: 'Cotizaciones', href: '/admin/cotizaciones', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg> },
             ].map((item) => (
               <Link
@@ -617,38 +557,12 @@ export default function Sidebar() {
                 {item.label}
               </Link>
             ))}
-            <button className="mobile-nav-item" onClick={handleLogout} style={{ background: 'none', border: 'none' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-              Salir
-            </button>
-          </>
-        ) : isSubcontratista ? (
-          <>
-            {[
-              { label: 'Mis Trabajos', href: '/admin/subcontratista', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
-            ].map((item) => (
-              <Link
-                key={item.href}
-                href={item.href}
-                prefetch={true}
-                className={`mobile-nav-item ${isActive(item.href) ? 'active' : ''}`}
-              >
-                {item.icon}
-                {item.label}
-              </Link>
-            ))}
-            <button className="mobile-nav-item" onClick={handleLogout} style={{ background: 'none', border: 'none' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-              Salir
-            </button>
           </>
         ) : (
           <>
             {[
               { label: 'Mis Proyectos', href: '/admin/operador', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/></svg> },
-              ...(hasModuleAccess(userPermissions, 'calendario', effectiveRole) ? [
-                { label: 'Calendario', href: '/admin/calendario', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg> }
-              ] : []),
+              { label: 'Calendario', href: hasModuleAccess(userPermissions, 'calendario', effectiveRole) ? '/admin/calendario' : '/admin/operador?tab=calendario', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" /><path d="M8 14h.01" /><path d="M12 14h.01" /><path d="M16 14h.01" /><path d="M8 18h.01" /><path d="M12 18h.01" /><path d="M16 18h.01" /></svg> },
               { label: 'Inventario', href: '/admin/inventario', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> },
               { label: 'Cotizaciones', href: '/admin/cotizaciones', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg> },
             ].map((item) => (
@@ -662,12 +576,12 @@ export default function Sidebar() {
                 {item.label}
               </Link>
             ))}
-            <button className="mobile-nav-item" onClick={handleLogout} style={{ background: 'none', border: 'none' }}>
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
-              Salir
-            </button>
           </>
         )}
+        <button className="mobile-nav-item" onClick={handleLogout} style={{ background: 'none', border: 'none' }}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
+          Salir
+        </button>
       </nav>
     </>
   )

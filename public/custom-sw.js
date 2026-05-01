@@ -1,6 +1,6 @@
 // ============================================================
-// Aquatech CRM — Custom Service Worker v267
-// v267: MessageChannel reply on PRECACHE_URLS for sequential chunk caching
+// Aquatech CRM — Custom Service Worker v269
+// v269: Added /admin/calendario to critical fast-track routes
 // ============================================================
 const STATIC_CACHE = 'aquatech-static';
 const PAGES_CACHE  = 'aquatech-pages';
@@ -22,7 +22,7 @@ const PRE_CACHE = [
   '/cotizacion.jpg'
 ];
 
-const VERSION = 'v267';
+const VERSION = 'v270';
 
 // v242: Helper to bypass Chrome's "redirected response" security block
 function cleanResponse(response) {
@@ -228,7 +228,8 @@ async function rscNetworkFirst(request) {
   const cacheKey = url.toString();
 
   try {
-    const response = await fetchWithTimeout(request.clone(), 10000);
+    // v268: Reduced RSC timeout to 8s for snappier mobile feel
+    const response = await fetchWithTimeout(request.clone(), 8000);
     if (response.ok && !response.redirected) {
       const cache = await caches.open(RSC_CACHE);
       cache.put(cacheKey, response.clone());
@@ -244,9 +245,11 @@ async function rscNetworkFirst(request) {
     if (cached) return cached;
     
     // 2. v225: Universal RSC Shell for Projects
-    // Instead of random project data, we serve the lightweight official shell
+    // v268: Improved regex to catch all operator project variants
     const isAdminProjectRsc = url.pathname.match(/\/admin\/proyectos\/\d+/);
-    const isOperatorProjectRsc = url.pathname.match(/\/admin\/operador\/proyecto\/\d+/) || url.pathname.match(/\/operador\/proyecto\/\d+/);
+    const isOperatorProjectRsc = url.pathname.match(/\/admin\/operador\/proyecto\/\d+/) || 
+                                 url.pathname.match(/\/operador\/proyecto\/\d+/) ||
+                                 url.pathname.includes('/operador/proyecto/');
 
     if (isAdminProjectRsc || isOperatorProjectRsc) {
       const rscCache = await caches.open(RSC_CACHE);
@@ -281,7 +284,7 @@ async function rscStaleWhileRevalidate(request) {
   const cache = await caches.open(RSC_CACHE);
   const cached = await cache.match(cacheKey);
   
-  const fetchPromise = fetchWithTimeout(request.clone(), 10000).then(async (response) => {
+  const fetchPromise = fetchWithTimeout(request.clone(), 8000).then(async (response) => {
     if (response.ok && !response.redirected) {
       const cacheToUpdate = await caches.open(RSC_CACHE);
       cacheToUpdate.put(cacheKey, response.clone());
@@ -320,17 +323,15 @@ async function navigationHandler(request) {
       return fetch(request);
     }
 
-    console.log(`[SW ${VERSION}] Navigation:`, url.pathname);
-
-    // ── STEP 1: Check cache first for instant offline response
-    // v238: For projects, if we are offline, we PREFER the shell even if we have a full page cached.
-    // This prevents hydration errors from 'real' pages that might be missing chunks.
+    // v269: Added /admin/calendario to the "force shell" list for faster mobile entry.
     const isProject = url.pathname.includes('/proyecto/') || url.pathname.includes('/proyectos/');
+    const isOperatorDashboard = url.pathname === '/admin/operador' || url.pathname === '/admin/operador/';
+    const isCalendar = url.pathname === '/admin/calendario' || url.pathname === '/admin/calendario/';
     let cached = null;
     
-    if (isProject && !navigator.onLine) {
-      console.log(`[SW ${VERSION}] Project detected offline, forcing shell to avoid chunk errors`);
-      cached = await findCachedPage(request.url, url.pathname, true); // true = force shell
+    if (isProject || isOperatorDashboard || isCalendar) {
+      console.log(`[SW ${VERSION}] Fast-track route detected, forcing shell/cache for instant load...`);
+      cached = await findCachedPage(request.url, url.pathname, true); 
     } else {
       cached = await findCachedPage(request.url, url.pathname);
     }
@@ -358,9 +359,9 @@ async function navigationHandler(request) {
       return cleanResponse(cached);
     }
 
-    // ── STEP 2: Cache miss → try network with RELAXED timeout (15s)
+    // ── STEP 2: Cache miss → try network with tighter timeout for mobile (v268: 8s)
     try {
-      const response = await fetchWithTimeout(request.clone(), 15000);
+      const response = await fetchWithTimeout(request.clone(), 8000);
       if (response.ok) {
         const contentType = response.headers.get('Content-Type') || '';
         const isHTML = contentType.includes('text/html');
@@ -489,8 +490,11 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   const shells = [];
   
   // v225: Improved Shell logic for Projects
+  // v268: Robust operator project detection
   const isAdminProject = pathname.match(/\/admin\/proyectos\/\d+/);
-  const isOperatorProject = pathname.match(/\/admin\/operador\/proyecto\/\d+/) || pathname.match(/\/operador\/proyecto\/\d+/);
+  const isOperatorProject = pathname.match(/\/admin\/operador\/proyecto\/\d+/) || 
+                            pathname.match(/\/operador\/proyecto\/\d+/) ||
+                            pathname.includes('/operador/proyecto/');
   const isLoginPage = pathname === '/admin/login' || pathname === '/admin/login/';
   const isRootAdmin = pathname === '/admin' || pathname === '/admin/';
   
@@ -778,10 +782,11 @@ self.addEventListener('message', (event) => {
     });
   }
 
-  // v263: Consolidated PRECACHE_URLS and TRIGGER_SYNC handlers
-  if (event.data && event.data.type === 'TRIGGER_SYNC') {
-    console.log('[SW] Sync triggered via postMessage');
-    event.waitUntil(processOutboxSync());
+  // v268: Consolidated PRECACHE_URLS and TRIGGER_SYNC handlers
+  if (event.data && (event.data.type === 'TRIGGER_SYNC' || event.data.type === 'FORCE_SYNC_OUTBOX')) {
+    const isForced = event.data.type === 'FORCE_SYNC_OUTBOX';
+    console.log(`[SW] Sync triggered via postMessage (Forced: ${isForced})`);
+    event.waitUntil(processOutboxSync(isForced));
   }
 
   // Warm-up pre-caching — caches responses INCLUDING redirects (except login)
@@ -812,7 +817,7 @@ self.addEventListener('message', (event) => {
             const response = await fetchWithTimeout(new Request(url, { 
               credentials: 'same-origin',
               headers: { 'Cache-Control': 'no-cache', 'Accept': 'text/html' }
-            }), 15000); 
+            }), 8000); 
 
             if (response.ok) {
               const contentType = response.headers.get('Content-Type') || '';
@@ -873,17 +878,32 @@ self.addEventListener('message', (event) => {
 
 // ─── BACKGROUND SYNC ───────────────────────────────────────────────
 self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-outbox' || event.tag === 'sync-TASK') {
-    console.log(`[SW] Background sync triggered: ${event.tag}`);
-    event.waitUntil(processOutboxSync());
+  const syncTags = [
+    'sync-outbox',
+    'sync-MESSAGE',
+    'sync-MEDIA_UPLOAD',
+    'sync-IMAGE',
+    'sync-VIDEO',
+    'sync-AUDIO',
+    'sync-GALLERY_UPLOAD',
+    'sync-TASK',
+    'sync-EXPENSE',
+    'sync-DAY_START',
+    'sync-DAY_END'
+  ];
+
+  if (syncTags.includes(event.tag)) {
+    console.log(`[SW] Background sync triggered by OS: ${event.tag}. Forcing immediate upload...`);
+    // v268: Force sync when triggered by the OS to bypass any "active tab" checks
+    event.waitUntil(processOutboxSync(true));
   }
 });
 
 // ─── PERIODIC BACKGROUND SYNC (Android/Chrome 80+) ────────────────
 self.addEventListener('periodicsync', (event) => {
   if (event.tag === 'sync-outbox-periodic') {
-    console.log('[SW] Periodic background sync triggered');
-    event.waitUntil(processOutboxSync());
+    console.log('[SW] Periodic background sync triggered. Forcing upload check...');
+    event.waitUntil(processOutboxSync(true));
   }
 });
 
@@ -899,21 +919,21 @@ function openAquatechDB() {
 
 let isSyncingGlobal = false;
 
-async function processOutboxSync() {
-  if (isSyncingGlobal) {
+async function processOutboxSync(isForced = false, specificType = null) {
+  if (isSyncingGlobal && !isForced) {
     console.log('[SW] Sync already in progress, skipping concurrent execution.');
     return;
   }
   isSyncingGlobal = true;
   try {
-    await _internalProcessOutbox();
+    await _internalProcessOutbox(isForced, specificType);
   } finally {
     isSyncingGlobal = false;
     console.log('[SW] Global sync lock released.');
   }
 }
 
-async function _internalProcessOutbox() {
+async function _internalProcessOutbox(isForced = false, specificType = null) {
   let db;
   try {
     db = await openAquatechDB();
@@ -925,11 +945,9 @@ async function _internalProcessOutbox() {
   return new Promise((resolve, reject) => {
     // Evitar race condition: Si la app está abierta, GlobalSyncWorker se encargará
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      // v260: Only defer to GlobalSyncWorker if a tab is ACTIVELY visible AND focused.
-      // When app is minimized/backgrounded, JS timers are suspended by Android,
-      // so the SW must take over synchronization duties.
+      // v268: If FORCED, we bypass the "app is focused" check to ensure data goes up NOW.
       const isAppActivelyUsed = windowClients.some(client => client.visibilityState === 'visible' && client.focused);
-      if (isAppActivelyUsed) {
+      if (isAppActivelyUsed && !isForced) {
         console.log('[SW] Pestaña activa y enfocada detectada. Delegando sync a GlobalSyncWorker.');
         resolve();
         return;
@@ -948,8 +966,13 @@ async function _internalProcessOutbox() {
       const store = tx.objectStore('outbox');
       const getAll = store.getAll();
       getAll.onsuccess = () => {
-        const allItems = getAll.result || [];
-        const toSync = allItems.filter(i => (i.status === 'pending' || i.status === 'failed'));
+        let allItems = getAll.result || [];
+        
+        // Filtrar por tipo si se especificó una etiqueta de sync
+        let toSync = allItems.filter(i => (i.status === 'pending' || i.status === 'failed'));
+        if (specificType) {
+          toSync = toSync.filter(i => i.type === specificType);
+        }
         
         // Marcamos todos como 'syncing' en la misma transacción
         for (const item of toSync) {

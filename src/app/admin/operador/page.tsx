@@ -87,6 +87,7 @@ export default async function OperatorDashboard() {
     '/admin/operador',
     '/admin/operador/proyecto/offline-shell',
     '/admin/operador/nuevo',
+    '/admin/calendario',
     '/admin/inventario',
     '/admin/cotizaciones',
     '/admin/cotizaciones/nuevo',

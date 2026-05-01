@@ -27,6 +27,8 @@ const ListTodo = ({ size = 24, style, className }: any) => <svg {...svgProps(siz
 const Plus = ({ size = 24, style, className }: any) => <svg {...svgProps(size, style, className)}><path d="M12 5v14M5 12h14"/></svg>
 const MessageCircle = ({ size = 24, style, className }: any) => <svg {...svgProps(size, style, className)}><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
 
+import { useSearchParams } from 'next/navigation'
+
 interface OperatorDashboardClientProps {
   user: any
   activeProjects: any[]
@@ -42,12 +44,22 @@ export default function OperatorDashboardClient({
   appointments: initialAppointments,
   userViews
 }: OperatorDashboardClientProps) {
-  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS'>(() => {
+  const searchParams = useSearchParams()
+  const tabParam = searchParams?.get('tab')
+
+  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS' | 'CALENDARIO'>(() => {
+    if (tabParam === 'calendario') return 'CALENDARIO'
     if (typeof window !== 'undefined') {
       return (sessionStorage.getItem('operator_active_tab') as any) || 'PROYECTOS'
     }
     return 'PROYECTOS'
   })
+
+  useEffect(() => {
+    if (tabParam === 'calendario') {
+      setActiveTab('CALENDARIO')
+    }
+  }, [tabParam])
 
   useEffect(() => {
     sessionStorage.setItem('operator_active_tab', activeTab)
@@ -76,30 +88,34 @@ export default function OperatorDashboardClient({
     [user?.id]
   )
 
-  // v228: Parallel calculation of unread counts (optimized)
-  const unreadCounts = useLiveQuery(async () => {
-    const counts: Record<number, number> = {};
-    const userId = Number(user?.id);
-    if (!userId || !initialProjects.length) return counts;
+  // v264: Delayed unread counts to prevent UI blocking on mobile
+  const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({})
+  
+  useEffect(() => {
+    // Only calculate unread counts after 1.5s of stability
+    const timer = setTimeout(async () => {
+      const counts: Record<number, number> = {};
+      const userId = Number(user?.id);
+      if (!userId || !initialProjects.length) return;
 
-    // Use a single transaction for better performance
-    await db.transaction('r', [db.chatCache], async () => {
-      for (const p of initialProjects) {
-        const chat = await db.chatCache.get(p.id);
-        const view = userViews.find(v => v.projectId === p.id);
-        const lastSeen = view?.lastSeen ? new Date(view.lastSeen) : new Date(0);
+      await db.transaction('r', [db.chatCache], async () => {
+        for (const p of initialProjects) {
+          const chat = await db.chatCache.get(p.id);
+          const view = userViews.find(v => v.projectId === p.id);
+          const lastSeen = view?.lastSeen ? new Date(view.lastSeen) : new Date(0);
 
-        if (chat && chat.messages) {
-          counts[p.id] = chat.messages.filter((m: any) => 
-            new Date(m.createdAt) > lastSeen && m.userId !== userId
-          ).length;
-        } else {
-          counts[p.id] = p.unreadCount || 0;
+          if (chat && chat.messages) {
+            counts[p.id] = chat.messages.filter((m: any) => 
+              new Date(m.createdAt) > lastSeen && m.userId !== userId
+            ).length;
+          } else {
+            counts[p.id] = p.unreadCount || 0;
+          }
         }
-      }
-    });
-
-    return counts;
+      });
+      setUnreadCounts(counts);
+    }, 1500);
+    return () => clearTimeout(timer);
   }, [initialProjects, userViews, user?.id]);
 
   // Merge server projects with cache projects (Smart Merge v224)
@@ -134,14 +150,24 @@ export default function OperatorDashboardClient({
   // 1. Initial hydration and offline cache for appointments
   const syncTriggeredRef = useRef(false);
 
-  // v251: Cache Guard - Ensure all server projects are in Dexie
+  // v264: Instant Outbox Kick - Force sync when returning to focus or online
   useEffect(() => {
-    if (typeof window === 'undefined' || !navigator.onLine || !initialProjects.length) return;
+    const triggerSync = async () => {
+      if (typeof window !== 'undefined' && navigator.serviceWorker.controller && navigator.onLine) {
+        // Trigger the outbox sync explicitly
+        navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
+      }
+    };
 
-    // v258: Aggressive CacheGuard removed. 
-    // The GlobalSyncWorker already handles synchronization on mount and respects 
-    // the freshness window. This prevents the "sync on every navigation" loop.
-  }, [initialProjects, projectsFromCache]);
+    window.addEventListener('focus', triggerSync);
+    window.addEventListener('online', triggerSync);
+    triggerSync(); // Initial trigger
+
+    return () => {
+      window.removeEventListener('focus', triggerSync);
+      window.removeEventListener('online', triggerSync);
+    };
+  }, []);
 
   useEffect(() => {
     if (initialAppointments.length > 0) {
@@ -464,9 +490,9 @@ export default function OperatorDashboardClient({
            )}
         </button>
         {canManageCalendar && (
-          <Link 
-            href="/admin/calendario"
-            className="tab" 
+          <button 
+            className={`tab ${activeTab === 'CALENDARIO' ? 'active' : ''}`} 
+            onClick={() => setActiveTab('CALENDARIO')}
             style={{ 
               flex: 1, 
               padding: '10px 4px', 
@@ -474,16 +500,14 @@ export default function OperatorDashboardClient({
               display: 'flex', 
               alignItems: 'center', 
               justifyContent: 'center',
-              gap: '6px',
-              textDecoration: 'none',
-              color: 'var(--text-muted)'
+              gap: '6px'
             }}
           >
              <CalendarIcon size={14} /> 
              <span style={{ whiteSpace: 'nowrap' }}>
                Agenda <span className="d-none d-md-inline">Semanal</span>
              </span>
-          </Link>
+          </button>
         )}
       </div>
 
@@ -569,6 +593,61 @@ export default function OperatorDashboardClient({
                 </Link>
               )
             })}
+          </div>
+        )}
+
+        {activeTab === 'CALENDARIO' && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-md)' }}>
+            <div className="card" style={{ padding: 'var(--space-md)', background: 'rgba(56, 189, 248, 0.05)', border: '1px solid rgba(56, 189, 248, 0.2)' }}>
+              <p style={{ margin: 0, fontSize: '0.9rem', color: 'var(--text)' }}>
+                <strong>📅 Agenda Semanal</strong>: Aquí puedes ver tus próximos compromisos y tareas asignadas.
+              </p>
+            </div>
+            
+            {allAppointments.length > 0 ? (
+              // Agrupar por fecha
+              Object.entries(
+                allAppointments.reduce((acc: any, curr) => {
+                  const date = new Date(curr.startTime).toLocaleDateString('es-EC', { weekday: 'long', day: 'numeric', month: 'long' });
+                  if (!acc[date]) acc[date] = [];
+                  acc[date].push(curr);
+                  return acc;
+                }, {})
+              ).sort((a: any, b: any) => new Date(a[1][0].startTime).getTime() - new Date(b[1][0].startTime).getTime())
+               .map(([date, tasks]: [string, any]) => (
+                <div key={date} style={{ marginBottom: '10px' }}>
+                  <h4 style={{ fontSize: '0.85rem', color: 'var(--primary)', textTransform: 'capitalize', marginBottom: '8px', paddingLeft: '10px', borderLeft: '3px solid var(--primary)' }}>
+                    {date}
+                  </h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {tasks.sort((a: any, b: any) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime()).map((task: any) => (
+                      <div key={task.id} className="card interactive" style={{ padding: '12px', display: 'flex', alignItems: 'center', gap: '12px' }} onClick={() => setSelectedTask(task)}>
+                        <div style={{ textAlign: 'center', minWidth: '50px' }}>
+                          <div style={{ fontSize: '0.9rem', fontWeight: 'bold' }}>{formatToEcuador(task.startTime, { hour: '2-digit', minute: '2-digit' })}</div>
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: '600', fontSize: '0.95rem' }}>{task.title}</div>
+                          {task.project && <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>📂 {task.project.title}</div>}
+                        </div>
+                        <span className={`badge ${task.status === 'COMPLETADA' ? 'badge-success' : 'badge-warning'}`} style={{ fontSize: '0.65rem' }}>
+                          {task.status}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="card" style={{ textAlign: 'center', padding: '40px' }}>
+                <p style={{ color: 'var(--text-muted)' }}>No tienes tareas para esta semana.</p>
+              </div>
+            )}
+            
+            <div style={{ textAlign: 'center', marginTop: '20px' }}>
+              <Link href="/admin/calendario" className="btn btn-outline" style={{ fontSize: '0.8rem' }}>
+                Ver Calendario Completo ↗
+              </Link>
+            </div>
           </div>
         )}
 
