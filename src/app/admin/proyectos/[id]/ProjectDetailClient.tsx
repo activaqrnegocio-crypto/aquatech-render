@@ -251,16 +251,18 @@ export default function ProjectDetailClient({ project: initialProject, available
   const sendLockRef = useRef(false)
 
   const masterGallery = useMemo(() => {
-    // v260: Detect pending deletions
-    const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
+    // v260: Robust pending deletions identification (supporting both galleryId and legacy itemId)
+    const pendingDeletions = (pendingItems || [])
+      .filter((i: any) => i.type === 'GALLERY_DELETE')
+      .map((i: any) => i.payload.galleryId || i.payload.itemId);
 
-    // Only MASTER, PLANOS, LEVANTAMIENTO categories
+    // Filter project gallery items, adding isPendingDelete status
     const baseFiles = gallery.filter((item: any) => {
       const cat = (item.category || 'MASTER').toUpperCase()
       return (cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO') && !item.isFromChat
     }).map((item: any) => {
-      if (pendingDeletions.includes(item.id)) return { ...item, isPendingDelete: true }
-      return item
+      if (pendingDeletions.some((pdId: any) => String(pdId) === String(item.id))) return { ...item, isPendingDelete: true };
+      return item;
     })
     const expenseFiles = (expenses || []).map((exp: any) => ({
       id: `exp-${exp.id}`,
@@ -296,12 +298,15 @@ export default function ProjectDetailClient({ project: initialProject, available
 
   const evidenceGallery = useMemo(() => {
     // v260: Detect pending deletions
-    const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
+    // v260: Robust pending deletions identification
+    const pendingDeletions = (pendingItems || [])
+      .filter((i: any) => i.type === 'GALLERY_DELETE')
+      .map((i: any) => i.payload.galleryId || i.payload.itemId);
 
     // Strictly ONLY EVIDENCE category (uploaded as finals)
     const base = gallery.filter((item: any) => (item.category || '').toUpperCase() === 'EVIDENCE' && !item.isFromChat)
       .map((item: any) => {
-        if (pendingDeletions.includes(item.id)) return { ...item, isPendingDelete: true }
+        if (pendingDeletions.some((pdId: any) => String(pdId) === String(item.id))) return { ...item, isPendingDelete: true }
         return item
       })
     
@@ -587,9 +592,21 @@ export default function ProjectDetailClient({ project: initialProject, available
     { id: 'OTHER', label: 'Otro' }
   ]
 
-  const handleDeleteGalleryItem = async (itemId: number) => {
+  const handleDeleteGalleryItem = async (itemId: number | string) => {
     if (!confirm('¿Estás seguro de que deseas eliminar este archivo de la galería?')) return
     
+    // --- PENDING ITEM HANDLING ---
+    // If the item is already pending in outbox (not on server yet), just delete the outbox entry
+    if (typeof itemId === 'string' && itemId.startsWith('pending-')) {
+      try {
+        const outboxId = Number(itemId.replace(/pending-ev-|pending-chat-|pending-/, ''))
+        await db.outbox.delete(outboxId)
+        return
+      } catch (e) {
+        console.error('Error deleting pending item:', e)
+      }
+    }
+
     // Offline support
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       try {
@@ -601,7 +618,6 @@ export default function ProjectDetailClient({ project: initialProject, available
           status: 'pending'
         })
         // v260: Don't remove from state — let isPendingDelete overlay show the clock icon
-        alert('Archivo marcado para eliminar. Se borrará del servidor cuando vuelvas a tener internet.')
         return
       } catch (e) {
         console.error('Error saving offline deletion:', e)

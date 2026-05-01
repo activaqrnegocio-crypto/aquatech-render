@@ -249,10 +249,16 @@ export default function ProjectExecutionClient({
 
   const handleDeleteGalleryItem = async (itemId: number | string) => {
     if (!window.confirm('¿Estás seguro de eliminar este archivo?')) return
+    
+    // --- PENDING ITEM HANDLING ---
     if (typeof itemId === 'string' && itemId.startsWith('pending-')) {
-      const outboxId = Number(itemId.replace('pending-', ''))
-      await db.outbox.delete(outboxId)
-      return
+      try {
+        const outboxId = Number(itemId.replace(/pending-ev-|pending-chat-|pending-/, ''))
+        await db.outbox.delete(outboxId)
+        return
+      } catch (e) {
+        console.error('Error deleting pending item:', e)
+      }
     }
 
     // Offline support for server items
@@ -265,7 +271,6 @@ export default function ProjectExecutionClient({
           timestamp: Date.now(),
           status: 'pending'
         })
-        alert('Archivo marcado para eliminar. Se borrará del servidor cuando recuperes conexión.')
         return
       } catch (e) {
         console.error('Error saving offline deletion:', e)
@@ -524,7 +529,7 @@ export default function ProjectExecutionClient({
     const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
 
     const fromChat = liveChat.filter((msg: any) => msg.media && msg.media.length > 0).flatMap((msg: any) => msg.media.map((m: any) => ({
-      ...m, isFromChat: true, userName: msg.userName, createdAt: msg.createdAt, isPendingDelete: pendingDeletions.includes(m.id)
+      ...m, isFromChat: true, userName: msg.userName, createdAt: msg.createdAt, isPendingDelete: pendingDeletions.some((pdId: any) => String(pdId) === String(m.id))
     })))
     const pendingChat = (pendingItems || []).filter((item: any) => item.type === 'MESSAGE' && item.payload?.media).map((item: any) => ({
       id: `pending-chat-${item.id}`, url: item.payload.media.url || item.payload.media.base64 || '',
@@ -540,7 +545,7 @@ export default function ProjectExecutionClient({
     const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
     
     const list = [...project.gallery.filter((item: any) => !item.isFromChat && (item.category || '').toUpperCase() === 'EVIDENCE')].map((item: any) => {
-      if (pendingDeletions.includes(item.id)) return { ...item, isPendingDelete: true };
+      if (pendingDeletions.some((pdId: any) => String(pdId) === String(item.id))) return { ...item, isPendingDelete: true };
       return item;
     })
     const pendingEvidence = (pendingItems || []).filter((item: any) => {
@@ -911,9 +916,8 @@ export default function ProjectExecutionClient({
 
    const handleSendMessage = async (e: React.FormEvent, customMsg?: string, customPhase?: number, mediaFile?: File, extraData?: any, forcedType?: string) => {
     if (e) e.preventDefault()
-    if (loading || isSendingMessage || sendLockRef.current) return // Guard against double execution
-    sendLockRef.current = true
-    setIsSendingMessage(true)
+
+
     const msgToSend = customMsg || message
     const phaseIdToSend = customPhase !== undefined ? customPhase : activePhase
     
@@ -1096,9 +1100,6 @@ export default function ProjectExecutionClient({
       } catch (outerError) {
         console.error("Outer background process error:", outerError);
         setLiveChat(prev => prev.map(m => m.id === tempId ? { ...m, status: 'failed' } : m))
-      } finally {
-        setIsSendingMessage(false)
-        sendLockRef.current = false
       }
     }
 
@@ -2109,6 +2110,20 @@ export default function ProjectExecutionClient({
                             cursor: 'pointer'
                           }}
                         >
+                          {/* v260: Pending Overlays */}
+                          {item.isPending && (
+                            <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 10, background: 'var(--warning)', color: 'white', padding: '4px', borderRadius: '50%', boxShadow: '0 2px 8px rgba(0,0,0,0.4)', display: 'flex' }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            </div>
+                          )}
+                          {item.isPendingDelete && (
+                            <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 11, background: 'rgba(239, 68, 68, 0.4)', backdropFilter: 'blur(2px)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <div style={{ background: 'var(--danger)', color: 'white', padding: '4px 10px', borderRadius: '20px', fontSize: '0.65rem', fontWeight: 'bold', display: 'flex', alignItems: 'center', gap: '5px' }}>
+                                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> ELIMINANDO...
+                              </div>
+                            </div>
+                          )}
+
                           {(() => {
                             const getCleanType = (mime: string, url: string) => {
                               const cleanMime = (mime || '').toLowerCase();

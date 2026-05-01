@@ -203,7 +203,14 @@ export default function CalendarView({
                         backgroundColor: getEventBgColor(event)
                       }}
                     >
-                      <div className="event-title">{event.title}</div>
+                      <div className="event-title" style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        {event.title}
+                        {event.isPending && (
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.8, flexShrink: 0 }}>
+                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                          </svg>
+                        )}
+                      </div>
                       <div className="event-time">
                           {formatTimeEcuador(event.startTime)}
                       </div>

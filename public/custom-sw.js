@@ -860,6 +860,51 @@ self.addEventListener('sync', (event) => {
   }
 });
 
+// ─── PERIODIC BACKGROUND SYNC (Android/Chrome 80+) ────────────────
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'sync-outbox-periodic') {
+    console.log('[SW] Periodic background sync triggered');
+    event.waitUntil(processOutboxSync());
+  }
+});
+
+// ─── MESSAGE HANDLER ──────────────────────────────────────────────
+// Allows the client (GlobalSyncWorker) to trigger sync via postMessage
+// This is the CRITICAL path for background sync on Android:
+//   - When the app is minimized, JS timers are suspended
+//   - But the SW stays alive briefly after receiving a message
+//   - So the client sends TRIGGER_SYNC before going to background
+self.addEventListener('message', (event) => {
+  const { type, urls } = event.data || {};
+
+  if (type === 'TRIGGER_SYNC') {
+    console.log('[SW] Sync triggered via postMessage');
+    event.waitUntil(processOutboxSync());
+  }
+
+  if (type === 'PRECACHE_URLS' && urls && Array.isArray(urls)) {
+    event.waitUntil(
+      (async () => {
+        const cache = await caches.open(PAGES_CACHE);
+        for (const url of urls) {
+          try {
+            const response = await fetch(url, {
+              credentials: 'same-origin',
+              headers: { 'Cache-Control': 'no-cache', 'Accept': 'text/html' }
+            });
+            if (response.ok) {
+              await cache.put(url, response.clone());
+              console.log(`[SW] Pre-cached via message: ${url}`);
+            }
+          } catch (e) {
+            console.warn(`[SW] Pre-cache failed for: ${url}`);
+          }
+        }
+      })()
+    );
+  }
+});
+
 function openAquatechDB() {
   return new Promise((resolve, reject) => {
     const request = indexedDB.open('AquatechOfflineDB');
@@ -910,12 +955,6 @@ async function processOutboxSync() {
 
       const now = Date.now();
       for (const item of pendingItems) {
-        // Priority to UI: Only sync if item has been pending for more than 15 seconds
-        // This gives the active tab enough time to sync every 5 seconds.
-        if (now - item.timestamp < 15000) {
-          console.log(`[SW] Skipping item ${item.id}, too fresh for SW sync (Priority to UI)`);
-          continue;
-        }
 
         // Re-check status inside a transaction to ensure it's still pending
         const stillPending = await new Promise((res) => {

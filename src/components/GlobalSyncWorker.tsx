@@ -537,6 +537,48 @@ export default function GlobalSyncWorker() {
     }
   }
 
+  // v261: Helper to delegate sync to Service Worker (works when app is minimized)
+  const registerSwSync = async () => {
+    if (!('serviceWorker' in navigator)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      // 1. Register one-shot background sync (fires when connectivity resumes)
+      if ('sync' in reg) {
+        await (reg as any).sync.register('sync-outbox');
+        console.log('[Sync] Registered SW background sync: sync-outbox');
+      }
+      // 2. Also trigger immediately via postMessage (SW stays alive to process)
+      if (navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'TRIGGER_SYNC' });
+        console.log('[Sync] Sent TRIGGER_SYNC to SW via postMessage');
+      }
+    } catch (e) {
+      console.warn('[Sync] SW sync registration failed:', e);
+    }
+  };
+
+  // v261: Register periodic sync once on mount (Android/Chrome 80+)
+  useEffect(() => {
+    const registerPeriodicSync = async () => {
+      if (!('serviceWorker' in navigator)) return;
+      try {
+        const reg = await navigator.serviceWorker.ready;
+        if ('periodicSync' in reg) {
+          const status = await navigator.permissions.query({ name: 'periodic-background-sync' as any });
+          if (status.state === 'granted') {
+            await (reg as any).periodicSync.register('sync-outbox-periodic', {
+              minInterval: 15 * 60 * 1000 // 15 minutes minimum
+            });
+            console.log('[Sync] Periodic background sync registered (15 min interval)');
+          }
+        }
+      } catch (e) {
+        console.warn('[Sync] Periodic sync not available:', e);
+      }
+    };
+    registerPeriodicSync();
+  }, []);
+
   useEffect(() => {
     const handleStatusChange = () => {
       setIsOnline(navigator.onLine)
@@ -544,15 +586,35 @@ export default function GlobalSyncWorker() {
         console.log('[Sync] Back online, triggering sync...')
         syncOutbox()
         refreshCaches()
+        // Also wake SW to sync anything it has
+        registerSwSync()
       }
     }
     
-    const handleVisibilityChange = () => {
+    const handleVisibilityChange = async () => {
       if (document.visibilityState === 'visible' && typeof navigator !== 'undefined' && navigator.onLine) {
         if (!syncLock.current) {
           console.log('[Sync] App visible and online, checking for fresh data...');
           syncOutbox()
           startBulkSync()
+        }
+      } else if (document.visibilityState === 'hidden') {
+        // v261: CRITICAL — App going to background!
+        // Android suspends JS timers when the app is minimized.
+        // We must delegate ALL pending sync work to the Service Worker NOW,
+        // because our setInterval-based syncOutbox() will stop firing.
+        console.log('[Sync] App going to BACKGROUND — delegating sync to SW');
+        
+        // Check if there are pending items
+        try {
+          const pendingCount = await db.outbox.where('status').anyOf(['pending', 'failed']).count();
+          if (pendingCount > 0) {
+            console.log(`[Sync] ${pendingCount} pending items — waking SW for background sync`);
+            await registerSwSync();
+          }
+        } catch (e) {
+          // Even if the check fails, still try to register
+          await registerSwSync();
         }
       }
     }
@@ -573,18 +635,20 @@ export default function GlobalSyncWorker() {
       refreshCaches()
     }
     
+    // v261: Reduced from 60s to 15s — this is the PRIMARY sync path when app is visible.
+    // When app goes to background, Android suspends this, but SW takes over.
     const interval = setInterval(() => {
         if (navigator.onLine) {
             syncOutbox()
         }
-    }, 60000) // 60 seconds for outbox sync (more conservative)
+    }, 15000) // 15 seconds for outbox sync (faster while app is active)
 
-    // v226: Periodic full refresh every 10 minutes
+    // v226: Periodic full refresh every 30 minutes
     const bulkInterval = setInterval(() => {
         if (navigator.onLine) {
             startBulkSync() 
         }
-    }, 30 * 60 * 1000) // v259: Increased to 30 mins to match freshness window
+    }, 30 * 60 * 1000) // v259: 30 mins to match freshness window
 
     // Keep-Alive Ping para base de datos (StackCP)
     const keepAliveInterval = setInterval(() => {
