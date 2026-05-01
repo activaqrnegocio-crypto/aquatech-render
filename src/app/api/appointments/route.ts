@@ -129,9 +129,6 @@ export async function POST(request: Request) {
       results.push(appointment)
     }
 
-    // Responder inmediatamente al cliente para no bloquearlo
-    const response = NextResponse.json(results.length === 1 ? results[0] : results)
-
     // Enviar notificaciones en segundo plano
     const sendNotifications = async () => {
       try {

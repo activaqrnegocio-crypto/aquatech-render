@@ -251,10 +251,16 @@ export default function ProjectDetailClient({ project: initialProject, available
   const sendLockRef = useRef(false)
 
   const masterGallery = useMemo(() => {
+    // v260: Detect pending deletions
+    const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
+
     // Only MASTER, PLANOS, LEVANTAMIENTO categories
     const baseFiles = gallery.filter((item: any) => {
       const cat = (item.category || 'MASTER').toUpperCase()
       return (cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO') && !item.isFromChat
+    }).map((item: any) => {
+      if (pendingDeletions.includes(item.id)) return { ...item, isPendingDelete: true }
+      return item
     })
     const expenseFiles = (expenses || []).map((exp: any) => ({
       id: `exp-${exp.id}`,
@@ -289,8 +295,15 @@ export default function ProjectDetailClient({ project: initialProject, available
   }, [gallery, expenses, pendingItems])
 
   const evidenceGallery = useMemo(() => {
+    // v260: Detect pending deletions
+    const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
+
     // Strictly ONLY EVIDENCE category (uploaded as finals)
     const base = gallery.filter((item: any) => (item.category || '').toUpperCase() === 'EVIDENCE' && !item.isFromChat)
+      .map((item: any) => {
+        if (pendingDeletions.includes(item.id)) return { ...item, isPendingDelete: true }
+        return item
+      })
     
     // Add pending evidence uploads, filtering out duplicates
     const pendingEvidence = (pendingItems || [])
@@ -587,8 +600,8 @@ export default function ProjectDetailClient({ project: initialProject, available
           timestamp: Date.now(),
           status: 'pending'
         })
-        // Optimistic UI update
-        setGallery((prev: any[]) => prev.filter((item: any) => item.id !== itemId))
+        // v260: Don't remove from state — let isPendingDelete overlay show the clock icon
+        alert('Archivo marcado para eliminar. Se borrará del servidor cuando vuelvas a tener internet.')
         return
       } catch (e) {
         console.error('Error saving offline deletion:', e)
@@ -2619,6 +2632,31 @@ export default function ProjectDetailClient({ project: initialProject, available
                         );
                       }
                     })()}
+                    {/* v260: Pending Upload Overlay */}
+                    {item.isPending && (
+                      <div style={{ 
+                        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                        backgroundColor: 'rgba(0,0,0,0.5)', 
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                        zIndex: 10 
+                      }}>
+                        <span style={{ fontSize: '1.2rem' }}>🕒</span>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subiendo</span>
+                      </div>
+                    )}
+                    {/* v260: Pending Delete Overlay */}
+                    {item.isPendingDelete && (
+                      <div style={{ 
+                        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                        backgroundColor: 'rgba(239, 68, 68, 0.6)', 
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                        zIndex: 10,
+                        backdropFilter: 'grayscale(100%)'
+                      }}>
+                        <span style={{ fontSize: '1.2rem' }}>🕒</span>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Borrando...</span>
+                      </div>
+                    )}
                     {/* Persistent Action Buttons Overlay */}
                     <div 
                       style={{ 
@@ -2785,6 +2823,31 @@ export default function ProjectDetailClient({ project: initialProject, available
                         );
                       }
                     })()}
+                    {/* v260: Pending Upload Overlay */}
+                    {item.isPending && (
+                      <div style={{ 
+                        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                        backgroundColor: 'rgba(0,0,0,0.5)', 
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                        zIndex: 10 
+                      }}>
+                        <span style={{ fontSize: '1.2rem' }}>🕒</span>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subiendo</span>
+                      </div>
+                    )}
+                    {/* v260: Pending Delete Overlay */}
+                    {item.isPendingDelete && (
+                      <div style={{ 
+                        position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                        backgroundColor: 'rgba(239, 68, 68, 0.6)', 
+                        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                        zIndex: 10,
+                        backdropFilter: 'grayscale(100%)'
+                      }}>
+                        <span style={{ fontSize: '1.2rem' }}>🕒</span>
+                        <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Borrando...</span>
+                      </div>
+                    )}
                     {/* Always-visible action badges */}
                     <div style={{ position: 'absolute', top: '6px', right: '6px', zIndex: 20 }}>
                       <button 

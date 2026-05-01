@@ -881,9 +881,12 @@ async function processOutboxSync() {
   return new Promise((resolve, reject) => {
     // Evitar race condition: Si la app está abierta, GlobalSyncWorker se encargará
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(windowClients => {
-      const isAppOpen = windowClients.some(client => client.visibilityState === 'visible' || client.focused);
-      if (isAppOpen) {
-        console.log('[SW] Pestaña de Aquatech activa detectada. Abortando SW sync para evitar conflictos con GlobalSyncWorker.');
+      // v260: Only defer to GlobalSyncWorker if a tab is ACTIVELY visible AND focused.
+      // When app is minimized/backgrounded, JS timers are suspended by Android,
+      // so the SW must take over synchronization duties.
+      const isAppActivelyUsed = windowClients.some(client => client.visibilityState === 'visible' && client.focused);
+      if (isAppActivelyUsed) {
+        console.log('[SW] Pestaña activa y enfocada detectada. Delegando sync a GlobalSyncWorker.');
         resolve();
         return;
       }
@@ -957,7 +960,7 @@ async function processOutboxSync() {
           } else if (item.type === 'GALLERY_UPLOAD') {
             endpoint = `/api/projects/${item.projectId}/gallery`;
           } else if (item.type === 'GALLERY_DELETE') {
-            endpoint = `/api/projects/${item.projectId}/gallery/${item.payload.itemId}`;
+            endpoint = `/api/projects/${item.projectId}/gallery/${item.payload.galleryId}`;
             method = 'DELETE';
           } else if (item.type === 'EXPENSE') {
             endpoint = `/api/projects/${item.projectId}/expenses`;
@@ -1068,6 +1071,21 @@ async function processOutboxSync() {
 
           const finalPayload = await processMedia(item);
 
+          // v260: Clean client-only fields from TASK payloads before sending
+          if (item.type === 'TASK') {
+            delete finalPayload.isNew;
+            delete finalPayload.mediaFiles;
+            delete finalPayload.previews;
+            if (Array.isArray(finalPayload.files)) {
+              finalPayload.files = finalPayload.files.map(f => {
+                const clean = { ...f };
+                delete clean.isOffline;
+                delete clean.isNew;
+                return clean;
+              });
+            }
+          }
+
           if (endpoint) {
             const res = await fetch(endpoint, {
               method,
@@ -1078,8 +1096,7 @@ async function processOutboxSync() {
                 lat: item.lat, 
                 lng: item.lng, 
                 createdAt: new Date(item.timestamp).toISOString(),
-                isOfflineSync: true,
-                isNew: finalPayload.isNew // Carry over the flag for the API
+                isOfflineSync: true
               })
             });
 

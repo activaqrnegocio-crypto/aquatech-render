@@ -482,10 +482,15 @@ export default function ProjectExecutionClient({
   const [galleryFilter, setGalleryFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
 
   const masterGallery = useMemo(() => {
+    const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
+
     const baseFiles = (project?.gallery || []).filter((item: any) => {
       if (item.isFromChat) return false
       const cat = (item.category || 'MASTER').toUpperCase()
       return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
+    }).map((item: any) => {
+      if (pendingDeletions.includes(item.id)) return { ...item, isPendingDelete: true };
+      return item;
     })
     const expenseFiles = (localExpenses || []).map((exp: any) => ({
       id: `exp-${exp.id}`, url: exp.receiptUrl || '', filename: exp.description || 'Recibo',
@@ -516,8 +521,10 @@ export default function ProjectExecutionClient({
   }, [project?.gallery, galleryFilter, localExpenses, pendingItems])
 
   const chatGallery = useMemo(() => {
+    const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
+
     const fromChat = liveChat.filter((msg: any) => msg.media && msg.media.length > 0).flatMap((msg: any) => msg.media.map((m: any) => ({
-      ...m, isFromChat: true, userName: msg.userName, createdAt: msg.createdAt
+      ...m, isFromChat: true, userName: msg.userName, createdAt: msg.createdAt, isPendingDelete: pendingDeletions.includes(m.id)
     })))
     const pendingChat = (pendingItems || []).filter((item: any) => item.type === 'MESSAGE' && item.payload?.media).map((item: any) => ({
       id: `pending-chat-${item.id}`, url: item.payload.media.url || item.payload.media.base64 || '',
@@ -530,7 +537,12 @@ export default function ProjectExecutionClient({
   const [evidenceFilter, setEvidenceFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
   const evidenceGallery = useMemo(() => {
     if (!project?.gallery) return []
-    const list = [...project.gallery.filter((item: any) => !item.isFromChat && (item.category || '').toUpperCase() === 'EVIDENCE')]
+    const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
+    
+    const list = [...project.gallery.filter((item: any) => !item.isFromChat && (item.category || '').toUpperCase() === 'EVIDENCE')].map((item: any) => {
+      if (pendingDeletions.includes(item.id)) return { ...item, isPendingDelete: true };
+      return item;
+    })
     const pendingEvidence = (pendingItems || []).filter((item: any) => {
       const isGalleryType = item.type === 'GALLERY_UPLOAD' || item.type === 'MEDIA_UPLOAD'
       const isEvidenceCat = (item.payload?.category || '').toUpperCase() === 'EVIDENCE'
@@ -2158,12 +2170,23 @@ export default function ProjectExecutionClient({
                             <div style={{ 
                               position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
                               backgroundColor: 'rgba(0,0,0,0.5)', 
-                              display: 'flex', alignItems: 'center', justifyContent: 'center',
-                              flexDirection: 'column', gap: '4px',
-                              zIndex: 10
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                              zIndex: 10 
                             }}>
                               <span style={{ fontSize: '1.2rem' }}>🕒</span>
-                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pendiente</span>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subiendo</span>
+                            </div>
+                          )}
+                          {item.isPendingDelete && (
+                            <div style={{ 
+                              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                              backgroundColor: 'rgba(239, 68, 68, 0.6)', 
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                              zIndex: 10,
+                              backdropFilter: 'grayscale(100%)'
+                            }}>
+                              <span style={{ fontSize: '1.2rem' }}>🕒</span>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Borrando</span>
                             </div>
                           )}
 

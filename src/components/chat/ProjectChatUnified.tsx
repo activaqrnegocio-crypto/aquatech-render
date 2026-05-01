@@ -1010,7 +1010,7 @@ export default function ProjectChatUnified({
       {/* --- INPUT BAR --- */}
       <footer className="chat-footer">
         <div className="input-row">
-           <button className="btn-icon" disabled={isSending}><Smile /></button>
+           <button className="btn-icon"><Smile /></button>
             <div className="input-container">
               <textarea 
                 placeholder="Escribir un mensaje"
@@ -1018,9 +1018,8 @@ export default function ProjectChatUnified({
                 onChange={(e) => setInputValue(e.target.value)}
                 onKeyPress={handleKeyPress}
                 rows={1}
-                disabled={isSending}
               />
-              <button onClick={() => setShowAttachments(!showAttachments)} className="btn-icon" disabled={isSending}>
+              <button onClick={() => setShowAttachments(!showAttachments)} className="btn-icon">
                  <Paperclip />
               </button>
               <button onClick={() => setShowCamera(true)} className="btn-icon" title="Cámara (Foto/Video)">
@@ -1031,6 +1030,8 @@ export default function ProjectChatUnified({
            <button 
             className={`btn-send ${inputValue.trim() ? 'active' : ''}`}
             onClick={inputValue.trim() ? handleSend : () => setShowMediaCapture('audio')}
+            disabled={isSending}
+            style={{ opacity: isSending ? 0.5 : 1, cursor: isSending ? 'wait' : 'pointer' }}
            >
              {inputValue.trim() ? <Send /> : <Mic />}
            </button>

@@ -449,6 +449,20 @@ export default function GlobalSyncWorker() {
           }
           
           if (endpoint) {
+             // v260: Clean client-only fields from TASK payloads before sending
+             if (item.type === 'TASK') {
+               delete finalPayload.isNew
+               delete finalPayload.mediaFiles
+               delete finalPayload.previews
+               // Clean isOffline markers from files array
+               if (Array.isArray(finalPayload.files)) {
+                 finalPayload.files = finalPayload.files.map((f: any) => {
+                   const { isOffline, isNew: _n, ...clean } = f
+                   return clean
+                 })
+               }
+             }
+
              const res = await fetch(endpoint, {
                  method,
                  headers: { 'Content-Type': 'application/json' },
