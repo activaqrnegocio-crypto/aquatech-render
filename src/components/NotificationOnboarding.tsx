@@ -114,15 +114,18 @@ export function NotificationOnboarding({ onDone }: OnboardingProps) {
       <style jsx>{`
         .onboarding-overlay {
           position: fixed;
+          top: 0;
           left: 0;
           right: 0;
-          bottom: 20px;
+          bottom: 0;
           z-index: 9999;
           display: flex;
-          align-items: flex-end;
+          align-items: center;
           justify-content: center;
-          padding: 10px 20px;
+          padding: 20px;
           opacity: 0;
+          background: rgba(0, 0, 0, 0.4);
+          backdrop-filter: blur(8px);
           transition: all 0.4s ease;
           pointer-events: none;
         }
@@ -133,102 +136,126 @@ export function NotificationOnboarding({ onDone }: OnboardingProps) {
         .onboarding-card {
           background: #1a1a1a;
           border: 1px solid rgba(255, 255, 255, 0.1);
-          border-radius: 20px;
+          border-radius: 24px;
           width: 100%;
           max-width: 400px;
-          padding: 20px;
-          box-shadow: 0 10px 40px rgba(0, 0, 0, 0.7);
-          transform: translateY(20px);
-          transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+          padding: 30px;
+          box-shadow: 0 20px 60px rgba(0, 0, 0, 0.8);
+          transform: translateY(30px) scale(0.95);
+          transition: all 0.5s cubic-bezier(0.16, 1, 0.3, 1);
           position: relative;
         }
         .onboarding-overlay.visible .onboarding-card {
-          transform: translateY(0);
+          transform: translateY(0) scale(1);
         }
         .close-btn {
           position: absolute;
-          top: 15px;
-          right: 15px;
-          background: none;
+          top: 20px;
+          right: 20px;
+          background: rgba(255, 255, 255, 0.05);
           border: none;
           color: #aaa;
-          font-size: 1.2rem;
+          font-size: 1rem;
+          width: 32px;
+          height: 32px;
+          border-radius: 50%;
           cursor: pointer;
-          padding: 5px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          transition: all 0.2s;
+        }
+        .close-btn:hover {
+          background: rgba(255, 255, 255, 0.1);
+          color: white;
         }
         .onboarding-header {
           display: flex;
+          flex-direction: column;
           align-items: center;
-          gap: 10px;
-          margin-bottom: 12px;
-          padding-right: 20px;
+          gap: 15px;
+          margin-bottom: 20px;
+          text-align: center;
         }
         .onboarding-icon {
-          font-size: 1.5rem;
+          font-size: 2.5rem;
+          background: rgba(0, 112, 192, 0.1);
+          width: 70px;
+          height: 70px;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          border-radius: 20px;
         }
         h3 {
           margin: 0;
-          font-size: 1.1rem;
+          font-size: 1.25rem;
           color: white;
-          font-weight: 700;
+          font-weight: 800;
           line-height: 1.2;
         }
         .onboarding-desc {
           color: #aaa;
-          font-size: 0.85rem;
-          margin-bottom: 15px;
-          line-height: 1.4;
+          font-size: 0.9rem;
+          margin-bottom: 20px;
+          line-height: 1.5;
+          text-align: center;
         }
         .onboarding-steps {
           list-style: none;
           padding: 0;
-          margin: 0 0 15px 0;
+          margin: 0 0 25px 0;
           display: flex;
           flex-direction: column;
-          gap: 8px;
+          gap: 10px;
         }
         .onboarding-steps li {
           display: flex;
           align-items: flex-start;
-          gap: 10px;
+          gap: 12px;
           background: rgba(255, 255, 255, 0.03);
-          padding: 8px 12px;
-          border-radius: 10px;
+          padding: 12px 16px;
+          border-radius: 14px;
           border: 1px solid rgba(255, 255, 255, 0.05);
         }
         .step-number {
-          background: var(--brand-primary, #0070c0);
+          background: #0070c0;
           color: white;
-          width: 18px;
-          height: 18px;
+          width: 22px;
+          height: 22px;
           border-radius: 50%;
           display: flex;
           align-items: center;
           justify-content: center;
-          font-size: 0.65rem;
+          font-size: 0.75rem;
           font-weight: bold;
           flex-shrink: 0;
-          margin-top: 2px;
+          margin-top: 1px;
         }
         .step-text {
           color: #eee;
-          font-size: 0.8rem;
-          line-height: 1.3;
+          font-size: 0.85rem;
+          line-height: 1.4;
         }
         .onboarding-button {
           width: 100%;
           background: white;
           color: black;
           border: none;
-          padding: 10px;
-          border-radius: 10px;
-          font-weight: 700;
-          font-size: 0.9rem;
+          padding: 14px;
+          border-radius: 14px;
+          font-weight: 800;
+          font-size: 1rem;
           cursor: pointer;
           transition: all 0.2s ease;
+          box-shadow: 0 4px 15px rgba(255, 255, 255, 0.1);
         }
         .onboarding-button:active {
-          transform: scale(0.98);
+          transform: scale(0.97);
+        }
+        .onboarding-button:hover {
+          background: #f0f0f0;
+          box-shadow: 0 6px 20px rgba(255, 255, 255, 0.15);
         }
       `}</style>
     </div>

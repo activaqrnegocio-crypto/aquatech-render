@@ -75,7 +75,12 @@ export default function CotizacionesPage() {
         </div>
         <div style={{ display: 'flex', gap: '10px' }}>
           <Link href="/admin/cotizaciones/materiales" className="btn btn-ghost">Ver Materiales</Link>
-          <Link href="/admin/cotizaciones/nuevo" className="btn btn-primary">+ Nueva Cotización</Link>
+          <Link 
+            href="/admin/cotizaciones/nuevo" 
+            className="btn btn-primary"
+          >
+            + Nueva Cotización
+          </Link>
         </div>
       </div>
 

@@ -9,10 +9,15 @@ const FONTS_CACHE  = 'aquatech-fonts';
 const RSC_CACHE    = 'aquatech-rsc';
 
 // Only pre-cache truly PUBLIC files (no auth required)
+// v278: Added critical Admin routes to ensure list navigation works offline
 const PRE_CACHE = [
   '/admin',
   '/admin/operador',
   '/admin/login',
+  '/admin/proyectos',
+  '/admin/calendario',
+  '/admin/cotizaciones',
+  '/admin/inventario',
   '/offline.html',
   '/app-start.html',
   '/manifest.json',
@@ -24,7 +29,7 @@ const PRE_CACHE = [
   '/admin/operador/proyecto/offline-shell'
 ];
 
-const VERSION = 'v277';
+const VERSION = 'v278';
 
 // v242: Helper to bypass Chrome's "redirected response" security block
 function cleanResponse(response) {
@@ -520,9 +525,9 @@ async function findCachedPage(requestUrl, pathname, forceServe = false) {
   
   // v225: Improved Shell logic for Projects
   // v268: Robust operator project detection
-  const isAdminProject = pathname.match(/\/admin\/proyectos\/\d+/);
-  const isOperatorProject = pathname.match(/\/admin\/operador\/proyecto\/\d+/) || 
-                            pathname.match(/\/operador\/proyecto\/\d+/) ||
+  const isAdminProject = pathname.match(/\/admin\/proyectos\/[^/]+/);
+  const isOperatorProject = pathname.match(/\/admin\/operador\/proyecto\/[^/]+/) || 
+                            pathname.match(/\/operador\/proyecto\/[^/]+/) ||
                             pathname.includes('/operador/proyecto/');
   const isLoginPage = pathname === '/admin/login' || pathname === '/admin/login/';
   const isRootAdmin = pathname === '/admin' || pathname === '/admin/';
@@ -1017,7 +1022,7 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
             for (const item of allItems) {
               if (item.status === 'syncing') {
                 const stuckTime = now - (item.lastAttemptAt || item.timestamp || 0);
-                if (stuckTime > 120000) { // 2 minutes
+                if (stuckTime > 45000) { // 45 seconds (v278: more aggressive for mobile)
                   console.log(`[SW] Resetting stuck item ${item.id} (${item.type}) from 'syncing' to 'pending'`);
                   item.status = 'pending';
                   resetStore.put(item);
@@ -1363,6 +1368,18 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
       syncChannel.close();
 
       resolve();
+
+      // v278: AGGRESSIVE SYNC LOOP
+      // If we are still in the background sync period and there are items remaining, 
+      // check again after a short delay if we successfully synced at least one item.
+      const successfulSyncs = pendingItems.length - failedContexts.size;
+      if (successfulSyncs > 0) {
+        setTimeout(() => {
+          console.log('[SW] Success loop: re-checking outbox for new items...');
+          processOutboxSync(false);
+        }, 5000);
+      }
+    };
     };
 
     getAllRequest.onerror = () => {

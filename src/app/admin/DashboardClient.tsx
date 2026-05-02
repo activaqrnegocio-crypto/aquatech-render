@@ -237,9 +237,11 @@ export default function DashboardClient({
       )}
 
       {/* Push Notification Banner for Admins */}
-      {pushStatus !== 'subscribed' && pushStatus !== 'unsupported' && pushStatus !== 'denied' && pushStatus !== 'loading' && !pushDismissed && (
+      {pushStatus !== 'subscribed' && pushStatus !== 'loading' && !pushDismissed && (
         <div style={{
-          background: 'linear-gradient(135deg, #0070c0, #38bdf8)',
+          background: pushStatus === 'denied' || pushStatus === 'unsupported' 
+            ? 'rgba(255,255,255,0.05)' 
+            : 'linear-gradient(135deg, #0070c0, #38bdf8)',
           borderRadius: '16px',
           padding: '16px 20px',
           display: 'flex',
@@ -248,54 +250,109 @@ export default function DashboardClient({
           gap: '15px',
           flexWrap: 'wrap',
           margin: '0 0 25px 0',
-          boxShadow: '0 4px 20px rgba(0, 112, 192, 0.3)',
+          boxShadow: pushStatus === 'denied' ? 'none' : '0 4px 20px rgba(0, 112, 192, 0.2)',
+          border: pushStatus === 'denied' ? '1px solid rgba(255,255,255,0.1)' : 'none',
           position: 'relative',
-          zIndex: 1000, // v281: Over other mobile elements
-          animation: 'fade-in 0.5s ease-out'
+          animation: 'fade-in 0.5s ease-out',
+          overflow: 'hidden'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '200px' }}>
-            <span style={{ fontSize: '1.8rem' }}>🔔</span>
+            <span style={{ fontSize: '1.8rem' }}>{pushStatus === 'denied' ? '🚫' : pushStatus === 'unsupported' ? '📱' : '🔔'}</span>
             <div>
-              <p style={{ margin: 0, color: 'white', fontWeight: 'bold', fontSize: '0.95rem' }}>Activa las Notificaciones de Administrador</p>
-              <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem' }}>Recibe alertas en tiempo real de nuevos proyectos, mensajes y gastos</p>
+              <p style={{ margin: 0, color: 'white', fontWeight: 'bold', fontSize: '0.95rem' }}>
+                {pushStatus === 'denied' 
+                  ? 'Notificaciones Bloqueadas' 
+                  : pushStatus === 'unsupported'
+                  ? 'Notificaciones no soportadas'
+                  : 'Activa las Notificaciones de Administrador'}
+              </p>
+              <p style={{ margin: 0, color: 'rgba(255,255,255,0.85)', fontSize: '0.8rem' }}>
+                {pushStatus === 'denied'
+                  ? 'Debes habilitar los permisos en los ajustes de tu navegador.'
+                  : pushStatus === 'unsupported'
+                  ? 'Tu iPhone (sin instalar) no permite avisos push.'
+                  : 'Recibe alertas en tiempo real de proyectos y mensajes'}
+              </p>
             </div>
           </div>
-          <div style={{ display: 'flex', gap: '8px' }}>
-            <button
-              onClick={async () => {
-                const ok = await pushSubscribe()
-                if (ok) setPushDismissed(true)
-              }}
-              disabled={isSubscribing}
-              style={{
-                backgroundColor: 'white',
-                color: '#0070c0',
-                fontWeight: 'bold',
-                padding: '8px 20px',
-                borderRadius: '10px',
-                border: 'none',
-                fontSize: '0.85rem',
-                cursor: 'pointer'
-              }}
-            >
-              {isSubscribing ? 'Activando...' : '✓ Activar'}
-            </button>
-            <button
+          <div style={{ display: 'flex', gap: '12px', alignItems: 'center', zIndex: 5 }}>
+            {(pushStatus === 'denied' || pushStatus === 'unsupported' || /android|iphone|ipad/i.test(navigator.userAgent)) && (
+              <button
+                onClick={() => setShowOnboarding(true)}
+                style={{
+                  backgroundColor: 'rgba(255,255,255,0.1)',
+                  color: 'white',
+                  fontWeight: '600',
+                  padding: '10px 15px',
+                  borderRadius: '10px',
+                  border: '1px solid rgba(255,255,255,0.2)',
+                  fontSize: '0.8rem',
+                  cursor: 'pointer',
+                  touchAction: 'manipulation'
+                }}
+              >
+                Ayuda
+              </button>
+            )}
+            
+            {pushStatus === 'prompt' || pushStatus === 'unsubscribed' ? (
+              <button
+                onClick={async (e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  const ok = await pushSubscribe()
+                  if (ok) {
+                    setPushDismissed(true)
+                  } else {
+                    alert('No se pudo activar. Asegúrate de tener internet. En iPhone, instala la app primero.')
+                  }
+                }}
+                disabled={isSubscribing}
+                style={{
+                  backgroundColor: 'white',
+                  color: '#0070c0',
+                  fontWeight: 'bold',
+                  padding: '12px 24px',
+                  borderRadius: '12px',
+                  border: 'none',
+                  fontSize: '0.9rem',
+                  cursor: 'pointer',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  touchAction: 'manipulation',
+                  opacity: isSubscribing ? 0.7 : 1,
+                  transition: 'all 0.2s ease',
+                  transform: isSubscribing ? 'scale(0.98)' : 'scale(1)'
+                }}
+              >
+                {isSubscribing ? (
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <div className="animate-spin" style={{ width: '12px', height: '12px', border: '2px solid #0070c0', borderTopColor: 'transparent', borderRadius: '50%' }}></div>
+                    <span>...</span>
+                  </div>
+                ) : 'Activar'}
+              </button>
+            ) : null}
+
+            <button 
               onClick={() => {
-                localStorage.setItem('push_dismissed', String(Date.now()))
+                localStorage.setItem('push_dismissed', Date.now().toString())
                 setPushDismissed(true)
               }}
-              style={{
-                backgroundColor: 'transparent',
-                color: 'rgba(255,255,255,0.8)',
-                border: '1px solid rgba(255,255,255,0.4)',
-                padding: '8px 14px',
-                borderRadius: '10px',
-                fontSize: '0.8rem',
-                cursor: 'pointer'
+              style={{ 
+                background: 'rgba(255,255,255,0.1)', 
+                border: 'none', 
+                color: 'white', 
+                cursor: 'pointer', 
+                width: '30px',
+                height: '30px',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '1rem' 
               }}
             >
-              Luego
+              ✕
             </button>
           </div>
         </div>

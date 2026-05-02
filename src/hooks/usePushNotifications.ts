@@ -54,13 +54,41 @@ export function usePushNotifications() {
     if (status === 'unsupported' || status === 'denied') return false
 
     setIsSubscribing(true)
+    
+    const isSubRef = { current: true };
+    const safetyTimeout = setTimeout(() => {
+      if (isSubRef.current) {
+        console.warn('[PUSH] Subscription timed out after 15s');
+        setIsSubscribing(false);
+        isSubRef.current = false;
+      }
+    }, 15000);
+
+    const finishSub = (success: boolean) => {
+      clearTimeout(safetyTimeout);
+      setIsSubscribing(false);
+      isSubRef.current = false;
+      return success;
+    };
+
     try {
-      // 1. Request notification permission
-      const permission = await Notification.requestPermission()
+      // 1. Request notification permission (v286: Robust callback fallback)
+      console.log('[PUSH] Requesting permission...');
+      let permission: NotificationPermission;
+      try {
+        permission = await Notification.requestPermission();
+      } catch (e) {
+        // Fallback for older browsers/iOS versions that use callbacks
+        permission = await new Promise((resolve) => {
+          Notification.requestPermission((result) => resolve(result));
+        });
+      }
+
+      clearTimeout(safetyTimeout);
+      console.log('[PUSH] Permission result:', permission);
       if (permission !== 'granted') {
-        setStatus('denied')
-        setIsSubscribing(false)
-        return false
+        setStatus('denied');
+        return finishSub(false);
       }
 
       // 2. Get service worker registration
@@ -70,8 +98,7 @@ export function usePushNotifications() {
       const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
       if (!vapidKey) {
         console.error('[PUSH] VAPID public key not found')
-        setIsSubscribing(false)
-        return false
+        return finishSub(false)
       }
 
       const subscription = await registration.pushManager.subscribe({
@@ -108,17 +135,14 @@ export function usePushNotifications() {
           setShowOnboarding(true)
         }
 
-        setIsSubscribing(false)
-        return true
+        return finishSub(true)
       } else {
         console.error('[PUSH] Server rejected subscription')
-        setIsSubscribing(false)
-        return false
+        return finishSub(false)
       }
     } catch (error) {
       console.error('[PUSH] Subscription error:', error)
-      setIsSubscribing(false)
-      return false
+      return finishSub(false)
     }
   }, [status])
 

@@ -61,17 +61,18 @@ export default function ProjectDetailClient({ project: initialProject, available
   // v228: Robust ID extraction using regex to handle trailing slashes and Universal Shell
   // v231: Enhanced regex to capture digits even in complex paths
   const idFromUrl = useMemo(() => {
-    if (typeof window === 'undefined') return 0;
+    if (typeof window === 'undefined') return '';
     const path = window.location.pathname;
-    const match = path.match(/\/proyecto[s]?\/(\d+)/i);
-    if (match) return Number(match[1]);
     
-    // Ultimate fallback: check if the last segment is a number
+    // v277: Support alphanumeric IDs (UUIDs, etc.)
+    const match = path.match(/\/proyecto[s]?\/([^/?]+)/i);
+    if (match) return match[1];
+    
     const segments = path.split('/').filter(Boolean);
     const last = segments[segments.length - 1];
-    if (last && /^\d+$/.test(last)) return Number(last);
+    if (last && !['proyectos', 'operador', 'admin'].includes(last.toLowerCase())) return last;
 
-    return 0;
+    return '';
   }, []);
 
   // v261: Helper to wake up SW and register background sync
@@ -106,7 +107,8 @@ export default function ProjectDetailClient({ project: initialProject, available
 
       // Check if we need to recover from cache (either offline OR we got the wrong shell props OR server failed)
       // v244: Aggressive recovery for Admin mobile experience
-      const needsCacheRecovery = (!initialProject || Number(initialProject?.id) !== idFromUrl || initialProject?.isSkeleton) && idFromUrl > 0;
+      // v277: Support string IDs for recovery
+      const needsCacheRecovery = (!initialProject || String(initialProject?.id) !== String(idFromUrl) || initialProject?.isSkeleton) && idFromUrl;
 
       if (needsCacheRecovery) {
         setIsSyncingOffline(true);
@@ -122,11 +124,16 @@ export default function ProjectDetailClient({ project: initialProject, available
         }, 5000);
 
         try {
-          const cached = await db.projectsCache.get(idFromUrl);
+          // v277: Try both string and numeric lookups to ensure compatibility
+          const numericId = Number(idFromUrl);
+          const cached = await db.projectsCache.get(idFromUrl) || 
+                        (!isNaN(numericId) ? await db.projectsCache.get(numericId) : null);
+
           if (cached) {
             console.log('[Recovery] Found project in local cache:', idFromUrl);
             setLocalProject(cached);
-            const chat = await db.chatCache.get(idFromUrl);
+            const chat = await db.chatCache.get(idFromUrl) || 
+                        (!isNaN(numericId) ? await db.chatCache.get(numericId) : null);
             setLocalChat(chat?.messages || []);
           } else {
             console.warn('[Recovery] Project not found in local cache:', idFromUrl);
@@ -236,6 +243,11 @@ export default function ProjectDetailClient({ project: initialProject, available
       })
     ].sort((a: any, b: any) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
   }, [chatMessages, liveChat, pendingItems, session?.user?.id, session?.user?.name]);
+
+  const isAdmin = useMemo(() => {
+    const role = session?.user?.role?.toUpperCase() || '';
+    return role === 'ADMIN' || role === 'ADMINISTRADORA' || role === 'SUPERADMIN' || role === 'DIRECTOR';
+  }, [session?.user?.role]);
 
   const [message, setMessage] = useState('')
   const [activePhase, setActivePhase] = useState<number | null>(null)
@@ -668,6 +680,10 @@ export default function ProjectDetailClient({ project: initialProject, available
             syncId
           })
         })
+        
+        // v277: Immediate UI update in offline mode
+        setGallery((prev: any[]) => prev.filter((item: any) => item.id !== itemId))
+        
         triggerBackgroundSync()
         return
       } catch (e) {
@@ -692,6 +708,50 @@ export default function ProjectDetailClient({ project: initialProject, available
     } catch (error) {
       console.error('Error deleting gallery item:', error)
       alert('Error de conexión al eliminar')
+    }
+  }
+
+  const handleDeleteAllGallery = async (category: string) => {
+    const targets = gallery.filter((item: any) => item.category === category);
+    if (targets.length === 0) return;
+    
+    if (!confirm(`¿Estás seguro de que deseas eliminar TODOS los archivos (${targets.length}) de esta galería? Esta acción no se puede deshacer.`)) return;
+    
+    // v277: Sequential deletion to avoid server/network saturation
+    // For a better UX, we update the local state immediately
+    const targetIds = targets.map((t: any) => t.id);
+    
+    startTransition(() => {
+      setGallery((prev: any[]) => prev.filter((item: any) => !targetIds.includes(item.id)));
+    });
+
+    for (const item of targets) {
+      try {
+        // We call the individual delete logic without the confirm dialog
+        // v277: Simplified delete for bulk operations
+        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+           const syncId = `gallery-delete-${project.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+           await db.outbox.add({
+             type: 'GALLERY_DELETE',
+             projectId: project.id,
+             payload: { galleryId: item.id },
+             timestamp: Date.now(),
+             status: 'pending',
+             syncId
+           });
+        } else {
+           await fetch(`/api/projects/${project.id}/gallery/${item.id}`, {
+             method: 'DELETE',
+             headers: { 'x-sync-id': `bulk-del-${item.id}` }
+           });
+        }
+      } catch (e) {
+        console.warn(`Failed to delete item ${item.id} in bulk op`, e);
+      }
+    }
+    
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      triggerBackgroundSync();
     }
   }
 
@@ -1024,7 +1084,7 @@ export default function ProjectDetailClient({ project: initialProject, available
     }
 
     try {
-      await fetch(`/api/projects/${project.id}/gallery`, {
+      const resp = await fetch(`/api/projects/${project.id}/gallery`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -1032,6 +1092,11 @@ export default function ProjectDetailClient({ project: initialProject, available
         },
         body: JSON.stringify({ ...file, category })
       })
+
+      if (resp.ok) {
+        const newItem = await resp.json()
+        setGallery(prev => [newItem, ...prev])
+      }
     } catch (e) {
       console.error('Error uploading to gallery:', e)
       // Fallback to outbox on error
@@ -2641,15 +2706,27 @@ export default function ProjectDetailClient({ project: initialProject, available
                   <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Documentos maestros, planos y especificaciones técnicas oficiales.</p>
                 </div>
                 
-                <ProjectUploader 
-                  files={[]} 
-                  onAddFile={handleUploadToGallery}
-                  onRemoveFile={() => {}}
-                  title="🔼 SUBIR A: PLANOS Y REFERENCIAS"
-                  minimal={true}
-                  showGrid={false}
-                  onFilterChange={(f) => setGalleryFilter(f)}
-                />
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  {isAdmin && masterGallery.length > 0 && (
+                    <button 
+                      onClick={() => handleDeleteAllGallery('MASTER')}
+                      className="btn btn-ghost"
+                      style={{ color: 'var(--danger)', fontSize: '0.8rem', padding: '8px 12px' }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      BORRAR TODO
+                    </button>
+                  )}
+                  <ProjectUploader 
+                    files={[]} 
+                    onAddFile={handleUploadToGallery}
+                    onRemoveFile={() => {}}
+                    title="🔼 SUBIR A: PLANOS Y REFERENCIAS"
+                    minimal={true}
+                    showGrid={false}
+                    onFilterChange={(f) => setGalleryFilter(f)}
+                  />
+                </div>
               </div>
 
               <div className="custom-scrollbar" style={{ 
@@ -2849,15 +2926,27 @@ export default function ProjectDetailClient({ project: initialProject, available
                   <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>Evidencias de obra, fotos para publicidad y documentación visual del progreso.</p>
                 </div>
                 
-                <ProjectUploader 
-                  files={[]} 
-                  onAddFile={(file) => handleUploadToGallery(file, 'EVIDENCE')}
-                  onRemoveFile={() => {}}
-                  title="🔼 SUBIR A: ARCHIVOS FINALES"
-                  minimal={true}
-                  showGrid={false}
-                  onFilterChange={(f) => setEvidenceFilter(f)}
-                />
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+                  {isAdmin && evidenceGallery.length > 0 && (
+                    <button 
+                      onClick={() => handleDeleteAllGallery('EVIDENCE')}
+                      className="btn btn-ghost"
+                      style={{ color: 'var(--danger)', fontSize: '0.8rem', padding: '8px 12px' }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: '6px' }}><path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                      BORRAR TODO
+                    </button>
+                  )}
+                  <ProjectUploader 
+                    files={[]} 
+                    onAddFile={(file) => handleUploadToGallery(file, 'EVIDENCE')}
+                    onRemoveFile={() => {}}
+                    title="🔼 SUBIR A: ARCHIVOS FINALES"
+                    minimal={true}
+                    showGrid={false}
+                    onFilterChange={(f) => setEvidenceFilter(f)}
+                  />
+                </div>
               </div>
 
               <div className="custom-scrollbar" style={{ 

@@ -210,7 +210,7 @@ export default function MediaCapture({
   const triggerNativeCamera = () => {
     const input = document.createElement('input')
     input.type = 'file'
-    input.accept = 'image/*'
+    input.accept = mode === 'video' ? 'video/*' : 'image/*'
     input.capture = 'environment'
     input.style.display = 'none'
     document.body.appendChild(input)
@@ -362,7 +362,7 @@ export default function MediaCapture({
           <div style={{ display: 'flex', alignItems: 'center', gap: '20px' }}>
             <button 
               type="button"
-              onClick={mode === 'video' ? triggerNativeCamera : startRecording}
+              onClick={(mode === 'video' || mode === 'photo') ? triggerNativeCamera : startRecording}
               style={{
                 width: compact ? '40px' : '60px',
                 height: compact ? '40px' : '60px',
@@ -379,9 +379,9 @@ export default function MediaCapture({
               }}
               onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
               onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1)'}
-              title={mode === 'video' ? 'Abrir Cámara' : 'Grabar Audio'}
+              title={mode === 'video' ? 'Grabar Video' : (mode === 'photo' ? 'Tomar Foto' : 'Grabar Audio')}
             >
-              {mode === 'video' 
+              {(mode === 'video' || mode === 'photo') 
                 ? <Camera size={compact ? 18 : 24} />
                 : <Mic size={compact ? 18 : 24} />
               }

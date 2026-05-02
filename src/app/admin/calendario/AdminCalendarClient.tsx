@@ -118,6 +118,28 @@ export default function AdminCalendarClient({
       window.removeEventListener('sync-success' as any, handleSyncSuccess)
     }
   }, [selectedOperatorId])
+
+  // v278: Visibility change fallback to wake up SW on mobile/iOS
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible') {
+        console.log('[Calendar] App visible, checking for pending syncs...')
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then(reg => {
+            if ('sync' in reg) {
+              (reg as any).sync.register('sync-outbox').catch(() => {});
+            }
+            if (navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
+            }
+          });
+        }
+      }
+    }
+
+    document.addEventListener('visibilitychange', handleVisibilityChange)
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange)
+  }, [])
   const fetchAppointments = async (silent = false, retryCount = 0) => {
     if (!silent && appointments.length === 0) setLoading(true)
     try {
