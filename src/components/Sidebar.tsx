@@ -186,13 +186,13 @@ export default function Sidebar() {
       const { type, current, total, projectName, url } = event.data;
       
       if (type === 'DATA_SYNC_START') {
-        setDataSync({ current: 0, total, active: true, label: 'Iniciando datos...' });
+        setDataSync({ current: 0, total, active: true, label: 'Sincronizando Proyectos...' });
       } else if (type === 'DATA_SYNC_PROGRESS') {
-        setDataSync({ current, total, active: true, label: projectName || 'Procesando...' });
+        setDataSync({ current, total, active: true, label: projectName || 'Actualizando...' });
       } else if (type === 'DATA_SYNC_FINISHED') {
         setDataSync(prev => ({ ...prev, active: false }));
       } else if (type === 'ASSET_PRECACHE_PROGRESS') {
-        setAssetSync({ current, total, active: true, label: 'Sincronizando archivos...' });
+        setAssetSync({ current, total, active: true, label: 'Optimizando Offline...' });
       } else if (type === 'ASSET_PRECACHE_FINISHED') {
         setAssetSync(prev => ({ ...prev, active: false }));
       }

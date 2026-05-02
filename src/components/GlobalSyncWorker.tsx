@@ -248,16 +248,17 @@ export default function GlobalSyncWorker() {
           }));
 
           // 3. Recent Projects — v281: Batched parallel (5 at a time), hard cap per role
-          // Admin: 25 projects max. Operator: 15. Beyond that, they load on demand.
+          // Admin: 15 projects max. Operator: 8. Beyond that, they load on demand.
+          // This prevents the 10-minute "infinite sync" on mobile devices.
           if (projectsToProcess.length === 0) {
             projectsToProcess = await db.projectsCache
               .orderBy('lastAccessedAt')
               .reverse()
-              .limit(isAdmin ? 25 : 15)
+              .limit(isAdmin ? 15 : 8)
               .toArray();
           }
 
-          const limit = isAdmin ? 25 : 15;
+          const limit = isAdmin ? 15 : 8;
           const topProjects = projectsToProcess.slice(0, limit);
           
           const syncChannelAssets = new BroadcastChannel('aquatech-sync');

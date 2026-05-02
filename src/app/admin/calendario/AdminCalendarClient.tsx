@@ -119,8 +119,28 @@ export default function AdminCalendarClient({
     }
   }, [selectedOperatorId])
 
-  // v278: Visibility change fallback to wake up SW on mobile/iOS
+  // v278: Visibility change fallback & Periodic Sync registration
   useEffect(() => {
+    const registerPeriodicSync = async () => {
+      if ('serviceWorker' in navigator) {
+        const reg = await navigator.serviceWorker.ready;
+        // @ts-ignore
+        if ('periodicSync' in reg) {
+          try {
+            // @ts-ignore
+            await reg.periodicSync.register('sync-outbox', {
+              minInterval: 15 * 60 * 1000, // 15 minutes (standard min for most browsers)
+            });
+            console.log('[Calendar] Periodic Sync registered');
+          } catch (e) {
+            console.warn('[Calendar] Periodic Sync could not be registered:', e);
+          }
+        }
+      }
+    };
+
+    registerPeriodicSync();
+
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible') {
         console.log('[Calendar] App visible, checking for pending syncs...')

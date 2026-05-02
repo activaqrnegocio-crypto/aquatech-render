@@ -43,6 +43,14 @@ function cleanResponse(response) {
 }
 
 // ─── INSTALL ────────────────────────────────────────────────
+// v278: Periodic Sync support for background consistency
+self.addEventListener('periodicsync', (event) => {
+  if (event.tag === 'sync-outbox') {
+    console.log('[SW] Periodic Sync triggered');
+    event.waitUntil(processOutboxSync(false));
+  }
+});
+
 self.addEventListener('install', (event) => {
   console.log(`[SW ${VERSION}] Installing...`);
   event.waitUntil(
@@ -883,7 +891,8 @@ self.addEventListener('message', (event) => {
                   const chunkMatches = Array.from(htmlText.matchAll(/\/(_next\/static\/[^"'\s>]+)/g));
                   const assetsCache = await caches.open(ASSETS_CACHE);
                   
-                  const maxChunks = 25; // v286: Increased from 10 to 25 for better coverage
+                  // v286: Balanced limit - 12 chunks is enough for the main UI structure without saturating mobile
+                  const maxChunks = 12; 
                   let chunkCount = 0;
                   for (const match of chunkMatches) {
                     if (chunkCount >= maxChunks) break;
@@ -1082,6 +1091,30 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
 
     const now = Date.now();
     const failedContexts = new Set(); // v272: Track failed projects
+
+    // v278: Sticky Sync - Show a subtle notification to prevent OS suspension
+    if (pendingItems.length > 0 && !isForced) {
+      try {
+        self.registration.showNotification('Sincronizando Aquatech', {
+          body: `Procesando ${pendingItems.length} cambios en segundo plano...`,
+          icon: '/icon-192.png',
+          tag: 'sync-progress',
+          silent: true,
+          // @ts-ignore
+          priority: 'low'
+        });
+      } catch (e) {}
+    }
+
+    // v278: Pre-fetch storage config once per cycle for better performance
+    let storageConfig = null;
+    try {
+      const configResp = await fetch('/api/storage/config');
+      if (configResp.ok) storageConfig = await configResp.json();
+    } catch (e) {
+      console.warn('[SW] Could not pre-fetch storage config');
+    }
+
     for (const item of pendingItems) {
       // v272: Skip items whose project/context already failed
       const ctx = item.projectId ? `proj-${item.projectId}` : ((item.type === 'DAY_START' || item.type === 'DAY_END') ? 'day-record' : null);
@@ -1141,9 +1174,8 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
 
           // --- NEW: UNIFIED MEDIA SYNC LOGIC FOR SERVICE WORKER ---
           const processMedia = async (item) => {
-            const configResp = await fetch('/api/storage/config');
-            if (!configResp.ok) return item.payload;
-            const config = await configResp.json();
+            const config = storageConfig;
+            if (!config) return item.payload;
             const payload = { ...item.payload };
 
             const uploadMediaSW = async (source, name, subfolder = 'general') => {
@@ -1196,7 +1228,8 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
 
             const uploadInChunksSW = async (blob, filename) => {
               console.log(`[SW] Starting chunked upload for ${filename} (${blob.size} bytes)`);
-              const CHUNK_SIZE = 1 * 1024 * 1024; 
+              // v278: Increased chunk size to 4MB for faster background sync
+              const CHUNK_SIZE = 4 * 1024 * 1024; 
               const totalChunks = Math.ceil(blob.size / CHUNK_SIZE);
               const uploadId = self.crypto.randomUUID();
 
@@ -1365,7 +1398,11 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
       // v274: Notify UI that sync cycle finished
       const syncChannel = new BroadcastChannel('aquatech-sync');
       syncChannel.postMessage({ type: 'OUTBOX_SYNC_FINISHED' });
-      syncChannel.close();
+      // v278: Close the sync notification when done
+      try {
+        const notifications = await self.registration.getNotifications({ tag: 'sync-progress' });
+        notifications.forEach(n => n.close());
+      } catch (e) {}
 
       resolve();
 
@@ -1379,7 +1416,6 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
           processOutboxSync(false);
         }, 5000);
       }
-    };
     };
 
     getAllRequest.onerror = () => {

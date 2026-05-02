@@ -94,7 +94,8 @@ export async function uploadInChunks(
   file: File | Blob,
   filename: string
 ): Promise<{ url: string }> {
-  const CHUNK_SIZE = 1 * 1024 * 1024; // 1MB chunks
+  // v278: Increased chunk size to 4MB for better performance on modern networks
+  const CHUNK_SIZE = 4 * 1024 * 1024; 
   const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
   const uploadId = crypto.randomUUID();
 
