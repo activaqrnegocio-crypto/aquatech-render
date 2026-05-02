@@ -827,6 +827,18 @@ export default function ProjectExecutionClient({
         try {
           let processedPhoto = expensePhoto
           
+          // v279: Robust offline Base64 conversion
+          if (processedPhoto && processedPhoto.startsWith('blob:') && typeof navigator !== 'undefined' && !navigator.onLine) {
+            try {
+              const { blobToBase64 } = await import('@/lib/image-optimization');
+              const res = await fetch(processedPhoto);
+              const blob = await res.blob();
+              processedPhoto = await blobToBase64(blob);
+            } catch (e) {
+              console.warn('[Expense] Failed to convert blob to base64 for offline storage', e);
+            }
+          }
+
           // Compressing if possible
           if (processedPhoto && processedPhoto.startsWith('data:') && navigator.onLine) {
             try {
@@ -1057,13 +1069,14 @@ export default function ProjectExecutionClient({
          await db.transaction('rw', db.outbox, async () => {
            if (mediaFile) {
              try {
+               // v294: PROBLEMA 1 — Convertir SIEMPRE a Base64 antes de guardar en outbox
                const fileToStore = isCompressibleImage(mediaFile) ? await optimizedCompress(mediaFile) : mediaFile;
                const base64 = await blobToBase64(fileToStore);
                 payload.media = {
                   base64: base64,
                   filename: mediaFile.name,
                   mimeType: mediaFile.type || (isCompressibleImage(mediaFile) ? 'image/webp' : 'application/octet-stream'),
-                  type: determinedType, // Include original determined type
+                  type: determinedType,
                   category: 'CHAT'
                 };
              } catch (e) {
@@ -1118,13 +1131,15 @@ export default function ProjectExecutionClient({
         }
       } catch (e) {
          await db.transaction('rw', db.outbox, async () => {
-           if (mediaFile && !payload.media) {
+           if (mediaFile && !payload.media?.base64) {
              try {
-               const base64 = await blobToBase64(mediaFile);
+               // v294: Garantizar Base64 en el catch de envío online
+               const fileToStore = isCompressibleImage(mediaFile) ? await optimizedCompress(mediaFile) : mediaFile;
+               const base64 = await blobToBase64(fileToStore);
                 payload.media = {
                   base64: base64,
                   filename: mediaFile.name,
-                  mimeType: mediaFile.type,
+                  mimeType: mediaFile.type || (isCompressibleImage(mediaFile) ? 'image/webp' : 'application/octet-stream'),
                   category: 'CHAT'
                 };
              } catch (err) { console.warn('[Offline] Serialisation fallback failed:', err); }
@@ -1213,15 +1228,12 @@ export default function ProjectExecutionClient({
       const syncId = `gallery-${project.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
 
       let processedUrl = file.url;
-      if (isOffline && typeof file.url === 'string' && file.url.startsWith('blob:')) {
+      if (typeof file.url === 'string' && file.url.startsWith('blob:')) {
          try {
+           // v294: PROBLEMA 1 — Siempre convertir a Base64 para Galería si es blob
            const res = await fetch(file.url);
            const blob = await res.blob();
-           processedUrl = await new Promise<string>((resolve) => {
-             const reader = new FileReader();
-             reader.onload = () => resolve(reader.result as string);
-             reader.readAsDataURL(blob);
-           });
+           processedUrl = await blobToBase64(blob);
          } catch (e) {
            console.warn('Failed to convert blob to base64:', e);
          }

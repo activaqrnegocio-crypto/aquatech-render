@@ -5,11 +5,15 @@ import { useState, useEffect, useCallback } from 'react'
 type PushStatus = 'loading' | 'unsupported' | 'denied' | 'prompt' | 'subscribed' | 'unsubscribed'
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  // v294: Blindaje total contra caracteres invisibles, comillas o espacios
-  // Solo permitimos caracteres válidos de Base64 y Base64URL
-  const base64Clean = base64String.replace(/[^A-Za-z0-9\-_]/g, '');
+  // v295: Limpieza robusta que soporta Base64 estándar (+/) y URL-safe (-_)
+  // Eliminamos cualquier espacio, comilla o caracter invisible
+  const base64Clean = base64String.trim().replace(/["']/g, '').replace(/[^A-Za-z0-9\-_+/]/g, '');
   
-  // El padding debe calcularse sobre la cadena limpia
+  if (!base64Clean) {
+    console.error('[PUSH] La llave VAPID está vacía después de la limpieza');
+    throw new Error('La llave VAPID está vacía o es inválida en el .env');
+  }
+
   const padding = '='.repeat((4 - (base64Clean.length % 4)) % 4);
   const base64 = (base64Clean + padding)
     .replace(/-/g, '+')
@@ -24,9 +28,8 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
     }
     return outputArray;
   } catch (err) {
-    console.error('[PUSH] Error decodificando VAPID:', err);
-    // Fallback: Si falla atob, intentamos retornar un array vacío para no crashear la UI
-    // pero lanzamos el error para que el catch superior lo capture con un mensaje amigable.
+    console.error('[PUSH] Error crítico en atob decodificando VAPID:', err);
+    console.log('[PUSH] Valor fallido (limpio):', base64);
     throw new Error('La llave VAPID no tiene un formato Base64 válido. Verifica tu .env');
   }
 }
@@ -117,15 +120,20 @@ export function usePushNotifications() {
         return { success: false, error: 'Tu navegador no soporta notificaciones Push.' };
       }
 
-      // 3. Subscribe to push
-      const rawVapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
-      if (!rawVapidKey) {
-        console.error('[PUSH] NEXT_PUBLIC_VAPID_PUBLIC_KEY is missing in the environment');
-        return { success: false, error: 'Falta configuración en el servidor (VAPID Key).' };
+      // 3. Get VAPID key from server (v296: Dynamic runtime fetch to bypass Docker build-time issues)
+      console.log('[PUSH] Fetching VAPID key from server...');
+      const configRes = await fetch('/api/push/config');
+      if (!configRes.ok) {
+        throw new Error('No se pudo obtener la configuración de notificaciones del servidor.');
+      }
+      const { publicKey: vapidKey } = await configRes.json();
+      
+      if (!vapidKey || vapidKey === 'dummy') {
+        console.error('[PUSH] Invalid VAPID key received:', vapidKey);
+        return { success: false, error: 'La llave VAPID no está configurada correctamente en el servidor.' };
       }
       
-      const vapidKey = rawVapidKey.trim();
-      console.log('[PUSH] Subscribing with VAPID key (first 10 chars):', vapidKey.substring(0, 10) + '...');
+      console.log('[PUSH] Subscribing with dynamic VAPID key (first 10 chars):', vapidKey.substring(0, 10) + '...');
 
       const subscription = await registration.pushManager.subscribe({
         userVisibleOnly: true,

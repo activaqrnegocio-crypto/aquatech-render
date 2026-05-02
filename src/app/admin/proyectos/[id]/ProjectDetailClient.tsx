@@ -1113,13 +1113,10 @@ export default function ProjectDetailClient({ project: initialProject, available
           let processedUrl = file.url;
           if (typeof file.url === 'string' && file.url.startsWith('blob:')) {
              try {
+               // v294: PROBLEMA 1 — Garantizar Base64 para evitar expiración de blobs
                const res = await fetch(file.url);
                const blob = await res.blob();
-               processedUrl = await new Promise<string>((resolve) => {
-                 const reader = new FileReader();
-                 reader.onload = () => resolve(reader.result as string);
-                 reader.readAsDataURL(blob);
-               });
+               processedUrl = await blobToBase64(blob);
              } catch (e) {
                console.warn("Could not convert blob to base64", e);
              }
@@ -1163,10 +1160,18 @@ export default function ProjectDetailClient({ project: initialProject, available
       console.error('Error uploading to gallery:', e)
       // Fallback to outbox on error
       await db.transaction('rw', db.outbox, async () => {
+        let base64 = null;
+        if (typeof file.url === 'string' && file.url.startsWith('blob:')) {
+          try {
+            const res = await fetch(file.url);
+            const blob = await res.blob();
+            base64 = await blobToBase64(blob);
+          } catch(e) {}
+        }
         await db.outbox.add({
            type: 'GALLERY_UPLOAD',
            projectId: project.id,
-           payload: { ...file, category },
+           payload: { ...file, url: base64 || file.url, base64: base64, category },
            timestamp: Date.now(),
            status: 'pending',
            syncId
@@ -1515,13 +1520,16 @@ export default function ProjectDetailClient({ project: initialProject, available
 
       // v262: Atomic Outbox storage for Chat Unified
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        if (extraData?.file && !payload.media?.base64) {
-           const base64 = await blobToBase64(extraData.file);
-           payload.media = {
-             base64,
-             filename: extraData.file.name,
-             mimeType: extraData.file.type
-           };
+        // v294: Refuerzo de Base64 para el outbox
+        if (extraData?.file && (!payload.media || !payload.media.base64)) {
+           try {
+             const base64 = await blobToBase64(extraData.file);
+             payload.media = {
+               base64,
+               filename: extraData.file.name,
+               mimeType: extraData.file.type
+             };
+           } catch(e) { console.warn('[SW-Fix] Failed final base64 check', e); }
         }
 
         await db.transaction('rw', db.outbox, async () => {

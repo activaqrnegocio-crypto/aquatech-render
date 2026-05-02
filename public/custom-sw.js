@@ -1235,6 +1235,30 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
         if (hoursSinceLastAttempt < 1) continue;
       }
 
+      // v294: PROBLEMA 3 — Retry del storageConfig dentro del ciclo si el item tiene media
+      const itemTieneMedia = (i) => {
+        const p = i.payload || {};
+        return i.type === 'MEDIA_UPLOAD' || 
+               i.type === 'GALLERY_UPLOAD' || 
+               i.type === 'EXPENSE' || 
+               (i.type === 'MESSAGE' && p.media) ||
+               (i.type === 'TASK' && (p.attachments?.length || p.attachmentLinks?.length || p.files?.length));
+      };
+
+      if (!storageConfig && itemTieneMedia(item)) {
+        console.log(`[SW] Item ${item.id} requires media sync but config is missing. Retrying config fetch...`);
+        try {
+          const retry = await fetchWithTimeout(new Request('/api/storage/config'), 8000);
+          if (retry.ok) storageConfig = await retry.json();
+        } catch(e) {
+          console.warn('[SW] Emergency config retry failed');
+        }
+        if (!storageConfig) {
+          // v294: Abortar este item para que quede en failed y no se pierda la URL del blob (si aún vive)
+          throw new Error('No storage config available after retry — aborting media sync');
+        }
+      }
+
       try {
         // ... el resto del bucle ya procesará los items marcados como syncing
 
@@ -1279,7 +1303,8 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
           // --- NEW: UNIFIED MEDIA SYNC LOGIC FOR SERVICE WORKER ---
           const processMedia = async (item) => {
             const config = storageConfig;
-            if (!config) return item.payload;
+            // v294: PROBLEMA 2 — storageConfig null no debe silenciar el error
+            if (!config) throw new Error('storageConfig not available — aborting media sync');
             const payload = { ...item.payload };
 
             const uploadMediaSW = async (source, name, subfolder = 'general') => {
