@@ -17,19 +17,34 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
   const userId = Number(session.user.id)
   const projectId = Number(id)
 
-  const project = await prisma.project.findUnique({
-    where: { id: projectId },
-    include: {
-      client: { select: { name: true, phone: true, address: true, city: true } },
-      phases: { orderBy: { displayOrder: 'asc' } },
-      team: { include: { user: { select: { name: true, role: true } } } },
-      chatMessages: {
-        take: 1
-      },
-      gallery: { orderBy: { createdAt: 'desc' } },
-      budgetItems: true
-    }
-  })
+  // v280: ALL queries in parallel, gallery capped at 20 (was unlimited = slow)
+  const [project, globalActiveRecord, myExpenses, availableOperators] = await Promise.all([
+    prisma.project.findUnique({
+      where: { id: projectId },
+      include: {
+        client: { select: { name: true, phone: true, address: true, city: true } },
+        phases: { orderBy: { displayOrder: 'asc' } },
+        team: { include: { user: { select: { name: true, role: true } } } },
+        chatMessages: { take: 1 },
+        // v280: gallery was UNBOUNDED before — that alone caused 10s loads on big projects
+        gallery: { orderBy: { createdAt: 'desc' }, take: 20 },
+        budgetItems: true
+      }
+    }),
+    prisma.dayRecord.findFirst({
+      where: { userId, endTime: null },
+      include: { project: { select: { id: true, title: true } } }
+    }),
+    prisma.expense.findMany({
+      where: { projectId, OR: [{ userId }, { isNote: true }] },
+      orderBy: { createdAt: 'desc' },
+      take: 30 // v280: capped for speed
+    }),
+    prisma.user.findMany({
+      where: { role: { in: ['OPERATOR', 'SUBCONTRATISTA'] }, isActive: true },
+      select: { id: true, name: true, phone: true }
+    })
+  ])
 
   // If project doesn't exist or user not in team, back to dashboard
   const isInTeam = project?.team.some((t: any) => t.userId === userId)
@@ -37,50 +52,23 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
     redirect('/admin/operador')
   }
 
-  // Mark chat as seen for this user
-  await prisma.projectView.upsert({
-    where: {
-      userId_projectId: {
-        userId,
-        projectId
-      }
-    },
-    update: { lastSeen: new Date() },
-    create: {
-      userId,
-      projectId,
-      lastSeen: new Date()
-    }
-  })
+  // v280: Parallel fire — mark seen + fetch chat at the same time
+  const [rawChatMessages] = await Promise.all([
+    prisma.chatMessage.findMany({
+      where: { projectId },
+      orderBy: { createdAt: 'desc' },
+      take: 40, // v280: reduced from 50
+      include: { user: { select: { name: true } }, media: true }
+    }),
+    prisma.projectView.upsert({
+      where: { userId_projectId: { userId, projectId } },
+      update: { lastSeen: new Date() },
+      create: { userId, projectId, lastSeen: new Date() }
+    })
+  ])
 
-  // v222: Optimized for mobile speed - only fetch last 50 messages initially
-  const rawChatMessages = await prisma.chatMessage.findMany({
-    where: { projectId },
-    orderBy: { createdAt: 'desc' },
-    take: 50,
-    include: { user: { select: { name: true } }, media: true }
-  })
-  
   // Reverse to maintain chronological order [oldest -> newest] for the UI
   const chatMessages = rawChatMessages.reverse()
-
-  // Find if user has ANY active day record across ALL projects
-  const globalActiveRecord = await prisma.dayRecord.findFirst({
-    where: { userId, endTime: null },
-    include: { project: { select: { id: true, title: true } } }
-  })
-
-  // get user's expenses + all project notes
-  const myExpenses = await prisma.expense.findMany({
-    where: { 
-      projectId, 
-      OR: [
-        { userId },
-        { isNote: true }
-      ]
-    },
-    orderBy: { createdAt: 'desc' }
-  })
 
   // Combine and limit to 60 items for performance
   const unifiedGallery = [
@@ -163,10 +151,7 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
     userName: (e as any).user?.name || 'Operador'
   }))
 
-  const availableOperators = await prisma.user.findMany({
-    where: { role: { in: ['OPERATOR', 'SUBCONTRATISTA'] }, isActive: true },
-    select: { id: true, name: true, phone: true }
-  })
+  // v280: availableOperators already fetched in the top Promise.all
 
   return (
     <div className="pt-0 pl-0 pr-0 sm:pt-6 sm:pl-6 sm:pr-6">

@@ -69,7 +69,7 @@ export async function PATCH(
         updated.userId,
         '✏️ Tarea Actualizada',
         `${updated.title} — ${startLocale}`,
-        `/admin/operador`,
+        `URL_TASK:${updated.projectId || 0}:${updated.id}`, // v281: Deep link
         `task-${updated.id}`
       )
 

@@ -166,6 +166,14 @@ export default function ProjectExecutionClient({
     window.addEventListener('sync-success', handleSyncSuccess)
     updateOnlineStatus()
 
+    // v281: Deep Link - Auto-switch tab based on query param
+    const view = searchParams?.get('view')
+    if (view === 'chat') {
+      setActiveTab('chat')
+    } else if (view === 'gallery') {
+      setActiveTab('gallery')
+    }
+
     return () => {
       window.removeEventListener('resize', checkSize)
       window.removeEventListener('online', updateOnlineStatus)

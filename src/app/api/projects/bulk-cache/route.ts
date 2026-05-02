@@ -37,6 +37,9 @@ export async function GET(request: Request) {
       console.log(`[BulkCache] Admin mode: Syncing all projects (no status filter)`)
     }
 
+    // v280: RADICAL DIET — Gallery and Expenses removed from bulk payload.
+    // They load lazily when the user opens a specific project.
+    // This is the primary cause of the 5-minute sync on mobile.
     const projects = await prisma.project.findMany({
       where: whereClause,
       take: safeLimit,
@@ -45,85 +48,48 @@ export async function GET(request: Request) {
         title: true,
         description: true,
         status: true,
+        updatedAt: true,
         createdAt: true,
         address: true,
         city: true,
         startDate: true,
         endDate: true,
         client: {
-          select: {
-            id: true,
-            name: true,
-            phone: true,
-            address: true
-          }
+          select: { id: true, name: true, phone: true, address: true }
         },
         phases: {
-          select: {
-            id: true,
-            title: true,
-            status: true,
-            displayOrder: true
-          },
+          select: { id: true, title: true, status: true, displayOrder: true },
           orderBy: { displayOrder: 'asc' }
         },
         team: {
           select: {
             id: true,
             userId: true,
-            user: {
-              select: {
-                id: true,
-                name: true
-              }
-            }
+            user: { select: { id: true, name: true } }
           }
         },
+        // v280: Only 5 latest messages for the unread badge count. Full chat loads on-demand.
         chatMessages: {
           select: {
             id: true,
             content: true,
             createdAt: true,
             userId: true,
-            extraData: true,
             type: true,
-            media: true,
-            user: {
-              select: {
-                name: true
-              }
-            }
           },
           orderBy: { createdAt: 'desc' },
-          take: 15 // v252: Reduced from 30 to allow more projects in bulk sync
-        },
-        expenses: {
-          select: {
-            id: true,
-            amount: true,
-            description: true,
-            category: true,
-            date: true,
-            receiptUrl: true,
-          },
-          take: 5 // v252: Reduced from 20 for bulk efficiency
-        },
-        gallery: {
-          select: {
-            id: true,
-            url: true,
-            mimeType: true,
-            category: true,
-            createdAt: true,
-            filename: true
-          },
-          take: 10 // v252: Reduced from 30 for bulk efficiency
+          take: 5
         }
       },
       orderBy: { updatedAt: 'desc' }
     })
 
-    return NextResponse.json(projects)
+    // v280: Cache for 5 minutes in browser to avoid hammering the DB on every sync cycle
+    return NextResponse.json(projects, {
+      headers: {
+        'Cache-Control': 'private, max-age=300, stale-while-revalidate=60',
+      }
+    })
   } catch (error) {
     console.error('Error in bulk-cache:', error)
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })

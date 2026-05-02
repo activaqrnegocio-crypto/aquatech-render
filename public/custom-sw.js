@@ -184,12 +184,12 @@ self.addEventListener('fetch', (event) => {
                 url.searchParams.has('_rsc');
   
   if (isRSC) {
-    // v246: ONLY use SWR for routes exclusive to one role.
-    // Shared routes (inventario, cotizaciones, /admin) use network-first to avoid
-    // serving admin RSC payloads to operator users (causes Server Components render error).
+    // v286: Use SWR for routes that are role-exclusive or critical for speed.
+    // This makes project navigation INSTANT.
     const isAdminOnlyRoute = url.pathname === '/admin/proyectos' || 
-                             url.pathname === '/admin/calendario';
-    const isOperatorOnlyRoute = url.pathname === '/admin/operador';
+                             url.pathname === '/admin/calendario' ||
+                             url.pathname.match(/\/admin\/proyectos\/\d+/);
+    const isOperatorOnlyRoute = url.pathname.startsWith('/admin/operador');
     
     if (isAdminOnlyRoute || isOperatorOnlyRoute) {
       event.respondWith(rscStaleWhileRevalidate(request));
@@ -851,18 +851,24 @@ self.addEventListener('message', (event) => {
               continue;
             }
 
+            const isRsc = url.includes('_rsc=');
             const response = await fetchWithTimeout(new Request(url, { 
               credentials: 'same-origin',
-              headers: { 'Cache-Control': 'no-cache', 'Accept': 'text/html' }
-            }), 8000); 
+              headers: { 
+                'Cache-Control': 'no-cache', 
+                'Accept': isRsc ? 'text/x-component, text/html' : 'text/html',
+                ...(isRsc ? { 'RSC': '1' } : {})
+              }
+            }), 20000); // v286: Increased to 20s for slow dev servers
 
             if (response.ok) {
               const contentType = response.headers.get('Content-Type') || '';
               const isHTML = contentType.includes('text/html');
+              const isRscResponse = contentType.includes('text/x-component');
               const finalUrl = response.url || '';
               const isLoginRedirect = finalUrl.includes('/login');
               
-              if (isHTML && !isLoginRedirect) {
+              if ((isHTML || isRscResponse) && !isLoginRedirect) {
                 await cache.put(url, response.clone());
                 const alt = url.endsWith('/') ? url.slice(0, -1) : url + '/';
                 await cache.put(alt, response.clone());
@@ -872,7 +878,7 @@ self.addEventListener('message', (event) => {
                   const chunkMatches = Array.from(htmlText.matchAll(/\/(_next\/static\/[^"'\s>]+)/g));
                   const assetsCache = await caches.open(ASSETS_CACHE);
                   
-                  const maxChunks = 10; // v274: Only pre-fetch critical chunks to avoid network saturation
+                  const maxChunks = 25; // v286: Increased from 10 to 25 for better coverage
                   let chunkCount = 0;
                   for (const match of chunkMatches) {
                     if (chunkCount >= maxChunks) break;
@@ -901,9 +907,8 @@ self.addEventListener('message', (event) => {
             }
             
             if (replyPort) replyPort.postMessage({ done: true, url });
-            // v274: Increased delay to 1500ms to ensure the SW event loop is free 
-            // to handle 'fetch' events (like the Calendar API) between cache tasks.
-            await new Promise(r => setTimeout(r, 1500)); 
+            // v286: Minimal 100ms delay to keep the process fast but safe
+            await new Promise(r => setTimeout(r, 100)); 
           } catch (e) {
             console.warn(`[SW ${VERSION}] Warm-cache failed for:`, url);
             if (replyPort) replyPort.postMessage({ done: true, url, error: true });
@@ -1424,6 +1429,15 @@ self.addEventListener('notificationclick', (event) => {
            targetUrl = `/admin/proyectos/${projectId}?view=chat`;
          } else {
            targetUrl = `/admin/operador/proyecto/${projectId}?view=chat`;
+         }
+      } else if (rawUrl.startsWith('URL_TASK:')) {
+         const parts = rawUrl.split(':');
+         const projectId = parts[1];
+         const taskId = parts[2];
+         if (isAdmin) {
+           targetUrl = `/admin/calendario?taskId=${taskId}`;
+         } else {
+           targetUrl = `/admin/operador/proyecto/${projectId}?view=records&taskId=${taskId}`;
          }
       } else if (rawUrl === 'URL_CALENDAR') {
          if (isAdmin) {

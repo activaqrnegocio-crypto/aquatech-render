@@ -185,7 +185,7 @@ export async function POST(request: Request) {
               appointment.userId,
               '📌 Nueva Tarea Asignada',
               `${title} — ${startLocale}`,
-              `URL_CALENDAR`,
+              `URL_TASK:${projectId || 0}:${appointment.id}`, // v281: Deep link to project/task
               `task-${appointment.id}`
             )
           } catch (e) { console.error('Push error:', e) }

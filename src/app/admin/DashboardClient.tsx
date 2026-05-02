@@ -249,6 +249,8 @@ export default function DashboardClient({
           flexWrap: 'wrap',
           margin: '0 0 25px 0',
           boxShadow: '0 4px 20px rgba(0, 112, 192, 0.3)',
+          position: 'relative',
+          zIndex: 1000, // v281: Over other mobile elements
           animation: 'fade-in 0.5s ease-out'
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '200px' }}>

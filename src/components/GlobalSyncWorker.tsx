@@ -209,86 +209,72 @@ export default function GlobalSyncWorker() {
 
           // v267: Sends a PRECACHE_URLS message and awaits SW confirmation via MessageChannel
           // This converts the fire-and-forget postMessage into a reliable awaitable call.
-          const precacheAndWait = async (url: string): Promise<void> => {
+          const precacheAndWait = async (urlOrUrls: string | string[]): Promise<void> => {
             const controller = await getController();
+            const urls = Array.isArray(urlOrUrls) ? urlOrUrls : [urlOrUrls];
+            
             if (!controller) {
-              // SW not available — fall back to direct fetch so the page is at least downloaded
-              await fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'text/html' } }).catch(() => {});
+              // SW not available — fall back to direct fetch
+              await Promise.all(urls.map(url => 
+                fetch(url, { credentials: 'same-origin', headers: { 'Accept': 'text/html' } }).catch(() => {})
+              ));
               return;
             }
             // Use MessageChannel so we can await the SW's reply
             await new Promise<void>((resolve) => {
               const { port1, port2 } = new MessageChannel();
-              const timeout = setTimeout(() => resolve(), 12000); // 12s timeout per URL
+              const timeout = setTimeout(() => resolve(), 30000); // v286: 30s timeout for full project bundle
               port1.onmessage = () => { clearTimeout(timeout); resolve(); };
-              controller.postMessage({ type: 'PRECACHE_URLS', urls: [url], replyPort: port2 }, [port2]);
+              controller.postMessage({ type: 'PRECACHE_URLS', urls, replyPort: port2 }, [port2]);
             });
           };
 
-          // 1. Universal Shells (Crucial for offline fallback)
-          const shells = ['/admin/proyectos/offline-shell', '/admin/operador/proyecto/offline-shell'];
-          for (const shell of shells) {
-            await precacheAndWait(shell);
-            // v273: Deterministic RSC shell pre-caching
-            await precacheAndWait(`${shell}?_rsc=1`);
-            await new Promise(r => setTimeout(r, 200));
-          }
+          // 1. Shells — v282: Only pre-cache the shell relevant to the user's role
+          const shell = isAdmin ? '/admin/proyectos/offline-shell' : '/admin/operador/proyecto/offline-shell';
+          await Promise.all([
+            precacheAndWait(shell),
+            precacheAndWait(`${shell}?_rsc=1`)
+          ]);
 
-          // 2. Main Sections (Role-Aware)
+          // 2. Main Sections (Role-Aware) — v280: All parallel, no delays
           const sections = isAdmin 
             ? ['/admin', '/admin/proyectos', '/admin/calendario', '/admin/inventario', '/admin/cotizaciones']
             : ['/admin/operador', '/admin/inventario', '/admin/cotizaciones'];
 
-          for (const section of sections) {
+          await Promise.all(sections.map(async (section) => {
             await precacheAndWait(section);
             const rscUrl = section.includes('?') ? `${section}&_rsc=prefetch` : `${section}?_rsc=prefetch`;
             fetch(rscUrl, { priority: 'low', headers: { 'RSC': '1', 'Next-Router-Prefetch': '1' } }).catch(() => {});
-            await new Promise(resolve => setTimeout(resolve, 300));
-          }
+          }));
 
-          // 3. Recent Projects — Staggered and limited for Operators
+          // 3. Recent Projects — v281: Batched parallel (5 at a time), hard cap per role
+          // Admin: 25 projects max. Operator: 15. Beyond that, they load on demand.
           if (projectsToProcess.length === 0) {
             projectsToProcess = await db.projectsCache
               .orderBy('lastAccessedAt')
               .reverse()
-              .limit(isAdmin ? 30 : 9) // v273: Operators pre-cache top 9 for speed (Restored per user request)
+              .limit(isAdmin ? 25 : 15)
               .toArray();
           }
 
-          const limit = isAdmin ? 30 : 9;
+          const limit = isAdmin ? 25 : 15;
           const topProjects = projectsToProcess.slice(0, limit);
           
           const syncChannelAssets = new BroadcastChannel('aquatech-sync');
           
-          // v273: Use Idle Callback for pre-caching to NEVER block the user
+          // v286: Strictly sequential caching to avoid server saturation and "Warm-cache failed"
           for (let i = 0; i < topProjects.length; i++) {
             const p = topProjects[i];
             const projectPath = isAdmin ? `/admin/proyectos/${p.id}` : `/admin/operador/proyecto/${p.id}`;
-            const urls = [
-              projectPath,
-              `${projectPath}?view=chat`,
-              `${projectPath}?_rsc=1`
-            ];
+            const urls = [projectPath, `${projectPath}?view=chat`, `${projectPath}?_rsc=1`];
 
-            const msg = `[Sync] Pre-cacheando ${i + 1}/${topProjects.length}: ${p.title || p.id}`;
+            const msg = `[Sync] Pre-cacheando: ${p.title || p.id}`;
             console.log(msg);
             window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', { detail: { message: msg } }));
-            
-            syncChannelAssets.postMessage({
-              type: 'ASSET_PRECACHE_PROGRESS',
-              current: i + 1,
-              total: topProjects.length
-            });
+            syncChannelAssets.postMessage({ type: 'ASSET_PRECACHE_PROGRESS', current: i + 1, total: topProjects.length });
 
-            for (const url of urls) {
-              // v274: Mandatory 1000ms delay between URLs to keep network free for Calendar
-              if ('requestIdleCallback' in window) {
-                await new Promise(resolve => (window as any).requestIdleCallback(resolve, { timeout: 3000 }));
-              } else {
-                await new Promise(resolve => setTimeout(resolve, 1000));
-              }
-              await precacheAndWait(url);
-            }
+            // Wait for all 3 variants of THIS project to be cached before moving to next
+            await precacheAndWait(urls);
           }
           
           syncChannelAssets.postMessage({ type: 'ASSET_PRECACHE_FINISHED' });
@@ -296,8 +282,7 @@ export default function GlobalSyncWorker() {
         }
       }
 
-      // 3. SYNC USERS (Operators/Subcontractors for offline project creation)
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // 3. SYNC USERS — v281: Removed artificial 500ms delay
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
         detail: { message: `Sincronizando equipo de trabajo...` }
       }))

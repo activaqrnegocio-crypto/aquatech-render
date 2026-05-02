@@ -415,6 +415,8 @@ export default function OperatorDashboardClient({
           flexWrap: 'wrap',
           margin: '15px 0 0 0',
           boxShadow: '0 4px 20px rgba(0, 112, 192, 0.3)',
+          position: 'relative',
+          zIndex: 1000, // v281: Ensure it's above any other UI elements on mobile
         }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '12px', flex: 1, minWidth: '200px' }}>
             <span style={{ fontSize: '1.8rem' }}>🔔</span>
