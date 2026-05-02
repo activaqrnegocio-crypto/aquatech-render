@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -29,6 +29,9 @@ export default function ProyectosPage() {
 
   // Authorization check that handles both online (session) and offline (cached session)
   const [isAuthorized, setIsAuthorized] = useState<boolean | null>(null)
+  
+  // v291: Deduplicate warm-cache calls per session
+  const warmedProjectIdsRef = useRef<Set<number>>(new Set());
 
   useEffect(() => {
     async function checkAuth() {
@@ -143,16 +146,22 @@ export default function ProyectosPage() {
   // v289: Incremental warm-cache for projects
   const warmCache = (projectList: any[]) => {
     if (typeof navigator !== 'undefined' && navigator.serviceWorker?.controller && navigator.onLine) {
-      const urls = projectList
+      // Filter for new projects not yet warmed in this session
+      const newProjects = projectList
         .filter(p => p.id && !String(p.id).startsWith('pending'))
-        .map(p => `/admin/proyectos/${p.id}`);
-      
-      if (urls.length > 0) {
-        console.log(`[WarmCache] Messaging SW to pre-cache ${urls.length} projects`);
+        .filter(p => !warmedProjectIdsRef.current.has(p.id));
+
+      if (newProjects.length > 0) {
+        const urls = newProjects.map(p => `/admin/proyectos/${p.id}`);
+        console.log(`[WarmCache] Messaging SW to pre-cache ${urls.length} NEW projects`);
+        
         navigator.serviceWorker.controller.postMessage({
           type: 'PRECACHE_URLS',
           urls
         });
+
+        // Mark as warmed
+        newProjects.forEach(p => warmedProjectIdsRef.current.add(p.id));
       }
     }
   };

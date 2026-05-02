@@ -31,7 +31,7 @@ const PRE_CACHE = [
 ];
 
 const VERSION = 'v289';
-let precacheQueueCount = 0; // v289: Global counter for pending asset caching
+let precacheQueueSet = new Set(); // v291: Use a Set for robust pending count deduplication
 
 // v242: Helper to bypass Chrome's "redirected response" security block
 function cleanResponse(response) {
@@ -889,12 +889,20 @@ self.addEventListener('message', (event) => {
     const replyPort = event.data.replyPort || null;
     const projectName = event.data.projectName || '';
     
-    // v289: Increment global pending count
-    precacheQueueCount += urls.length;
+    // v291: Deduplicate URLs and update pending set
+    const newUrls = urls.filter(u => !precacheQueueSet.has(u));
+    newUrls.forEach(u => precacheQueueSet.add(u));
     
+    // Safety: If the set is huge (> 500) and we just received a new batch, 
+    // it might be a leak or stuck. Trim it.
+    if (precacheQueueSet.size > 500 && urls.length > 0) {
+      console.warn('[SW] Precache queue seems stuck. Resetting to current batch.');
+      precacheQueueSet = new Set(urls);
+    }
+
     // Notify clients immediately that work started
     self.clients.matchAll().then(clients => {
-      clients.forEach(c => c.postMessage({ type: 'ASSETS_CACHED', count: precacheQueueCount }));
+      clients.forEach(c => c.postMessage({ type: 'ASSETS_CACHED', count: precacheQueueSet.size }));
     });
     
     event.waitUntil(
@@ -904,13 +912,13 @@ self.addEventListener('message', (event) => {
             const existing = await cache.match(url);
             if (existing && existing.ok && !existing.redirected) {
                if (replyPort) replyPort.postMessage({ done: true, url, cached: true });
-               precacheQueueCount = Math.max(0, precacheQueueCount - 1);
+               precacheQueueSet.delete(url);
                continue;
             }
 
             if (url.startsWith('data:')) {
               if (replyPort) replyPort.postMessage({ done: true, url, skipped: true });
-              precacheQueueCount = Math.max(0, precacheQueueCount - 1);
+              precacheQueueSet.delete(url);
               continue;
             }
 
@@ -1000,19 +1008,19 @@ self.addEventListener('message', (event) => {
               }
             }
             
-            precacheQueueCount = Math.max(0, precacheQueueCount - 1); // Finished one URL
+            precacheQueueSet.delete(url); // Finished one URL
             
             // v289: Broadcast count AFTER EVERY URL for constant UI heartbeat
             try {
               const allClients = await self.clients.matchAll();
               allClients.forEach(client => {
-                client.postMessage({ type: 'ASSETS_CACHED', count: precacheQueueCount });
+                client.postMessage({ type: 'ASSETS_CACHED', count: precacheQueueSet.size });
               });
             } catch (e) {}
 
             await new Promise(r => setTimeout(r, 100)); 
           } catch (e) {
-            precacheQueueCount = Math.max(0, precacheQueueCount - 1); // Count even if failed
+            precacheQueueSet.delete(url); // Count even if failed
             console.warn(`[SW ${VERSION}] Warm-cache failed for:`, url);
             // v291: Notify error too so heartbeat continues
             self.clients.matchAll().then(clients => {
@@ -1028,7 +1036,7 @@ self.addEventListener('message', (event) => {
   }
 
   if (event.data && event.data.type === 'GET_PRECACHE_STATUS') {
-    event.source?.postMessage({ type: 'ASSETS_CACHED', count: precacheQueueCount });
+    event.source?.postMessage({ type: 'ASSETS_CACHED', count: precacheQueueSet.size });
   }
 });
 

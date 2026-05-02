@@ -102,36 +102,34 @@ export default function OperatorDashboardClient({
   // Use Dexie as live source for projects to support offline correctly
   const projectsFromCache = useLiveQuery(
     async () => {
-      const uId = localUser?.id || user?.id
-      if (!uId || isHydratingAuth) return undefined
+      // v292: Try user prop first (available immediately), fallback to localUser
+      const uId = user?.id || localUser?.id
+      if (!uId) return undefined
 
       const userId = Number(uId)
-      if (isNaN(userId) || userId <= 0) return undefined // v288: Extra safety to prevent "0 projects" flicker during navigation
+      if (isNaN(userId) || userId <= 0) return undefined
 
       // v288: Scann ALL synced projects (up to 500) to find ownership.
-      // This is crucial for operators as they might not have "accessed" the project recently.
       const allProjects = await db.projectsCache
         .orderBy('lastAccessedAt')
         .reverse()
         .limit(500)
         .toArray()
       
-      // Filtrar localmente para asegurar que solo vea los suyos
       return allProjects.filter(p => {
         return p.team?.some((m: any) => Number(m.userId) === userId) ||
                Number(p.createdById) === userId
       })
     },
-    [localUser?.id, user?.id, isHydratingAuth]
+    [localUser?.id, user?.id] // Removed isHydratingAuth to prevent blocking
   )
 
   // v287: Live Agenda Cache
   const appointmentsFromCache = useLiveQuery(
     async () => {
-      const uId = localUser?.id || user?.id
-      if (!uId || isHydratingAuth) return undefined
+      const uId = user?.id || localUser?.id
+      if (!uId) return undefined
       
-      // Load all cached appointments for this user
       const appts = await db.appointmentsCache
         .where('userId')
         .equals(Number(uId))
@@ -139,8 +137,41 @@ export default function OperatorDashboardClient({
       
       return appts
     },
-    [localUser?.id, user?.id, isHydratingAuth]
+    [localUser?.id, user?.id] // Removed isHydratingAuth
   )
+
+  // v292: Emergency Fallback for Offline "DEAD" state
+  const [emergencyProjects, setEmergencyProjects] = useState<any[] | undefined>(undefined)
+
+  useEffect(() => {
+    // If after 2s we still have no projects from LiveQuery but we have a user ID, force manual load
+    const timer = setTimeout(async () => {
+      if (projectsFromCache && projectsFromCache.length > 0) return 
+      
+      try {
+        const uId = user?.id || localUser?.id
+        if (!uId) return
+        const userId = Number(uId)
+        
+        const allProjects = await db.projectsCache
+          .orderBy('lastAccessedAt').reverse().limit(500).toArray()
+        
+        const myProjects = allProjects.filter(p =>
+          p.team?.some((m: any) => Number(m.userId) === userId) ||
+          Number(p.createdById) === userId
+        )
+        
+        if (myProjects.length > 0) {
+          console.log(`[EmergencyLoad] Loaded ${myProjects.length} projects directly from Dexie`)
+          setEmergencyProjects(myProjects)
+        }
+      } catch (e) {
+        console.error('[EmergencyLoad] Failed:', e)
+      }
+    }, 2000)
+    
+    return () => clearTimeout(timer)
+  }, [projectsFromCache, user?.id, localUser?.id])
 
   // v264: Delayed unread counts to prevent UI blocking on mobile
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({})
@@ -191,31 +222,31 @@ export default function OperatorDashboardClient({
   }, [projectsFromCache, user?.id]);
 
 
-  // v291: Search and Status Filtering
+  // v291: Search and Pagination
   const [searchTerm, setSearchTerm] = useState('')
-  const [statusFilter, setStatusFilter] = useState<'TODOS' | 'EN PROCESO' | 'FINALIZADO' | 'DETENIDO'>('TODOS')
+  const [currentPage, setCurrentPage] = useState(1)
+  const ITEMS_PER_PAGE = 10
 
   // Merge server projects with cache projects (Smart Merge v224)
   const projects = useMemo(() => {
-    // v287: If cache is still loading or auth is hydrating, show initialProjects 
-    // but only if they actually contain data. Otherwise keep it as undefined (loading)
-    if (projectsFromCache === undefined || isHydratingAuth) {
-       return initialProjects.length > 0 ? initialProjects : undefined
+    // v292: Robust Source Selection (Priority: LiveQuery > Emergency > Server Props)
+    // If projectsFromCache is undefined, it means Dexie hasn't responded yet.
+    // If emergencyProjects is also undefined, we are in the initial 2s window.
+    const sourceProjects = 
+      (projectsFromCache && projectsFromCache.length > 0) ? projectsFromCache :
+      (emergencyProjects && emergencyProjects.length > 0) ? emergencyProjects :
+      (projectsFromCache === undefined && emergencyProjects === undefined) ? undefined :
+      initialProjects; // Last resort (usually [] from server)
+
+    if (sourceProjects === undefined) {
+       return undefined // Show loading state
     }
 
-    // Create a map to merge projects by ID, prioritizing the cache (it's more detailed)
+    // Create a map to merge projects by ID
     const projectMap = new Map();
     
-    // 1. Start with initial server projects
-    if (Array.isArray(initialProjects)) {
-      initialProjects.forEach((p: any) => projectMap.set(p.id, p));
-    }
-    
-    // 2. Overwrite/Add with cache projects (they have more offline data)
-    projectsFromCache.forEach((p: any) => {
-      const existing = projectMap.get(p.id);
-      projectMap.set(p.id, { ...(existing || {}), ...p });
-    });
+    // Process source projects
+    sourceProjects.forEach((p: any) => projectMap.set(p.id, p));
 
     return Array.from(projectMap.values())
       .map(p => ({
@@ -228,14 +259,24 @@ export default function OperatorDashboardClient({
           p.client?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           p.city?.toLowerCase().includes(searchTerm.toLowerCase());
         
-        const matchesStatus = statusFilter === 'TODOS' || p.status === statusFilter;
-        
-        return matchesSearch && matchesStatus;
+        return matchesSearch;
       })
       .sort((a, b) => 
         new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
       );
-  }, [projectsFromCache, initialProjects, unreadCounts, isHydratingAuth, searchTerm, statusFilter])
+  }, [projectsFromCache, emergencyProjects, initialProjects, unreadCounts, searchTerm])
+
+  const paginatedProjects = useMemo(() => {
+    if (!projects) return undefined;
+    const start = (currentPage - 1) * ITEMS_PER_PAGE;
+    return projects.slice(start, start + ITEMS_PER_PAGE);
+  }, [projects, currentPage]);
+
+  const totalPages = Math.ceil((projects?.length || 0) / ITEMS_PER_PAGE);
+
+  useEffect(() => {
+    setCurrentPage(1); // Reset page on search
+  }, [searchTerm]);
 
   const [selectedTask, setSelectedTask] = useState<any>(null)
 
@@ -581,15 +622,29 @@ export default function OperatorDashboardClient({
         marginTop: 'var(--space-lg)', 
         display: 'flex', 
         width: '100%', 
-        gap: '4px',
-        borderBottom: '1px solid rgba(255,255,255,0.1)'
+        gap: '0',
+        borderBottom: '1px solid rgba(255,255,255,0.1)',
+        backgroundColor: 'rgba(255,255,255,0.02)',
+        borderRadius: '12px 12px 0 0',
+        overflow: 'hidden'
       }}>
         <button 
-          className={`tab-btn ${activeTab === 'TAREAS' ? 'active' : ''}`}
+          className={`tab ${activeTab === 'TAREAS' ? 'active' : ''}`}
           onClick={() => setActiveTab('TAREAS')}
+          style={{ 
+            flex: 1, 
+            padding: '16px 10px', 
+            fontSize: '0.9rem', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            gap: '10px',
+            borderRadius: '0',
+            borderBottom: activeTab === 'TAREAS' ? '3px solid var(--primary)' : '3px solid transparent'
+          }}
         >
-           <CheckCircle2 size={14} /> 
-           <span style={{ whiteSpace: 'nowrap' }}>
+           <CheckCircle2 size={18} /> 
+           <span style={{ whiteSpace: 'nowrap', fontWeight: activeTab === 'TAREAS' ? '700' : '500' }}>
              Hoy ({allAppointments === undefined ? '...' : todayTasks.length})
            </span>
         </button>
@@ -599,57 +654,45 @@ export default function OperatorDashboardClient({
           onClick={() => setActiveTab('PROYECTOS')}
           style={{ 
             flex: 1, 
-            padding: '10px 4px', 
-            fontSize: '0.75rem', 
+            padding: '16px 10px', 
+            fontSize: '0.9rem', 
             display: 'flex', 
             alignItems: 'center', 
             justifyContent: 'center',
-            gap: '6px',
+            gap: '10px',
+            borderRadius: '0',
+            borderBottom: activeTab === 'PROYECTOS' ? '3px solid var(--primary)' : '3px solid transparent',
             position: 'relative'
           }}
         >
-           <Briefcase size={14} /> 
-           <span style={{ whiteSpace: 'nowrap' }}>
-            <span className="d-none d-md-inline">Mis</span> Proyectos ({projects === undefined ? '...' : projects.length})
+           <Briefcase size={18} /> 
+           <span style={{ whiteSpace: 'nowrap', fontWeight: activeTab === 'PROYECTOS' ? '700' : '500' }}>
+            Proyectos ({projects === undefined ? '...' : projects.length})
            </span>
            {totalUnread > 0 && (
-             <span className="tab-badge" style={{ position: 'static', marginLeft: '4px', transform: 'none' }}>
+             <span className="tab-badge" style={{ position: 'static', marginLeft: '8px', transform: 'none' }}>
                {totalUnread}
              </span>
            )}
         </button>
-
       </div>
 
       {activeTab === 'PROYECTOS' && (
-        <div style={{ marginTop: '15px' }}>
-          <div className="search-container" style={{ marginBottom: '15px' }}>
-            <div className="input-group">
-              <span className="input-group-text bg-transparent border-end-0">
-                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <div style={{ marginTop: '20px' }}>
+          <div className="search-container" style={{ marginBottom: '20px' }}>
+            <div className="input-group" style={{ backgroundColor: 'var(--bg-input)', borderRadius: 'var(--radius-md)', border: '1px solid var(--border)' }}>
+              <span className="input-group-text bg-transparent border-0 pe-0">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ opacity: 0.5 }}><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
               </span>
               <input 
                 type="text" 
-                className="form-control border-start-0 ps-0" 
+                className="form-control bg-transparent border-0 ps-3" 
                 placeholder="Buscar por proyecto, cliente o ciudad..." 
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                style={{ fontSize: '0.9rem' }}
+                style={{ fontSize: '1rem', height: '54px', color: 'var(--text)' }}
               />
             </div>
-          </div>
-          
-          <div className="status-filters" style={{ display: 'flex', gap: '8px', overflowX: 'auto', paddingBottom: '10px', marginBottom: '15px' }}>
-            {['TODOS', 'EN PROCESO', 'FINALIZADO', 'DETENIDO'].map((status) => (
-              <button
-                key={status}
-                onClick={() => setStatusFilter(status as any)}
-                className={`btn btn-xs ${statusFilter === status ? 'btn-primary' : 'btn-ghost'}`}
-                style={{ fontSize: '0.7rem', textTransform: 'capitalize' }}
-              >
-                {status.toLowerCase()}
-              </button>
-            ))}
           </div>
         </div>
       )}
@@ -700,66 +743,111 @@ export default function OperatorDashboardClient({
 
         {activeTab === 'PROYECTOS' && (
           <div className="grid-responsive">
-            {projects === undefined ? (
+            {paginatedProjects === undefined ? (
                <div style={{ gridColumn: '1 / -1', padding: '60px 20px', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '1px dashed rgba(255,255,255,0.1)' }}>
                   <div className="loading-spinner" style={{ width: '30px', height: '30px', margin: '0 auto 15px' }} />
                   <p style={{ color: 'var(--text-muted)' }}>Hidratando proyectos desde memoria local...</p>
                </div>
-            ) : projects.length > 0 ? (
-              projects.map(project => {
-                const completedPhases = (project.phases || []).filter((p: any) => p.status === 'COMPLETADA').length
-                const totalPhases = (project.phases || []).length
-                const progress = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0
-                
-                return (
-                  <Link 
-                    href={`/admin/operador/proyecto/${project.id}`} 
-                    key={project.id} 
-                    prefetch={false}
-                    onClick={(e) => {
-                      if (!project.id) return;
-                      // v289: Store ID in sessionStorage as emergency fallback for offline-shell
-                      sessionStorage.setItem('last_op_project_id', String(project.id));
-                      console.log('[OpNav] Navigating to project:', project.id);
-                      
-                      // v289: If offline, force full-page navigation to keep the URL correct for the shell
-                      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-                        e.preventDefault();
-                        window.location.href = `/admin/operador/proyecto/${project.id}`;
-                      }
-                    }}
-                    className="card interactive" 
-                    style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column' }}
-                  >
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
-                      <span className={`status-badge status-${project.status.toLowerCase()}`}>
-                        {project.status}
-                      </span>
-                      <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{(project.phases || []).length} fases</span>
-                    </div>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
-                      <div style={{ flex: 1 }}>
-                        <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)' }}>{project.title}</h3>
-                        {(project.city || project.client?.city) && (
-                          <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                            📍 {project.city || project.client?.city}
-                          </div>
+            ) : paginatedProjects.length > 0 ? (
+              <>
+                {paginatedProjects.map(project => {
+                  const completedPhases = (project.phases || []).filter((p: any) => p.status === 'COMPLETADA').length
+                  const totalPhases = (project.phases || []).length
+                  const progress = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0
+                  
+                  return (
+                    <Link 
+                      href={`/admin/operador/proyecto/${project.id}`} 
+                      key={project.id} 
+                      prefetch={false}
+                      onClick={(e) => {
+                        if (!project.id) return;
+                        // v289: Store ID in sessionStorage as emergency fallback for offline-shell
+                        sessionStorage.setItem('last_op_project_id', String(project.id));
+                        console.log('[OpNav] Navigating to project:', project.id);
+                        
+                        // v289: If offline, force full-page navigation to keep the URL correct for the shell
+                        if (typeof navigator !== 'undefined' && !navigator.onLine) {
+                          e.preventDefault();
+                          window.location.href = `/admin/operador/proyecto/${project.id}`;
+                        }
+                      }}
+                      className="card interactive" 
+                      style={{ textDecoration: 'none', display: 'flex', flexDirection: 'column' }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '15px' }}>
+                        <span className={`status-badge status-${project.status.toLowerCase()}`}>
+                          {project.status}
+                        </span>
+                        <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{(project.phases || []).length} fases</span>
+                      </div>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '10px' }}>
+                        <div style={{ flex: 1 }}>
+                          <h3 style={{ margin: 0, fontSize: '1.1rem', color: 'var(--text)' }}>{project.title}</h3>
+                          {(project.city || project.client?.city) && (
+                            <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                              📍 {project.city || project.client?.city}
+                            </div>
+                          )}
+                        </div>
+                        {project.unreadCount > 0 && (
+                          <span className="unread-dot-badge" title="Mensajes sin leer">
+                            {project.unreadCount}
+                          </span>
                         )}
                       </div>
-                      {project.unreadCount > 0 && (
-                        <span className="unread-dot-badge" title="Mensajes sin leer">
-                          {project.unreadCount}
-                        </span>
-                      )}
-                    </div>
-                    <div style={{ marginTop: 'auto' }}>
-                      <div className="progress-bar" style={{ height: '4px' }}>
-                        <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                      <div style={{ marginTop: 'auto' }}>
+                        <div className="progress-bar" style={{ height: '4px' }}>
+                          <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+                        </div>
                       </div>
+                    </Link>
+                  )
+                })}
+                
+                {/* Pagination Controls */}
+                {totalPages > 1 && (
+                  <div style={{ gridColumn: '1 / -1', display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '15px', marginTop: '30px', padding: '15px', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '15px' }}>
+                    <button 
+                      onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+                      disabled={currentPage === 1}
+                      className="btn btn-ghost"
+                      style={{ 
+                        opacity: currentPage === 1 ? 0.2 : 1, 
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.85rem',
+                        padding: '8px 16px'
+                      }}
+                    >
+                      ← Anterior
+                    </button>
+                    <div style={{ 
+                      backgroundColor: 'var(--bg-surface)', 
+                      padding: '6px 14px', 
+                      borderRadius: '8px',
+                      fontSize: '0.85rem',
+                      fontWeight: '600',
+                      color: 'var(--primary)',
+                      border: '1px solid var(--border)'
+                    }}>
+                      {currentPage} / {totalPages}
                     </div>
-                  </Link>
-                )
-              })
+                    <button 
+                      onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+                      disabled={currentPage === totalPages}
+                      className="btn btn-ghost"
+                      style={{ 
+                        opacity: currentPage === totalPages ? 0.2 : 1, 
+                        color: 'var(--text-secondary)',
+                        fontSize: '0.85rem',
+                        padding: '8px 16px'
+                      }}
+                    >
+                      Siguiente →
+                    </button>
+                  </div>
+                )}
+              </>
             ) : (
               <div style={{ gridColumn: '1 / -1', padding: '60px 20px', textAlign: 'center', backgroundColor: 'rgba(255,255,255,0.02)', borderRadius: '20px', border: '1px dashed rgba(255,255,255,0.1)' }}>
                 <div style={{ fontSize: '2.5rem', marginBottom: '20px', opacity: 0.3 }}>📂</div>

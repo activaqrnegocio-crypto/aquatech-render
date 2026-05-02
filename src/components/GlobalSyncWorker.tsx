@@ -7,6 +7,8 @@ import { db } from '@/lib/db'
 
 // v261: Global throttle to prevent sync loops on component remounts (caused by router.refresh)
 let lastSyncExecution = 0;
+// v291: Separate throttle for heavy bulk sync to prevent constant re-triggering
+let lastBulkSyncAttempt = 0;
 
 export default function GlobalSyncWorker() {
   const { data: session } = useSession()
@@ -65,11 +67,17 @@ export default function GlobalSyncWorker() {
   const startBulkSync = async (initialProjects: any[] = [], passedUserRole?: string, force = false) => {
     if (syncLock.current) return;
     
+    // v291: Global throttle check (30s) to prevent loop on component remounts/refreshes
+    const now_ts = Date.now();
+    if (!force && (now_ts - lastBulkSyncAttempt < 30000)) {
+      // console.log('[Sync] Bulk sync throttled (30s window)');
+      return;
+    }
+    lastBulkSyncAttempt = now_ts;
+
     let projectsToProcess = [...initialProjects];
     
-    setIsBulkSyncing(true)
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
-      setIsBulkSyncing(false);
       return;
     }
 
@@ -84,13 +92,15 @@ export default function GlobalSyncWorker() {
       // v279: Restored a reasonable 15-minute window for everyone, tied to the USER, not global.
       const FRESHNESS_WINDOW = 15 * 60 * 1000;
       
-      if (meta && (Date.now() - meta.lastSync) < FRESHNESS_WINDOW) {
-        const minsLeft = Math.round((FRESHNESS_WINDOW - (Date.now() - meta.lastSync)) / 60000);
+      if (meta && (now_ts - meta.lastSync) < FRESHNESS_WINDOW) {
+        // const minsLeft = Math.round((FRESHNESS_WINDOW - (now_ts - meta.lastSync)) / 60000);
         // console.log(`[Sync] Datos frescos para usuario ${u?.id}. Siguiente sync automático en ${minsLeft} min.`);
-        setIsBulkSyncing(false);
         return;
       }
     }
+
+    // v291: We are actually starting a heavy sync now. Mark state.
+    setIsBulkSyncing(true)
 
     setBulkProgress({ current: 0, total: 0 })
     syncLock.current = true;
@@ -328,6 +338,16 @@ export default function GlobalSyncWorker() {
       window.dispatchEvent(new CustomEvent('bulk-cache-sync-log', {
         detail: { message: `Error en sincronización: ${err instanceof Error ? err.message : 'Desconocido'}` }
       }))
+      
+      // v291: Reset status to idle on failure so we don't get stuck in "syncing" state
+      try {
+        const u = session?.user as any;
+        const cacheKey = `projects_bulk_${u?.id || 'default'}`;
+        const existing = await db.cacheMetadata.get(cacheKey);
+        if (existing) {
+          await db.cacheMetadata.update(cacheKey, { status: 'idle' });
+        }
+      } catch (metaErr) {}
     } finally {
       syncLock.current = false;
       setIsBulkSyncing(false)
@@ -769,7 +789,9 @@ export default function GlobalSyncWorker() {
       if (document.visibilityState === 'visible' && typeof navigator !== 'undefined' && navigator.onLine) {
         // console.log('[Sync] App visible and online, checking for fresh data...');
         syncOutbox()
-        if (!syncLock.current) {
+        // v291: startBulkSync is already throttled (30s) and has freshness check (15m).
+        // It's safe to call, but we avoid calling it too aggressively.
+        if (!syncLock.current && (Date.now() - lastBulkSyncAttempt > 60000)) {
           startBulkSync()
         }
       } else if (document.visibilityState === 'hidden') {

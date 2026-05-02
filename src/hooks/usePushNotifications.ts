@@ -5,30 +5,28 @@ import { useState, useEffect, useCallback } from 'react'
 type PushStatus = 'loading' | 'unsupported' | 'denied' | 'prompt' | 'subscribed' | 'unsubscribed'
 
 function urlBase64ToUint8Array(base64String: string): Uint8Array {
-  // Remove any characters that aren't part of base64url (including quotes or spaces)
-  const base64Clean = base64String.trim().replace(/['"]/g, '').replace(/[^A-Za-z0-9\-_]/g, '');
+  // 1. Limpieza agresiva: eliminar comillas, espacios y caracteres no base64url
+  const base64Clean = base64String.replace(/['"]/g, '').trim();
   
-  // Standard base64url to base64 conversion
-  let base64 = base64Clean.replace(/-/g, '+').replace(/_/g, '/');
-  
-  // Add correct padding (v288: More resilient padding logic)
-  const pad = base64.length % 4;
-  if (pad === 1) {
-    // Usually caused by an extra character at the end, let's trim and pad
-    base64 = base64.substring(0, base64.length - 1);
-  } else if (pad > 1) {
-    base64 += '='.repeat(4 - pad);
-  }
+  // 2. Cálculo de padding estándar
+  const padding = '='.repeat((4 - (base64Clean.length % 4)) % 4);
+  const base64 = (base64Clean + padding)
+    .replace(/-/g, '+')
+    .replace(/_/g, '/');
 
   try {
     const rawData = window.atob(base64);
     const outputArray = new Uint8Array(rawData.length);
+
     for (let i = 0; i < rawData.length; ++i) {
       outputArray[i] = rawData.charCodeAt(i);
     }
+    
+    // Log de seguridad para depuración en consola
+    console.log(`[PUSH] VAPID Key decodificada: ${outputArray.length} bytes`);
     return outputArray;
   } catch (err) {
-    console.error('[PUSH] Failed to decode VAPID key:', base64);
+    console.error('[PUSH] Error crítico decodificando VAPID Key. La llave en el .env podría estar corrupta.');
     throw err;
   }
 }
