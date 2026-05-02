@@ -158,6 +158,8 @@ self.addEventListener('fetch', (event) => {
     // v274: EXCLUDE critical data APIs from SW cache to let Dexie handle it exclusively.
     // This prevents stale/partial SW cache from overwriting reliable Dexie data.
     const isCriticalApi = 
+      request.method !== 'GET' ||
+      url.pathname.includes('/api/push') ||
       url.pathname.includes('/api/appointments') || 
       url.pathname.includes('/api/projects') || 
       url.pathname.includes('/api/users');
@@ -271,10 +273,14 @@ async function rscNetworkFirst(request) {
     }
     return response;
   } catch (e) {
-    const cache = await caches.open(RSC_CACHE);
+    const rscCache = await caches.open(RSC_CACHE);
+    const pagesCache = await caches.open(PAGES_CACHE);
     
-    // 1. Try exact match
-    let cached = await cache.match(cacheKey) || await cache.match(originalUrl);
+    // 1. Try exact match in RSC_CACHE and PAGES_CACHE (bulk sync saves here)
+    let cached = await rscCache.match(cacheKey) || 
+                 await rscCache.match(originalUrl) ||
+                 await pagesCache.match(originalUrl);
+                 
     if (cached) return cached;
     
     // 2. v225: Universal RSC Shell for Projects
@@ -285,8 +291,6 @@ async function rscNetworkFirst(request) {
                                  url.pathname.includes('/operador/proyecto/');
 
     if (isAdminProjectRsc || isOperatorProjectRsc) {
-      const rscCache = await caches.open(RSC_CACHE);
-      const pagesCache = await caches.open(PAGES_CACHE);
       const staticCache = await caches.open(STATIC_CACHE);
 
       const findShellInAllCaches = async (path) => {
@@ -322,7 +326,9 @@ async function rscStaleWhileRevalidate(request) {
   const cacheKey = url.toString();
   
   const cache = await caches.open(RSC_CACHE);
-  const cached = await cache.match(cacheKey);
+  const pagesCache = await caches.open(PAGES_CACHE);
+  
+  let cached = await cache.match(cacheKey) || await pagesCache.match(request.url);
   
   const fetchPromise = fetchWithTimeout(request.clone(), 8000).then(async (response) => {
     if (response.ok && !response.redirected) {
@@ -1121,7 +1127,14 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
       if (ctx && failedContexts.has(ctx)) {
         console.log(`[SW] Skipping ${item.type} — earlier dependency for ${ctx} failed`);
         // Reset to pending so it retries next cycle
-        await new Promise(r => { const tx = db.transaction(['outbox'], 'readwrite'); tx.objectStore('outbox').put({...item, status: 'pending'}).onsuccess = r; });
+        await new Promise(r => { 
+          try {
+            const tx = db.transaction(['outbox'], 'readwrite'); 
+            const req = tx.objectStore('outbox').put({...item, status: 'pending'});
+            req.onsuccess = r; 
+            req.onerror = r;
+          } catch(e) { r(); }
+        });
         continue;
       }
 
@@ -1372,6 +1385,7 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
                  const stored = txd.objectStore('outbox');
                  const req = stored.delete(item.id);
                  req.onsuccess = deleteRes;
+                 req.onerror = deleteRes; // Prevent hang on error
                });
                console.log(`[SW] Successfully synced ${item.type} (ID: ${item.id})`);
             } else {
@@ -1383,12 +1397,18 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
           // v272: Mark context as failed so dependents are skipped
           if (ctx) failedContexts.add(ctx);
           await new Promise((res) => {
-            const txError = db.transaction(['outbox'], 'readwrite');
-            const storeError = txError.objectStore('outbox');
-            item.status = 'failed';
-            item.attempts = (item.attempts || 0) + 1;
-            item.lastAttemptAt = Date.now();
-            storeError.put(item).onsuccess = res;
+            try {
+              const txError = db.transaction(['outbox'], 'readwrite');
+              const storeError = txError.objectStore('outbox');
+              item.status = 'failed';
+              item.attempts = (item.attempts || 0) + 1;
+              item.lastAttemptAt = Date.now();
+              const req = storeError.put(item);
+              req.onsuccess = res;
+              req.onerror = res; // Prevent hang on error
+            } catch (err) {
+              res(); // Resolve if transaction creation fails
+            }
           });
         }
         // v261: Pacing delay between items to prevent server saturation
