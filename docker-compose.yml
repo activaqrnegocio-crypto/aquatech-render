@@ -2,7 +2,6 @@ version: '3.8'
 
 services:
   app:
-    # v267: Build in GitHub Actions (fast/free) -> VPS only pulls (Zero Downtime)
     image: ghcr.io/activaqrnegocio-crypto/aquatech-render:latest
     container_name: aquatech-crm-v2
     restart: always
@@ -11,9 +10,16 @@ services:
     env_file:
       - .env
     environment:
+      - NEXT_PUBLIC_VAPID_PUBLIC_KEY=BJotzEHg1SMQSlfh0YkAELw02WmF0r9XHJ2ExnAMzfeDMGcyiJYXc5nKiE1hGDnX9FQFc_OI8RM1FLaitWurISo
+      - VAPID_PUBLIC_KEY=BJotzEHg1SMQSlfh0YkAELw02WmF0r9XHJ2ExnAMzfeDMGcyiJYXc5nKiE1hGDnX9FQFc_OI8RM1FLaitWurISo
+      - VAPID_PRIVATE_KEY=O_iJmR-pELWyol3DrCcDEu5gvqqlTrNC4k_DaxUiAuE
+      - VAPID_SUBJECT=mailto:aquatech@cesarreyesjaramillo.com
       - NODE_ENV=production
       - PORT=3000
-    # Zero Downtime: Docker waits for the app to be ready before swapping
+      - NEXTAUTH_URL=https://178.238.238.158.sslip.io/
+      - NEXTAUTH_SECRET=sCknPHbi62uq7KvV8Qkb3c3ffJp9aamk-jdxUHQj25b4
+      - DATABASE_URL=mysql://aquatech-prueba-3230353c94:hrf2vvbkq0@mysql.gb.stackcp.com:39643/aquatech-prueba-3230353c94?connection_limit=3&pool_timeout=15&connect_timeout=30
+      - AUTH_TRUST_HOST=true
     healthcheck:
       test: ["CMD", "wget", "--no-verbose", "--tries=1", "--spider", "http://localhost:3000/api/auth/session"]
       interval: 10s

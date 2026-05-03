@@ -516,6 +516,7 @@ export default function GlobalSyncWorker() {
           
           // 1. Handle single media (MESSAGE, MEDIA_UPLOAD, EXPENSE, GALLERY_UPLOAD)
           const hasBase64 = finalPayload.media?.base64 || 
+                           finalPayload.media?.fileData || // v302: Added support for Chat Message fileData
                            (item.type === 'GALLERY_UPLOAD' && finalPayload.url?.startsWith('data:')) ||
                            finalPayload.receiptPhoto?.startsWith('data:');
           const hasBlobUrl = (typeof finalPayload.media?.url === 'string' && finalPayload.media.url.startsWith('blob:')) ||
@@ -530,10 +531,10 @@ export default function GlobalSyncWorker() {
               let finalFilename: string;
 
               if (hasBase64 || hasBlobUrl) {
-                const b64Url = finalPayload.media?.base64 || finalPayload.media?.url || finalPayload.url || finalPayload.receiptPhoto;
+                const b64Url = finalPayload.media?.fileData || finalPayload.media?.base64 || finalPayload.media?.url || finalPayload.url || finalPayload.receiptPhoto;
                 const resB64 = await fetch(b64Url);
                 uploadFile = await resB64.blob();
-                finalFilename = finalPayload.media?.filename || finalPayload.filename || `sync_${Date.now()}.jpg`;
+                finalFilename = finalPayload.media?.filename || finalPayload.media?.fileName || finalPayload.filename || `sync_${Date.now()}.jpg`;
               } else if (hasFileData) {
                 const blob = new Blob([finalPayload.fileData.buffer], { type: finalPayload.fileData.type });
                 uploadFile = new File([blob], finalPayload.fileData.name, { type: finalPayload.fileData.type });
