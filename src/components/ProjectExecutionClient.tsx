@@ -129,21 +129,20 @@ export default function ProjectExecutionClient({
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.ready;
-        
-        // Phase 1: Check for large items in outbox to trigger Background Fetch
-        const pendingItems = await db.outbox.where('status').equals('pending').toArray();
-        const hasMedia = pendingItems.some(item => item.type === 'GALLERY_UPLOAD' || item.type === 'MEDIA_UPLOAD' || (item.type === 'MESSAGE' && item.payload.media));
-
-        // Background fetch is disabled to prevent "Sincronización Fallida" OS notifications
-        // because the dummy fetch endpoint is intercepted but often fails OS-level checks.
 
         // Always register normal sync for lightweight items
         if ('sync' in reg) {
           await (reg as any).sync.register('sync-outbox');
-          console.log('[Sync] Registered SW sync from ProjectExecution');
         }
         
-        if (navigator.serviceWorker.controller) {
+        // v334: Si estamos online, disparar sync inmediato Y push silencioso
+        if (navigator.onLine && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
+          // Llamar al endpoint wake-up para mandar push silencioso al dispositivo
+          // Esto asegura que aunque Chrome esté cerrado, el SW despierte
+          fetch('/api/push/wake-up', { method: 'POST', priority: 'low' }).catch(() => {});
+        } else if (navigator.serviceWorker.controller) {
+          // Offline: solo avisar al SW que hay trabajo pendiente
           navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
         }
       } catch (e) {

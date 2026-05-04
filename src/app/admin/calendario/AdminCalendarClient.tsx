@@ -293,6 +293,11 @@ export default function AdminCalendarClient({
           if (navigator.serviceWorker.controller) {
             navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
           }
+
+          // v334: Si online, mandar push silencioso para despertar al SW
+          if (navigator.onLine) {
+            fetch('/api/push/wake-up', { method: 'POST', priority: 'low' }).catch(() => {});
+          }
         }
 
         alert('📅 Tarea guardada localmente. El sistema la subirá en segundo plano automáticamente.')

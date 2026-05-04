@@ -1,4 +1,4 @@
-const SW_VERSION = 'v333-unlocked-heartbeat';
+const SW_VERSION = 'v335-silent-push';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
@@ -67,6 +67,16 @@ self.addEventListener('activate', (event) => {
       clients.claim()
     ])
   );
+});
+
+// ─── v334: ONLINE DETECTION ─────────────────────────────────
+// When the device comes back online, immediately process any
+// pending outbox items. This is the fastest possible reaction.
+self.addEventListener('online', () => {
+  console.log('[SW] 📶 Device back online! Checking outbox...');
+  logSyncSW('info', '📶 Conexión detectada — procesando cola pendiente', 'network').catch(() => {});
+  // Force sync to process ALL pending items immediately
+  processOutboxSync(true).catch(() => {});
 });
 
 function getUploadTimeout(sizeInBytes) {
@@ -2019,8 +2029,36 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads') => {
             } catch(e) { r(0); }
           });
           if (count > 0) {
-            console.log(`[SW] ${count} items still pending. Scheduling retry in 30s...`);
-            setTimeout(() => processOutboxSync(false), 30000);
+            console.log(`[SW] ${count} items still pending. Starting retry chain...`);
+            // v333: Cadena de reintentos agresivos — 15s, 30s, 60s, 120s, 300s
+            // Esto mantiene al SW vivo incluso sin Chrome abierto
+            const retryDelays = [15000, 30000, 60000, 120000, 300000];
+            let retryIndex = 0;
+            const scheduleRetry = () => {
+              if (retryIndex >= retryDelays.length) {
+                console.log('[SW] Retry chain exhausted. Registering sync tag for OS wake-up.');
+                // Darle al navegador la pista de que hay trabajo pendiente
+                (self.registration as any).sync?.register('sync-outbox').catch(() => {});
+                return;
+              }
+              const delay = retryDelays[retryIndex];
+              console.log(`[SW] Scheduling retry ${retryIndex + 1}/${retryDelays.length} in ${delay/1000}s`);
+              setTimeout(() => {
+                retryIndex++;
+                processOutboxSync(false).finally(() => {
+                  // Después de cada intento, verificar si quedan items
+                  openAquatechDB().then(dbCheck => {
+                    const txCheck = dbCheck.transaction(['outbox'], 'readonly');
+                    const reqCheck = txCheck.objectStore('outbox').count();
+                    reqCheck.onsuccess = () => {
+                      if (reqCheck.result > 0) scheduleRetry();
+                      else console.log('[SW] All items cleared during retry chain.');
+                    };
+                  }).catch(() => scheduleRetry());
+                });
+              }, delay);
+            };
+            scheduleRetry();
           }
         } catch (e) {
           console.warn('[SW] Retry check failed:', e);
@@ -2105,25 +2143,33 @@ self.addEventListener('backgroundfetchclick', (event) => {
 
 // ─── PUSH NOTIFICATIONS ────────────────────────────────────
 self.addEventListener('push', (event) => {
-  // v288: Wake up the robot silently when a push arrives
-  // This is a robust way to ensure sync even if the OS throttles 'sync' events
-  event.waitUntil(processOutboxSync(false).catch(() => {}));
+  // v334: Always wake up the robot when a push arrives.
+  // Silent pushes (no title) only sync without notification.
+  // This is the MOST RELIABLE way to ensure background sync.
+  event.waitUntil(processOutboxSync(true).catch(() => {}));
 
-  let data = {};
+  let data: any = {};
   try {
     data = event.data?.json() || {};
   } catch (e) {
     data = { title: 'Aquatech CRM', body: event.data?.text() || 'Nueva notificación' };
   }
 
-  const options = {
+  // v334: Silent push — wake up SW only, no visible notification
+  if (data.silent || data.action === 'wake-up-sync') {
+    console.log('[SW] Silent push received — processing outbox only, no notification.');
+    logSyncSW('info', '🔕 Push silencioso: despertando robot para sync', 'push').catch(() => {});
+    return; // No mostrar notificación
+  }
+
+  const options: any = {
     body: data.body || 'Nueva actualización en tu proyecto',
     icon: data.icon || '/icon-192.png',
     badge: data.badge || '/icon-192.png',
-    vibrate: [200, 100, 200, 100, 400], // Patrón más premium
+    vibrate: [200, 100, 200, 100, 400],
     tag: data.tag || 'aquatech-update',
     renotify: true,
-    requireInteraction: true, // Mantener hasta que el usuario la vea
+    requireInteraction: true,
     silent: false,
     timestamp: Date.now(),
     data: {

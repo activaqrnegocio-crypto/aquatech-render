@@ -553,6 +553,14 @@ export default function OperatorDashboardClient({
         timestamp: Date.now(),
         status: 'pending'
       })
+      // v333: Trigger sync after adding to outbox
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
+        // v334: Push silencioso si hay internet
+        if (navigator.onLine) {
+          fetch('/api/push/wake-up', { method: 'POST', priority: 'low' }).catch(() => {});
+        }
+      }
     }
   }
 

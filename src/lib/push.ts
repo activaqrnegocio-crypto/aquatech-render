@@ -173,3 +173,61 @@ export async function notifyAdmins(title: string, body: string, url?: string, ta
     return []
   }
 }
+
+// ─── v334: SILENT PUSH — Despierta al SW sin mostrar notificación ───
+
+/**
+ * Send a SILENT push to wake up the Service Worker.
+ * No visible notification is shown. The SW detects the silent flag
+ * and only calls processOutboxSync().
+ * 
+ * Used when: user was offline, added items to outbox, comes back online.
+ * The push wakes the SW so it can process the queue without the user
+ * needing to open Chrome or the PWA.
+ */
+export async function sendSilentPush(userId: number) {
+  try {
+    const subs = await prisma.pushSubscription.findMany({
+      where: { userId }
+    })
+
+    if (subs.length === 0) {
+      console.log(`[SilentPush] No subscriptions for user ${userId}, skipping.`);
+      return [];
+    }
+
+    // Silent push: minimal payload with a flag the SW recognizes
+    const silentPayload = JSON.stringify({
+      silent: true,    // v334: Flag que el SW detecta para NO mostrar notificación
+      action: 'wake-up-sync'  // Acción: solo procesar outbox
+    });
+
+    const results = await Promise.allSettled(
+      subs.map(sub =>
+        webpush.sendNotification(
+          {
+            endpoint: sub.endpoint,
+            keys: { p256dh: sub.p256dh, auth: sub.auth }
+          },
+          silentPayload,
+          {
+            TTL: 300,        // 5 minutos — si el dispositivo no recibe en 5 min, descartar
+            urgency: 'low'    // Baja prioridad = no despierta la pantalla
+          }
+        ).catch(async (err: any) => {
+          if (err.statusCode === 410 || err.statusCode === 404) {
+            await prisma.pushSubscription.delete({ where: { id: sub.id } }).catch(() => {})
+          }
+          throw err
+        })
+      )
+    )
+
+    const succeeded = results.filter(r => r.status === 'fulfilled').length;
+    console.log(`[SilentPush] Sent to ${succeeded}/${subs.length} devices for user ${userId}`);
+    return results;
+  } catch (error) {
+    console.error('[SilentPush] Error:', error);
+    return [];
+  }
+}
