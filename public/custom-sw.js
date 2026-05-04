@@ -2148,7 +2148,7 @@ self.addEventListener('push', (event) => {
   // This is the MOST RELIABLE way to ensure background sync.
   event.waitUntil(processOutboxSync(true).catch(() => {}));
 
-  let data: any = {};
+  let data = {};
   try {
     data = event.data?.json() || {};
   } catch (e) {
@@ -2162,7 +2162,7 @@ self.addEventListener('push', (event) => {
     return; // No mostrar notificación
   }
 
-  const options: any = {
+  const options = {
     body: data.body || 'Nueva actualización en tu proyecto',
     icon: data.icon || '/icon-192.png',
     badge: data.badge || '/icon-192.png',
