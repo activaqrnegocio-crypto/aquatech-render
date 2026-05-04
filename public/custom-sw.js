@@ -1,9 +1,26 @@
-const VERSION = 'v315'; // v315: Silence Warm-cache failed if offline, prevent banner from reverting from green
-const STATIC_CACHE = `aquatech-static-${VERSION}`;
-const PAGES_CACHE  = `aquatech-pages-${VERSION}`;
-const ASSETS_CACHE = `aquatech-assets-${VERSION}`;
-const FONTS_CACHE  = `aquatech-fonts-${VERSION}`;
-const RSC_CACHE    = `aquatech-rsc-${VERSION}`;
+const SW_VERSION = 'v317-industrial-sync';
+const VERSION = SW_VERSION;
+const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
+const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
+const ASSETS_CACHE = `aquatech-assets-${SW_VERSION}`;
+const FONTS_CACHE  = `aquatech-fonts-${SW_VERSION}`;
+const RSC_CACHE    = `aquatech-rsc-${SW_VERSION}`;
+
+// v317: Auto-cleanup sync notifications on activation
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    Promise.all([
+      self.registration.getNotifications().then(notifications => {
+        notifications.forEach(notification => {
+          if (notification.tag === 'sync-progress' || notification.tag === 'sync-status') {
+            notification.close();
+          }
+        });
+      }),
+      clients.claim()
+    ])
+  );
+});
 
 function getUploadTimeout(sizeInBytes) {
   if (sizeInBytes < 1 * 1024 * 1024)    return 120_000;   // <1MB    → 2 min
@@ -1273,6 +1290,15 @@ async function processOutboxSync(isForced = false, specificType = null) {
         await _internalProcessOutbox(isForced, specificType);
       } finally {
         console.log('[SW] Sync lock released.');
+        // v317: Ensure notification is closed even if _internalProcessOutbox hangs or crashes
+        try {
+          const notifs = await self.registration.getNotifications();
+          notifs.forEach(n => {
+            if (n.tag === 'sync-progress' || n.title?.includes('Sincronizando')) {
+              n.close();
+            }
+          });
+        } catch (e) {}
       }
     });
   } else {
@@ -1567,35 +1593,54 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
             const uploadMediaSW = async (source, name, mimeType, subfolder = 'general') => {
               try {
                 let blob;
+                // v317: More robust Blob detection and fallback
                 if (source instanceof Blob) {
                   blob = source;
-                } else if (source instanceof ArrayBuffer) {
-                  blob = new Blob([source], { type: mimeType || 'application/octet-stream' });
+                } else if (source instanceof ArrayBuffer || (source && source.buffer instanceof ArrayBuffer)) {
+                  const data = source.buffer || source;
+                  blob = new Blob([data], { type: mimeType || 'application/octet-stream' });
                 } else if (typeof source === 'string' && source.startsWith('data:')) {
                   const parts = source.split(';base64,');
+                  if (parts.length < 2) throw new Error("Invalid base64 data");
                   const contentType = parts[0].split(':')[1];
                   const raw = atob(parts[1]);
                   const uInt8Array = new Uint8Array(raw.length);
                   for (let i = 0; i < raw.length; ++i) { uInt8Array[i] = raw.charCodeAt(i); }
                   blob = new Blob([uInt8Array], { type: contentType });
                 } else if (typeof source === 'string' && source.startsWith('blob:')) {
-                  const res = await fetchWithTimeout(new Request(source), 5000);
-                  blob = await res.blob();
+                  try {
+                    const res = await fetchWithTimeout(new Request(source), 5000);
+                    blob = await res.blob();
+                  } catch(e) {
+                    throw new Error(`Failed to fetch blob source: ${e.message}`);
+                  }
                 } else {
-                  return source; // Already a URL or unknown
+                  // If it's already a URL, return it
+                  if (typeof source === 'string' && (source.startsWith('http') || source.includes('bunny'))) {
+                    return source;
+                  }
+                  throw new Error(`Unsupported media source type: ${typeof source}`);
                 }
                 
+                // v317: Verify storage space before upload
+                if ('storage' in navigator && navigator.storage.estimate) {
+                  const estimate = await navigator.storage.estimate();
+                  const remaining = (estimate.quota || 0) - (estimate.usage || 0);
+                  if (remaining < blob.size * 2) {
+                    console.warn('[SW] LOW STORAGE: Storage pressure might cause sync failure.');
+                  }
+                }
+
                 // v273: Use chunked upload for anything > 1MB
                 if (blob.size > 1024 * 1024) {
                    const url = await uploadInChunksSW(blob, name, subfolder);
                    if (!url) throw new Error('Chunked upload returned no URL');
                    return url;
                 }
-
+                // ... rest remains same
                 const timestamp = Date.now();
                 const safeName = (name || `file_${timestamp}`).replace(/[^a-zA-Z0-9.-]/g, '_');
                 
-                // v316: Improved folder organization for Gallery
                 let folderPath = item.projectId ? `projects/${item.projectId}` : subfolder;
                 if (subfolder === 'gallery' && item.projectId) {
                   folderPath = `projects/${item.projectId}/gallery`;
@@ -1604,7 +1649,6 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
                 const path = `/${config.storageZone}/${folderPath}/${timestamp}-${safeName}`;
                 const uploadUrl = `https://${config.storageHost}${path}`;
                 
-                // v286: Use fetchWithTimeout for Bunny storage upload
                 const res = await fetchWithTimeout(new Request(uploadUrl, {
                   method: 'PUT',
                   headers: { 
@@ -1612,14 +1656,13 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
                     'Content-Type': blob.type || 'application/octet-stream' 
                   },
                   body: blob
-                }), getUploadTimeout(blob.size)); // ← dinámico según tamaño
-                if (!res.ok) throw new Error(`Bunny upload failed with status ${res.status}`);
+                }), getUploadTimeout(blob.size));
+                if (!res.ok) throw new Error(`Bunny upload failed status ${res.status}`);
                 const finalUrl = `${config.pullZoneUrl}/${folderPath}/${timestamp}-${safeName}`;
-                console.log('[SW] Upload success:', finalUrl);
                 return finalUrl;
               } catch (e) {
-                console.error('[SW] Upload failed:', e);
-                throw e; // v275: Throw so the caller knows sync failed
+                console.error('[SW] uploadMediaSW failed:', e.message);
+                throw e;
               }
             };
 

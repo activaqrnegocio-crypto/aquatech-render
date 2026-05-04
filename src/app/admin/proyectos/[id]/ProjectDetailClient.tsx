@@ -433,14 +433,30 @@ export default function ProjectDetailClient({ project: initialProject, available
         const cat = (item.payload?.category || 'MASTER').toUpperCase()
         return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
       })
-      .map((item: any) => ({
-        id: `pending-${item.id}`,
-        url: item.payload?.url || item.payload?.base64 || '',
-        filename: item.payload?.filename || 'Pendiente...',
-        mimeType: item.payload?.mimeType || 'image/jpeg',
-        category: 'MASTER',
-        isPending: true
-      }))
+      .map((item: any) => {
+        const p = item.payload || {};
+        let objUrl = '';
+        if (p.url && !p.url.startsWith('blob:')) {
+          objUrl = p.url;
+        } else if (p.base64) {
+          objUrl = p.base64;
+        } else if (p.fileData) {
+          try {
+            const data = p.fileData.buffer || p.fileData;
+            const blob = new Blob([data], { type: p.mimeType || 'image/jpeg' });
+            objUrl = URL.createObjectURL(blob);
+          } catch(e) {}
+        }
+
+        return {
+          id: `pending-${item.id}`,
+          url: objUrl || '/placeholder-image.png',
+          filename: p.filename || 'Pendiente...',
+          mimeType: p.mimeType || 'image/jpeg',
+          category: 'MASTER',
+          isPending: true
+        }
+      })
 
     const combined = [...baseFiles, ...expenseFiles, ...pendingUploads]
     const seen = new Set()
@@ -467,15 +483,34 @@ export default function ProjectDetailClient({ project: initialProject, available
     
     const pendingEvidence = (pendingItems || [])
       .filter((item: any) => (item.type === 'MEDIA_UPLOAD' || item.type === 'GALLERY_UPLOAD'))
-      .filter((item: any) => (item.payload?.category || '').toUpperCase() === 'EVIDENCE')
-      .map((item: any) => ({
-        id: `pending-ev-${item.id}`,
-        url: item.payload?.url || item.payload?.base64 || '',
-        filename: item.payload?.filename || 'Pendiente...',
-        mimeType: item.payload?.mimeType || 'image/jpeg',
-        category: 'EVIDENCE',
-        isPending: true
-      }))
+      .filter((item: any) => {
+        const cat = (item.payload?.category || '').toUpperCase();
+        return cat === 'EVIDENCE' || cat === 'FINALES';
+      })
+      .map((item: any) => {
+        const p = item.payload || {};
+        let objUrl = '';
+        if (p.url && !p.url.startsWith('blob:')) {
+          objUrl = p.url;
+        } else if (p.base64) {
+          objUrl = p.base64;
+        } else if (p.fileData) {
+          try {
+            const data = p.fileData.buffer || p.fileData;
+            const blob = new Blob([data], { type: p.mimeType || 'image/jpeg' });
+            objUrl = URL.createObjectURL(blob);
+          } catch(e) {}
+        }
+
+        return {
+          id: `pending-ev-${item.id}`,
+          url: objUrl || '/placeholder-image.png',
+          filename: p.filename || 'Pendiente...',
+          mimeType: p.mimeType || 'image/jpeg',
+          category: 'EVIDENCE',
+          isPending: true
+        }
+      })
 
     const combined = [...base, ...pendingEvidence]
     const seen = new Set()
@@ -497,13 +532,31 @@ export default function ProjectDetailClient({ project: initialProject, available
 
     const pendingChat = (pendingItems || [])
       .filter((item: any) => item.type === 'MESSAGE' && item.payload?.media)
-      .map((item: any) => ({
-        id: `pending-chat-${item.id}`,
-        url: item.payload.media.url || item.payload.media.base64 || '',
-        filename: item.payload.media.filename || 'Enviando...',
-        mimeType: item.payload.media.mimeType || 'image/jpeg',
-        isFromChat: true, isPending: true, createdAt: new Date(item.timestamp).toISOString()
-      }))
+      .map((item: any) => {
+        const m = item.payload.media;
+        let objUrl = '';
+        if (m.url && !m.url.startsWith('blob:')) {
+          objUrl = m.url;
+        } else if (m.base64) {
+          objUrl = m.base64;
+        } else if (m.fileData) {
+          try {
+            const data = m.fileData.buffer || m.fileData;
+            const blob = new Blob([data], { type: m.mimeType || 'image/jpeg' });
+            objUrl = URL.createObjectURL(blob);
+          } catch(e) {}
+        }
+
+        return {
+          id: `pending-chat-${item.id}`,
+          url: objUrl || '/placeholder-image.png',
+          filename: m.filename || 'Enviando...',
+          mimeType: m.mimeType || 'image/jpeg',
+          isFromChat: true,
+          isPending: true,
+          createdAt: new Date(item.timestamp).toISOString()
+        }
+      })
 
     const combined = [...fromChat, ...pendingChat]
     const seen = new Set()

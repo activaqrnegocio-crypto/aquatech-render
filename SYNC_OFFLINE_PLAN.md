@@ -24,6 +24,12 @@ Este documento describe la arquitectura de sincronización de "Grado Industrial"
 *   **Retry Limit**: Límite estricto de 5 reintentos para evitar "items zombies" que nunca se envían.
 *   **Notificaciones de Robot**: El usuario recibe notificaciones silenciosas del progreso de sincronización en segundo plano.
 
+### Fase 5: Resiliencia de Visualización y Limpieza Automática (v317)
+*   **Persistent Previews**: Se corrigió el problema de "imágenes rotas" regenerando Object URLs dinámicamente desde el almacenamiento binario (ArrayBuffer) si el original expira.
+*   **Storage Monitoring**: El Service Worker ahora verifica el espacio disponible antes de subidas pesadas para prevenir fallos críticos del sistema operativo por falta de cuota.
+*   **Auto-Cleanup**: El sistema limpia automáticamente notificaciones de sincronización "colgadas" al activar el Service Worker o al finalizar procesos fatales.
+*   **Mapeo de Categorías**: Se unificaron las categorías de galería (EVIDENCE/FINALES) para asegurar que todo lo subido sea visible inmediatamente en la UI del operador.
+
 ---
 
 ## 🛠️ Flujo de Datos Actualizado
@@ -37,4 +43,4 @@ Este documento describe la arquitectura de sincronización de "Grado Industrial"
     *   Si es ligero: Envío directo con reintentos y backoff.
 6.  **Cleanup**: Una vez confirmado por el servidor (o subido a Bunny.net), el item se elimina del outbox local.
 
-**Estado Actual: LISTO PARA PRODUCCIÓN**
+**Estado Actual: RESILIENCIA MÁXIMA ALCANZADA**

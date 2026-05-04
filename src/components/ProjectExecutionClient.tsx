@@ -592,9 +592,31 @@ export default function ProjectExecutionClient({
   const allExpenses = useMemo(() => {
     let list = [...localExpenses]
     pendingItems.filter((item: any) => item.type === 'EXPENSE').forEach((item: any) => {
+      const p = item.payload || {};
+      let receiptUrl = p.receiptPhoto || '';
+      
+      // v317: Robust receipt preview
+      if (!receiptUrl || receiptUrl.startsWith('blob:')) {
+        if (p.receiptBase64) {
+          receiptUrl = p.receiptBase64;
+        } else if (p.receiptFileData) {
+          try {
+            const data = p.receiptFileData.buffer || p.receiptFileData;
+            const blob = new Blob([data], { type: p.receiptMimeType || 'image/jpeg' });
+            receiptUrl = URL.createObjectURL(blob);
+          } catch(e) {}
+        }
+      }
+
       list.push({
-        id: `pending-${item.id}`, description: item.payload.description, amount: Number(item.payload.amount),
-        date: new Date(item.timestamp).toISOString(), isNote: item.payload.isNote, isPending: true, userName: 'Yo (Pendiente)'
+        id: `pending-${item.id}`, 
+        description: p.description, 
+        amount: Number(p.amount),
+        receiptPhoto: receiptUrl,
+        date: new Date(item.timestamp).toISOString(), 
+        isNote: p.isNote, 
+        isPending: true, 
+        userName: 'Yo (Pendiente)'
       })
     })
     liveChat.filter((msg: any) => msg.type === 'EXPENSE_LOG' || msg.type === 'EXPENSE').forEach((msg: any) => {
@@ -643,17 +665,28 @@ export default function ProjectExecutionClient({
       const cat = (item.payload?.category || 'MASTER').toUpperCase()
       return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
     }).map((item: any) => {
-      let objUrl = item.payload?.url || item.payload?.base64 || '';
-      if (!objUrl && item.payload?.fileData) {
+      // v317: Use persistent preview logic
+      let objUrl = '';
+      const p = item.payload || {};
+      if (p.url && !p.url.startsWith('blob:')) {
+        objUrl = p.url;
+      } else if (p.base64) {
+        objUrl = p.base64;
+      } else if (p.fileData) {
         try {
-          const blob = new Blob([item.payload.fileData.buffer || item.payload.fileData], { type: item.payload.mimeType || item.payload.fileData?.type || 'application/octet-stream' });
+          const data = p.fileData.buffer || p.fileData;
+          const blob = new Blob([data], { type: p.mimeType || 'image/jpeg' });
           objUrl = URL.createObjectURL(blob);
-        } catch(e) {}
+        } catch(e) { console.warn("Failed to create preview blob", e); }
       }
+      
       return {
-        id: `pending-${item.id}`, url: objUrl,
-        filename: item.payload?.filename || 'Pendiente...', mimeType: item.payload?.mimeType || item.payload?.fileData?.type || 'image/jpeg',
-        category: item.payload?.category || 'MASTER', isPending: true
+        id: `pending-${item.id}`, 
+        url: objUrl || '/placeholder-image.png',
+        filename: p.filename || 'Pendiente...', 
+        mimeType: p.mimeType || 'image/jpeg',
+        category: p.category || 'MASTER', 
+        isPending: true
       }
     })
     const list = [...baseFiles, ...expenseFiles, ...pendingGallery]
@@ -677,11 +710,31 @@ export default function ProjectExecutionClient({
     const fromChat = liveChat.filter((msg: any) => msg.media && msg.media.length > 0).flatMap((msg: any) => msg.media.map((m: any) => ({
       ...m, isFromChat: true, userName: msg.userName, createdAt: msg.createdAt, isPendingDelete: pendingDeletions.some((pdId: any) => String(pdId) === String(m.id))
     })))
-    const pendingChat = (pendingItems || []).filter((item: any) => item.type === 'MESSAGE' && item.payload?.media).map((item: any) => ({
-      id: `pending-chat-${item.id}`, url: item.payload.media.url || item.payload.media.base64 || '',
-      filename: item.payload.media.filename || 'Enviando...', mimeType: item.payload.media.mimeType || 'image/jpeg',
-      isFromChat: true, isPending: true, createdAt: new Date(item.timestamp).toISOString()
-    }))
+    const pendingChat = (pendingItems || []).filter((item: any) => item.type === 'MESSAGE' && item.payload?.media).map((item: any) => {
+      const m = item.payload.media;
+      let objUrl = '';
+      if (m.url && !m.url.startsWith('blob:')) {
+        objUrl = m.url;
+      } else if (m.base64) {
+        objUrl = m.base64;
+      } else if (m.fileData) {
+        try {
+          const data = m.fileData.buffer || m.fileData;
+          const blob = new Blob([data], { type: m.mimeType || 'image/jpeg' });
+          objUrl = URL.createObjectURL(blob);
+        } catch(e) {}
+      }
+
+      return {
+        id: `pending-chat-${item.id}`, 
+        url: objUrl || '/placeholder-image.png',
+        filename: m.filename || 'Enviando...', 
+        mimeType: m.mimeType || 'image/jpeg',
+        isFromChat: true, 
+        isPending: true, 
+        createdAt: new Date(item.timestamp).toISOString()
+      };
+    })
 
     const combined = [...fromChat, ...pendingChat]
     const seen = new Set()
@@ -704,20 +757,31 @@ export default function ProjectExecutionClient({
     })
     const pendingEvidence = (pendingItems || []).filter((item: any) => {
       const isGalleryType = item.type === 'GALLERY_UPLOAD' || item.type === 'MEDIA_UPLOAD'
-      const isEvidenceCat = (item.payload?.category || '').toUpperCase() === 'EVIDENCE'
-      return isGalleryType && isEvidenceCat
+      const cat = (item.payload?.category || '').toUpperCase()
+      // v317: Fix 'Finales' visibility - both 'EVIDENCE' and 'FINALES' mapping
+      return isGalleryType && (cat === 'EVIDENCE' || cat === 'FINALES')
     }).map((item: any) => {
-      let objUrl = item.payload?.url || item.payload?.base64 || '';
-      if (!objUrl && item.payload?.fileData) {
+      const p = item.payload || {};
+      let objUrl = '';
+      if (p.url && !p.url.startsWith('blob:')) {
+        objUrl = p.url;
+      } else if (p.base64) {
+        objUrl = p.base64;
+      } else if (p.fileData) {
         try {
-          const blob = new Blob([item.payload.fileData.buffer || item.payload.fileData], { type: item.payload.mimeType || item.payload.fileData?.type || 'application/octet-stream' });
+          const data = p.fileData.buffer || p.fileData;
+          const blob = new Blob([data], { type: p.mimeType || 'image/jpeg' });
           objUrl = URL.createObjectURL(blob);
         } catch(e) {}
       }
+
       return {
-        id: `pending-ev-${item.id}`, url: objUrl,
-        filename: item.payload?.filename || 'Pendiente...', mimeType: item.payload?.mimeType || item.payload?.fileData?.type || 'image/jpeg',
-        category: 'EVIDENCE', isPending: true
+        id: `pending-ev-${item.id}`, 
+        url: objUrl || '/placeholder-image.png',
+        filename: p.filename || 'Pendiente...', 
+        mimeType: p.mimeType || 'image/jpeg',
+        category: 'EVIDENCE', 
+        isPending: true
       }
     })
     const combinedList = [...list, ...pendingEvidence]
