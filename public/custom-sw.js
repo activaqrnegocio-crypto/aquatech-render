@@ -15,11 +15,15 @@ const RSC_CACHE    = `aquatech-rsc-${SW_VERSION}`;
 // Stops polling when the outbox is empty to save battery.
 // Restarts via the global poller interval.
 let outboxPollerInterval = null;
+let pollerCheckCount = 0;
+let lastOutboxCount = -1;
 
 function startOutboxPoller() {
-  if (outboxPollerInterval) return; // Already running
+  if (outboxPollerInterval) return;
   
-  console.log('[SW] 🤖 Self-waking poller started (60s interval)');
+  console.log('[SW] 🤖 Aggressive poller started (15s interval)');
+  logSyncSW('info', '🤖 Poller agresivo iniciado (15s)', 'poller').catch(() => {});
+  
   outboxPollerInterval = setInterval(async () => {
     pollerCheckCount++;
     try {
@@ -50,13 +54,13 @@ function startOutboxPoller() {
       
       if (count > 0 && !isSyncingGlobal) {
         console.log(`[SW] Poller found ${count} pending items — waking robot!`);
-        await logSyncSW('info', `🔍 Poller #${pollerCheckCount}: ${count} ítems pendientes — procesando`, 'poller').catch(() => {});
+        await logSyncSW('info', '🔍 Poller #' + pollerCheckCount + ': ' + count + ' items pendientes — procesando', 'poller').catch(() => {});
         processOutboxSync(true).catch(() => {});
       }
     } catch (e) {
       // Outbox might not be accessible yet
     }
-  }, 15000); // Every 15 seconds (was 60s)
+  }, 15000); // Every 15 seconds
 }
 
 function stopOutboxPoller() {
