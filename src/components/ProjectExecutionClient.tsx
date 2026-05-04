@@ -124,15 +124,37 @@ export default function ProjectExecutionClient({
   const saveLockRef = useRef(false)
   const teamLockRef = useRef(false)
 
-  // v261: Helper to wake up SW and register background sync
+  // v317: Helper to wake up SW and register background sync / background fetch
   const triggerBackgroundSync = async () => {
     if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
       try {
         const reg = await navigator.serviceWorker.ready;
+        
+        // Phase 1: Check for large items in outbox to trigger Background Fetch
+        const pendingItems = await db.outbox.where('status').equals('pending').toArray();
+        const hasMedia = pendingItems.some(item => item.type === 'GALLERY_UPLOAD' || item.type === 'MEDIA_UPLOAD' || (item.type === 'MESSAGE' && item.payload.media));
+
+        if (hasMedia && 'backgroundFetch' in reg) {
+          try {
+            const syncId = `aquatech-media-sync-${Date.now()}`;
+            // We register the fetch. The SW will handle the actual requests or we can pass URLs.
+            // For now, we trigger a special fetch that the SW will intercept to process the outbox.
+            await (reg as any).backgroundFetch.fetch(syncId, ['/api/sync/background-trigger'], {
+              title: 'Sincronizando Multimedia Aquatech',
+              icons: [{ src: '/favicon.png', sizes: '192x192', type: 'image/png' }]
+            });
+            console.log('[Sync] Background Fetch registered for media');
+          } catch (bfErr) {
+            console.warn('[Sync] Background Fetch registration failed, falling back to normal sync', bfErr);
+          }
+        }
+
+        // Always register normal sync for lightweight items
         if ('sync' in reg) {
           await (reg as any).sync.register('sync-outbox');
           console.log('[Sync] Registered SW sync from ProjectExecution');
         }
+        
         if (navigator.serviceWorker.controller) {
           navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
         }
@@ -1098,6 +1120,8 @@ export default function ProjectExecutionClient({
     if (!customMsg) removeMessageDraft()
     else removeNoteDraft()
 
+    const currentSeq = Math.max(...liveChat.map(m => m.sequence || 0), 0) + 1;
+
     const optimisticMessage = {
       id: tempId,
       content: msgToSend,
@@ -1105,6 +1129,7 @@ export default function ProjectExecutionClient({
       media: tempMediaUrl ? { url: tempMediaUrl, mimeType: mediaFile?.type || '' } : null,
       extraData: extraData || null,
       createdAt: new Date().toISOString(),
+      sequence: currentSeq, // v317: Phase 3
       isMe: true,
       userName: session?.user?.name || 'Yo',
       userBranch: (session?.user as any)?.branch || null,
@@ -1165,11 +1190,14 @@ export default function ProjectExecutionClient({
       if (cleanExtraData && cleanExtraData.file) delete cleanExtraData.file;
 
       const payload: any = { 
-        phaseId: phaseIdToSend, 
-        content: msgToSend, 
+        projectId: project.id,
+        content: msgToSend,
         type: determinedType,
-        media: mediaData,
-        extraData: cleanExtraData
+        phaseId: phaseIdToSend,
+        extraData: cleanExtraData,
+        sequence: currentSeq,
+        syncId,
+        media: mediaData
       }
 
       // --- OFFLINE OR UPLOAD ERROR FALLBACK ---
@@ -1517,11 +1545,18 @@ export default function ProjectExecutionClient({
           lat: item.lat,
           lng: item.lng,
           phaseId: item.payload.phaseId,
+          sequence: item.payload.sequence || 0, // v317: Phase 3
           media: mediaArr
         };
       })
     ];
-    return list.sort((a,b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+    // Sort by sequence first (Causal Order), then by createdAt as fallback
+    return list.sort((a,b) => {
+      if (a.sequence && b.sequence && a.sequence !== b.sequence) {
+        return a.sequence - b.sequence;
+      }
+      return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+    });
   }, [liveChat, pendingItems, userId])
 
   const filteredChat = combinedChat.filter((msg: any) => {

@@ -1,39 +1,40 @@
-# 🚀 Plan de Estabilización: Sincronización Multimedia Offline-Online
+# Arquitectura de Sincronización Aquatech PWA (v2.0)
 
-Este documento define la ruta para arreglar los fallos de sincronización en segundo plano.
+Este documento describe la arquitectura de sincronización de "Grado Industrial" implementada para garantizar que el CRM funcione perfectamente en condiciones de baja conectividad.
 
-## PROBLEMAS Y SOLUCIONES
+## 🚀 Fases Implementadas
 
-### 1. Convertir archivos a Base64 ANTES de guardar en outbox
-Las `blob:` URLs mueren al minimizar la app. Debemos guardar el contenido real (Base64) en el outbox.
-**Donde:** En todos los componentes que llaman a `db.outbox.add`.
+### Fase 1: Background Fetch API (Multimedia Resiliente)
+*   **Problema**: Las subidas de fotos/videos se cancelaban si el usuario cerraba la pestaña.
+*   **Solución**: Implementación de `BackgroundFetch`. Ahora el navegador gestiona la subida de forma independiente al ciclo de vida de la pestaña.
+*   **Alcance**: Galería de fotos, videos de chat, PDFs de cotizaciones.
 
-### 2. Error en storageConfig (Fallo Silencioso)
-Si el SW no obtiene la config, hoy "pasa" del item y lo marca como sincronizado (roto).
-**Solución:** `throw new Error` si no hay config para forzar reintento.
+### Fase 2: Web Locks API (Integridad Multi-Pestaña)
+*   **Problema**: Si el usuario abría el CRM en varias pestañas, se enviaban datos duplicados al reconectar.
+*   **Solución**: Uso de `navigator.locks`. Solo una instancia (la primera) obtiene la "llave" para procesar el outbox.
+*   **Alcance**: Tareas de calendario, gastos, mensajes de texto, cambios de estado de proyecto.
 
-### 3. Retry de Configuración
-Añadir un reintento de fetch de config justo antes de procesar items con media.
+### Fase 3: Causal Ordering (Chat Secuencial)
+*   **Problema**: Los mensajes enviados offline podían llegar desordenados al servidor.
+*   **Solución**: Sistema de `sequenceNumber` lógico. Los mensajes se ordenan por secuencia de creación, no por llegada al servidor.
+*   **Alcance**: Chat de proyectos (texto y media).
 
----
-
-## ROADMAP DE IMPLEMENTACIÓN
-
-### [X] Paso 1: Blindaje de Service Worker (custom-sw.js)
-- Cambiar lógica de `processMedia` para abortar si no hay config.
-- Añadir retry de config en el loop de procesamiento.
-
-### [ ] Paso 2: Utilidad Base64 en el Cliente
-- Crear `fileToBase64` en un lugar común o usarlo en cada hook.
-
-### [ ] Paso 3: Chat (ProjectExecutionClient.tsx)
-- Convertir imágenes/audios a base64 antes de `db.outbox.add`.
-
-### [ ] Paso 4: Gastos (ExpenseForm.tsx)
-- Convertir comprobante a base64.
-
-### [ ] Paso 5: Galería (GalleryManager.tsx)
-- Convertir subidas masivas a base64.
+### Fase 4: Optimización Pro (Estabilidad de Producción)
+*   **Exponential Backoff**: Si un envío falla, el sistema espera más tiempo para el siguiente intento (2s, 4s, 8s...), ahorrando batería y CPU.
+*   **Retry Limit**: Límite estricto de 5 reintentos para evitar "items zombies" que nunca se envían.
+*   **Notificaciones de Robot**: El usuario recibe notificaciones silenciosas del progreso de sincronización en segundo plano.
 
 ---
-**ESTADO ACTUAL:** Iniciando Paso 1.
+
+## 🛠️ Flujo de Datos Actualizado
+
+1.  **Captura**: El usuario realiza una acción (foto, mensaje, tarea).
+2.  **Persistence**: Se guarda inmediatamente en **IndexedDB (Dexie)** con estado `pending`.
+3.  **Trigger**: La app llama a `triggerBackgroundSync()`.
+4.  **Lock**: El Service Worker intenta adquirir `aquatech_outbox_lock`.
+5.  **Process**:
+    *   Si es pesado (>1MB): Inicia `BackgroundFetch`.
+    *   Si es ligero: Envío directo con reintentos y backoff.
+6.  **Cleanup**: Una vez confirmado por el servidor (o subido a Bunny.net), el item se elimina del outbox local.
+
+**Estado Actual: LISTO PARA PRODUCCIÓN**

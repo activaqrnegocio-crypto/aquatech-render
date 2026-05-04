@@ -176,6 +176,15 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const { request } = event;
 
+  // v317: Handle Background Fetch dummy trigger
+  const requestUrl = new URL(request.url);
+  if (requestUrl.pathname === '/api/sync/background-trigger') {
+    event.respondWith(new Response(JSON.stringify({ triggered: true }), {
+      headers: { 'Content-Type': 'application/json' }
+    }));
+    return;
+  }
+
   // Only handle GET requests
   if (request.method !== 'GET') return;
 
@@ -1251,18 +1260,33 @@ function openAquatechDB() {
 }
 
 let isSyncingGlobal = false;
-
+// v317: Phase 2 - Web Locks to prevent cross-tab duplication
 async function processOutboxSync(isForced = false, specificType = null) {
-  if (isSyncingGlobal && !isForced) {
-    console.log('[SW] Sync already in progress, skipping concurrent execution.');
-    return;
-  }
-  isSyncingGlobal = true;
-  try {
-    await _internalProcessOutbox(isForced, specificType);
-  } finally {
-    isSyncingGlobal = false;
-    console.log('[SW] Global sync lock released.');
+  if ('locks' in navigator) {
+    return navigator.locks.request('aquatech_outbox_lock', { ifAvailable: !isForced }, async (lock) => {
+      if (!lock) {
+        console.log('[SW] Sync lock not available, skipping concurrent execution.');
+        return;
+      }
+      console.log('[SW] Sync lock acquired. Starting processing...');
+      try {
+        await _internalProcessOutbox(isForced, specificType);
+      } finally {
+        console.log('[SW] Sync lock released.');
+      }
+    });
+  } else {
+    // Fallback for older browsers
+    if (isSyncingGlobal && !isForced) {
+      console.log('[SW] Sync already in progress (global flag), skipping.');
+      return;
+    }
+    isSyncingGlobal = true;
+    try {
+      await _internalProcessOutbox(isForced, specificType);
+    } finally {
+      isSyncingGlobal = false;
+    }
   }
 }
 
@@ -1399,9 +1423,9 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
     }
 
     for (const item of pendingItems) {
-      // v301: PROBLEMA 4 — Items zombie y Backoff exponencial
-      if (item.attempts >= 10) {
-        console.warn(`[SW] Item ${item.id} (${item.type}) eliminado tras 10 intentos fallidos (zombie)`);
+      // v317: Phase 4 - Strict retry limit for production stability
+      if (item.attempts >= 5) {
+        console.warn(`[SW] Item ${item.id} (${item.type}) permanently failed after 5 attempts.`);
         await new Promise(r => {
           try {
             const tx = db.transaction(['outbox'], 'readwrite');
@@ -1937,6 +1961,71 @@ self.addEventListener('periodicsync', (event) => {
     // console.log('[SW] Periodic Background Sync triggered:', event.tag);
     event.waitUntil(processOutboxSync(false));
   }
+});
+
+// ─── BACKGROUND FETCH (Phase 1: Robust Sync) ──────────────
+// v317: System-managed sync for large uploads (survives tab closure)
+self.addEventListener('backgroundfetchsuccess', (event) => {
+  console.log('[SW] Background Fetch Success:', event.registration.id);
+  
+  event.waitUntil(async function() {
+    try {
+      const records = await event.registration.matchAll();
+      const results = await Promise.all(records.map(async (record) => {
+        const response = await record.responseReady;
+        return response && response.ok;
+      }));
+      
+      const allOk = results.every(ok => ok);
+      
+      if (allOk) {
+        // Notify client and cleanup outbox if needed
+        const channel = new BroadcastChannel('aquatech-sync');
+        channel.postMessage({ 
+          type: 'SYNC_FINISHED', 
+          success: true, 
+          source: 'background-fetch',
+          id: event.registration.id 
+        });
+        
+        // Trigger a normal sync to clean up the outbox (the SW will see items are now on server)
+        await processOutboxSync(true);
+      }
+      
+      await event.updateUI({ title: '✅ Sincronización Completada' });
+    } catch (err) {
+      console.error('[SW] Background Fetch success handling failed:', err);
+    }
+  }());
+});
+
+self.addEventListener('backgroundfetchfail', (event) => {
+  console.error('[SW] Background Fetch Failed:', event.registration.id);
+  event.waitUntil(async function() {
+    await event.updateUI({ title: '❌ Sincronización Fallida' });
+    const channel = new BroadcastChannel('aquatech-sync');
+    channel.postMessage({ 
+      type: 'SYNC_FINISHED', 
+      success: false, 
+      source: 'background-fetch',
+      id: event.registration.id 
+    });
+  }());
+});
+
+self.addEventListener('backgroundfetchabort', (event) => {
+  console.warn('[SW] Background Fetch Aborted:', event.registration.id);
+});
+
+self.addEventListener('backgroundfetchclick', (event) => {
+  event.waitUntil(async function() {
+    const windowClients = await clients.matchAll({ type: 'window', includeUncontrolled: true });
+    if (windowClients.length > 0) {
+      await windowClients[0].focus();
+    } else {
+      await clients.openWindow('/admin/operador');
+    }
+  }());
 });
 
 // ─── PUSH NOTIFICATIONS ────────────────────────────────────
