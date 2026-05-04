@@ -1460,8 +1460,9 @@ export default function ProjectExecutionClient({
         try {
           // v301/v321: Use consistent preparation helper for Gallery, preferring the raw File object to avoid broken images.
           let fileToPrepare: File;
-          if (file.file && file.file instanceof File) {
-            fileToPrepare = file.file;
+          const anyFile = file as any;
+          if (anyFile.file && anyFile.file instanceof File) {
+            fileToPrepare = anyFile.file;
           } else if (file.url && file.url.startsWith('blob:')) {
             try {
               const res = await fetch(file.url);
