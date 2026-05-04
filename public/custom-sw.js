@@ -1320,7 +1320,7 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
             for (const item of allItems) {
               if (item.status === 'syncing') {
                 const stuckTime = now - (item.lastAttemptAt || item.timestamp || 0);
-                if (stuckTime > 45000) { // 45 seconds (v278: more aggressive for mobile)
+                if (stuckTime > 300000) { // 5 minutes (v317: allow for large file uploads)
                   console.log(`[SW] Resetting stuck item ${item.id} (${item.type}) from 'syncing' to 'pending'`);
                   item.status = 'pending';
                   resetStore.put(item);
@@ -1440,14 +1440,31 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
         }
       }
 
+      // v316: Contexto para evitar enviar dependientes si falla el padre (ej: mensaje si falló proyecto)
+      const ctx = item.projectId || item.payload?.projectId || item.payload?.id;
+      if (ctx && failedContexts.has(ctx)) {
+        console.log(`[SW] Saltando item ${item.id} porque el contexto ${ctx} falló anteriormente`);
+        await new Promise(r => {
+          try {
+            const tx = db.transaction(['outbox'], 'readwrite');
+            tx.objectStore('outbox').put({ ...item, status: 'failed' });
+            tx.oncomplete = r; tx.onerror = r;
+          } catch(e) { r(); }
+        });
+        continue;
+      }
+
+      try {
       // v294: PROBLEMA 3 — Retry del storageConfig dentro del ciclo si el item tiene media
       const itemTieneMedia = (i) => {
         const p = i.payload || {};
         return i.type === 'MEDIA_UPLOAD' || 
                i.type === 'GALLERY_UPLOAD' || 
                i.type === 'EXPENSE' || 
-               (i.type === 'MESSAGE' && p.media) ||
-               (i.type === 'TASK' && (p.attachments?.length || p.attachmentLinks?.length || p.files?.length));
+               i.type === 'QUOTE' ||
+               i.type === 'PROJECT' ||
+               (i.type === 'MESSAGE' && (p.media || p.fileData)) ||
+               (i.type === 'TASK' && (p.attachments?.length || p.attachmentLinks?.length || p.files?.length || p.previews?.length));
       };
 
       if (!storageConfig && itemTieneMedia(item)) {
@@ -1459,12 +1476,10 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
           console.warn('[SW] Emergency config retry failed');
         }
         if (!storageConfig) {
-          // v294: Abortar este item para que quede en failed y no se pierda la URL del blob (si aún vive)
-          throw new Error('No storage config available after retry — aborting media sync');
+          throw new Error('No storage config available after retry — aborting media sync for this item');
         }
       }
 
-      try {
         // ... el resto del bucle ya procesará los items marcados como syncing
 
           let endpoint = '';
@@ -1508,9 +1523,20 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
           // --- NEW: UNIFIED MEDIA SYNC LOGIC FOR SERVICE WORKER ---
           const processMedia = async (item) => {
             const config = storageConfig;
-            // v294: PROBLEMA 2 — storageConfig null no debe silenciar el error
             if (!config) throw new Error('storageConfig not available — aborting media sync');
-            const payload = { ...item.payload };
+            
+            // v316: Copia profunda del payload para trabajar
+            let payload = JSON.parse(JSON.stringify(item.payload));
+            let needsDbUpdate = false;
+
+            // Función para actualizar el item en outbox si cambiamos algo (evita re-subidas)
+            const persistProgress = async () => {
+              try {
+                const tx = db.transaction(['outbox'], 'readwrite');
+                tx.objectStore('outbox').put({ ...item, payload, status: 'syncing' });
+                await new Promise(r => { tx.oncomplete = r; tx.onerror = r; });
+              } catch(e) {}
+            };
 
             const uploadMediaSW = async (source, name, mimeType, subfolder = 'general') => {
               try {
@@ -1535,14 +1561,20 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
                 
                 // v273: Use chunked upload for anything > 1MB
                 if (blob.size > 1024 * 1024) {
-                   const url = await uploadInChunksSW(blob, name);
+                   const url = await uploadInChunksSW(blob, name, subfolder);
                    if (!url) throw new Error('Chunked upload returned no URL');
                    return url;
                 }
 
                 const timestamp = Date.now();
                 const safeName = (name || `file_${timestamp}`).replace(/[^a-zA-Z0-9.-]/g, '_');
-                const folderPath = item.projectId ? `projects/${item.projectId}` : subfolder;
+                
+                // v316: Improved folder organization for Gallery
+                let folderPath = item.projectId ? `projects/${item.projectId}` : subfolder;
+                if (subfolder === 'gallery' && item.projectId) {
+                  folderPath = `projects/${item.projectId}/gallery`;
+                }
+                
                 const path = `/${config.storageZone}/${folderPath}/${timestamp}-${safeName}`;
                 const uploadUrl = `https://${config.storageHost}${path}`;
                 
@@ -1556,14 +1588,16 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
                   body: blob
                 }), getUploadTimeout(blob.size)); // ← dinámico según tamaño
                 if (!res.ok) throw new Error(`Bunny upload failed with status ${res.status}`);
-                return `${config.pullZoneUrl}/${folderPath}/${timestamp}-${safeName}`;
+                const finalUrl = `${config.pullZoneUrl}/${folderPath}/${timestamp}-${safeName}`;
+                console.log('[SW] Upload success:', finalUrl);
+                return finalUrl;
               } catch (e) {
                 console.error('[SW] Upload failed:', e);
                 throw e; // v275: Throw so the caller knows sync failed
               }
             };
 
-            const uploadInChunksSW = async (blob, filename) => {
+            const uploadInChunksSW = async (blob, filename, subfolder = 'uploads') => {
               const CHUNK_SIZE = getChunkSize(blob.size);
               const totalChunks = Math.ceil(blob.size / CHUNK_SIZE);
               const uploadId = self.crypto.randomUUID();
@@ -1577,6 +1611,13 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
                 formData.append('chunkIndex', i.toString());
                 formData.append('totalChunks', totalChunks.toString());
                 formData.append('filename', filename);
+                
+                // v316: Ensure we send the correct subfolder
+                let finalSubfolder = subfolder;
+                if (subfolder === 'gallery' && item.projectId) {
+                  finalSubfolder = `projects/${item.projectId}/gallery`;
+                }
+                formData.append('subfolder', finalSubfolder);
 
                 let chunkSuccess = false;
                 let chunkAttempts = 0;
@@ -1628,15 +1669,11 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
             if (item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD') {
               if (payload.media) {
                 const source = payload.media.fileData || payload.media.base64 || payload.media.url;
-                if (source instanceof ArrayBuffer) {
-                  const blob = new Blob([source], { type: payload.media.mimeType || 'application/octet-stream' });
-                  payload.media.url = await uploadMediaSW(blob, payload.media.filename, payload.media.mimeType, 'messages');
-                  delete payload.media.fileData;
-                  delete payload.media.base64;
-                } else if (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))) {
+                if (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:')))) {
                   payload.media.url = await uploadMediaSW(source, payload.media.filename, payload.media.mimeType, 'messages');
                   delete payload.media.fileData;
                   delete payload.media.base64;
+                  await persistProgress(); // v316: Persistir URL para no repetir upload si falla el API
                 }
               }
             }
@@ -1644,28 +1681,31 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
             // 2. Handle EXPENSE
             if (item.type === 'EXPENSE') {
               const source = payload.receiptFileData || payload.receiptPhoto;
-              if (source) {
-                if (source instanceof ArrayBuffer) {
-                  const blob = new Blob([source], { type: payload.receiptMimeType || 'image/jpeg' });
-                  payload.receiptPhoto = await uploadMediaSW(blob, 'receipt.jpg', payload.receiptMimeType, 'expenses');
-                  delete payload.receiptFileData;
-                } else if (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))) {
-                  payload.receiptPhoto = await uploadMediaSW(source, 'receipt.jpg', payload.receiptMimeType, 'expenses');
-                  delete payload.receiptFileData;
-                }
+              if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
+                payload.receiptPhoto = await uploadMediaSW(source, 'receipt.jpg', payload.receiptMimeType, 'expenses');
+                delete payload.receiptFileData;
+                await persistProgress();
               }
             }
 
             // 3. Handle GALLERY_UPLOAD
             if (item.type === 'GALLERY_UPLOAD') {
               const source = payload.fileData || payload.url;
-              if (source instanceof ArrayBuffer) {
-                const blob = new Blob([source], { type: payload.mimeType || 'image/jpeg' });
-                payload.url = await uploadMediaSW(blob, payload.filename || 'gallery_item.jpg', payload.mimeType, 'gallery');
-                delete payload.fileData;
-              } else if (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))) {
+              if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
+                // v316: Use 'gallery' subfolder to trigger specialized path logic
                 payload.url = await uploadMediaSW(source, payload.filename || 'gallery_item.jpg', payload.mimeType, 'gallery');
                 delete payload.fileData;
+                await persistProgress();
+              }
+            }
+
+            // v316: Also process media for PROJECT creation if provided
+            if (item.type === 'PROJECT' && (payload.image || payload.fileData)) {
+              const source = payload.fileData || payload.image;
+              if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
+                payload.image = await uploadMediaSW(source, payload.filename || 'project_image.jpg', payload.mimeType, 'projects');
+                delete payload.fileData;
+                await persistProgress();
               }
             }
 
@@ -1675,26 +1715,29 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
               if (payload.attachments) {
                 for (let a of payload.attachments) {
                   const source = a.fileData || a.base64 || a.data || a.url;
-                  if (source instanceof ArrayBuffer) {
-                    const blob = new Blob([source], { type: a.mimeType || 'application/octet-stream' });
-                    if (!uploadedMap[source]) uploadedMap[source] = await uploadMediaSW(blob, a.name, a.mimeType, 'appointments');
-                    a.url = uploadedMap[source];
-                    delete a.fileData;
-                    delete a.base64;
-                    delete a.data;
-                  } else if (source && (typeof source !== 'string' || source.startsWith('data:') || source.startsWith('blob:'))) {
-                    const cacheKey = source.length > 100 ? source.substring(0, 100) : source;
+                  if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
+                    const cacheKey = typeof source === 'string' ? (source.length > 100 ? source.substring(0, 100) : source) : source;
                     if (!uploadedMap[cacheKey]) {
                       uploadedMap[cacheKey] = await uploadMediaSW(source, a.name, a.mimeType, 'appointments');
                     }
-                    const finalUrl = uploadedMap[cacheKey];
-                    a.data = finalUrl;
-                    a.url = finalUrl;
+                    a.url = uploadedMap[cacheKey];
+                    a.data = a.url;
+                    delete a.fileData;
                     delete a.base64;
+                    await persistProgress();
                   }
                 }
               }
-              // ... links and files logic similar if needed, but TASK was mostly OK
+              if (payload.files) {
+                for (let f of payload.files) {
+                  const source = f.fileData || f.url;
+                  if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
+                    f.url = await uploadMediaSW(source, f.name, f.mimeType, 'appointments');
+                    delete f.fileData;
+                    await persistProgress();
+                  }
+                }
+              }
             }
 
             return payload;
@@ -1771,53 +1814,41 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
         await new Promise(r => setTimeout(r, 500));
       }
 
-      // v274: Notify UI that sync cycle finished
-      const syncChannel = new BroadcastChannel('aquatech-sync');
-      syncChannel.postMessage({ type: 'OUTBOX_SYNC_FINISHED' });
-      // v279: Aggressively close any sync notification when done to prevent hanging UI
-      try {
-        const allNotifications = await self.registration.getNotifications();
-        allNotifications.forEach(n => {
-          if (n.tag === 'sync-progress' || n.title.includes('Sincronizando')) {
-            n.close();
-          }
-        });
-      } catch (e) {
-        console.error('[SW] Failed to clear notifications:', e);
-      }
+        // v316: Enviar señal de fin de ciclo para que la UI se actualice (indicador verde)
+        try {
+          const syncChannel = new BroadcastChannel('aquatech-sync');
+          syncChannel.postMessage({ type: 'OUTBOX_SYNC_FINISHED' });
+        } catch(e) {}
 
-      resolve();
-
-      // v285: AGGRESSIVE RETRY LOOP
-      // Even if some or all items failed, if there are still items pending in the outbox,
-      // we schedule another check soon. This fixes the issue where a "half-working" 
-      // connection causes the SW to give up until the next OS-triggered sync event.
       } catch (fatal) {
         console.error('[SW] Fatal error in outbox sync loop:', fatal);
       } finally {
         clearTimeout(globalSyncTimer);
+        
+        // v279: Cleanup definitively
         try {
           const allNotifications = await self.registration.getNotifications();
           allNotifications.forEach(n => {
-            if (n.tag === 'sync-progress' || n.title.includes('Sincronizando')) {
+            if (n.tag === 'sync-progress' || n.title?.includes('Sincronizando')) {
               n.close();
             }
           });
-        } catch (e) {
-          console.error('[SW] Notification cleanup failed:', e);
-        }
+        } catch (e) {}
+
         // v286: Improved retry check - check if there are still items to sync
         try {
           const dbRetry = await openAquatechDB();
           const count = await new Promise(r => {
-            const tx = dbRetry.transaction(['outbox'], 'readonly');
-            const req = tx.objectStore('outbox').count();
-            req.onsuccess = () => r(req.result);
-            req.onerror = () => r(0);
+            try {
+              const tx = dbRetry.transaction(['outbox'], 'readonly');
+              const req = tx.objectStore('outbox').count();
+              req.onsuccess = () => r(req.result);
+              req.onerror = () => r(0);
+            } catch(e) { r(0); }
           });
           if (count > 0) {
-            // console.log(`[SW] ${count} items still pending. Scheduling retry in 20s...`);
-            setTimeout(() => processOutboxSync(false), 20000);
+            console.log(`[SW] ${count} items still pending. Scheduling retry in 30s...`);
+            setTimeout(() => processOutboxSync(false), 30000);
           }
         } catch (e) {
           console.warn('[SW] Retry check failed:', e);
@@ -1870,13 +1901,12 @@ self.addEventListener('push', (event) => {
     body: data.body || 'Nueva actualización en tu proyecto',
     icon: data.icon || '/icon-192.png',
     badge: data.badge || '/icon-192.png',
-    vibrate: [200, 100, 200],
+    vibrate: [200, 100, 200, 100, 400], // Patrón más premium
     tag: data.tag || 'aquatech-update',
     renotify: true,
-    requireInteraction: true,
+    requireInteraction: true, // Mantener hasta que el usuario la vea
     silent: false,
     timestamp: Date.now(),
-    image: '/logo.jpg',
     data: {
       url: data.url || '/admin/operador',
       timestamp: Date.now()
@@ -1886,6 +1916,10 @@ self.addEventListener('push', (event) => {
       { action: 'close', title: '✕ Ignorar' }
     ]
   };
+
+  if (data.image) {
+    options.image = data.image;
+  }
 
   event.waitUntil(
     self.registration.showNotification(data.title || '🔔 Aquatech CRM', options)

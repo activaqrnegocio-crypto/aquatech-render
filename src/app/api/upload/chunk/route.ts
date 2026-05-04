@@ -47,13 +47,14 @@ export async function POST(req: NextRequest) {
 
     // Subir el archivo completo a BunnyNet
     const storageZone = process.env.BUNNY_STORAGE_ZONE!;
-    const accessKey = process.env.BUNNY_ACCESS_KEY!;
+    const accessKey = process.env.BUNNY_STORAGE_API_KEY!;
     const storageHost = process.env.BUNNY_STORAGE_HOST || 'storage.bunnycdn.com';
-    const pullZoneUrl = process.env.BUNNY_CDN_URL!;
+    const pullZoneUrl = process.env.BUNNY_PULLZONE_URL || process.env.BUNNY_PULL_ZONE_URL;
 
+    const subfolder = formData.get('subfolder') as string || 'uploads';
     const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const timestamp = Date.now();
-    const remotePath = `uploads/${timestamp}-${safeName}`;
+    const remotePath = `${subfolder}/${timestamp}-${safeName}`;
 
     const bunnyRes = await fetch(
       `https://${storageHost}/${storageZone}/${remotePath}`,

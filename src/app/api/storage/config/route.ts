@@ -15,7 +15,7 @@ export async function GET() {
       storageZone: process.env.BUNNY_STORAGE_ZONE,
       accessKey: process.env.BUNNY_STORAGE_API_KEY,
       storageHost: process.env.BUNNY_STORAGE_HOST,
-      pullZoneUrl: process.env.BUNNY_PULLZONE_URL,
+      pullZoneUrl: process.env.BUNNY_PULLZONE_URL || process.env.BUNNY_PULL_ZONE_URL,
     })
   } catch (error) {
     console.error('Failed to get storage config:', error)

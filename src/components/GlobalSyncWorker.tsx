@@ -147,21 +147,10 @@ export default function GlobalSyncWorker() {
       if (res.ok) {
         const fetchedProjects = await res.json()
         
-        // v316: For operators, filter projects to only those where the user
-        // is a direct team member or creator — matching OperatorDashboardClient's Dexie filter.
-        // This ensures the sync counter (e.g. 12/12) matches the projects tab count.
-        // Admin sees ALL projects unfiltered.
-        if (!isAdmin && u?.id) {
-          const userId = Number(u.id);
-          projectsToProcess = fetchedProjects.filter((p: any) => {
-            const isInTeam = p.team?.some((m: any) => Number(m.userId) === userId);
-            const isCreator = Number(p.createdBy) === userId;
-            return isInTeam || isCreator;
-          });
-          console.log(`[Sync] Operator filter: ${fetchedProjects.length} fetched → ${projectsToProcess.length} owned by user ${userId}`);
-        } else {
-          projectsToProcess = fetchedProjects;
-        }
+        // v316: El backend en /api/projects/bulk-cache ya filtra los proyectos por operador,
+        // así que no necesitamos filtrarlos de nuevo aquí.
+        projectsToProcess = fetchedProjects;
+
         
         const totalToSync = projectsToProcess.length
         const syncChannel = new BroadcastChannel('aquatech-sync');

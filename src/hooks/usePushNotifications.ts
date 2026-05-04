@@ -61,89 +61,110 @@ export function usePushNotifications() {
       return
     }
 
-    // Only wait for SW ready if permission is already granted
+    // Solo esperamos a SW ready si el permiso ya fue otorgado
+    // Añadimos un timeout de 3 segundos para evitar que la UI se quede en "loading" eternamente
+    let isTimeout = false;
+    const checkTimeout = setTimeout(() => {
+      isTimeout = true;
+      setStatus(permission === 'granted' ? 'unsubscribed' : 'prompt');
+    }, 3000);
+
     navigator.serviceWorker.ready.then(registration => {
       registration.pushManager.getSubscription().then(sub => {
+        clearTimeout(checkTimeout);
+        if (isTimeout) return; // Si ya pasó el timeout, no cambiamos el estado
+        
         if (sub) {
-          setStatus('subscribed')
+          setStatus('subscribed');
         } else {
-          setStatus(permission === 'granted' ? 'unsubscribed' : 'prompt')
+          setStatus(permission === 'granted' ? 'unsubscribed' : 'prompt');
         }
-      })
+      }).catch(() => {
+        clearTimeout(checkTimeout);
+        if (!isTimeout) setStatus('unsupported');
+      });
     }).catch(() => {
-      setStatus('unsupported')
-    })
-  }, [])
+      clearTimeout(checkTimeout);
+      if (!isTimeout) setStatus('unsupported');
+    });
+  }, []);
 
   const subscribe = useCallback(async (): Promise<{ success: boolean; error?: string }> => {
     if (status === 'unsupported') return { success: false, error: 'Tu navegador no soporta notificaciones.' };
     if (status === 'denied') return { success: false, error: 'Permiso denegado. Habilítalo en los ajustes del navegador.' };
 
-    setIsSubscribing(true)
+    setIsSubscribing(true);
     
-    const isSubRef = { current: true };
-    const safetyTimeout = setTimeout(() => {
-      if (isSubRef.current) {
-        console.warn('[PUSH] Subscription timed out after 15s');
+    let isTimeout = false;
+
+    // Convertimos todo en una promesa para poder rechazarla con el timeout
+    return new Promise<{ success: boolean; error?: string }>(async (resolve) => {
+      const finishSub = (success: boolean, error?: string) => {
         setIsSubscribing(false);
-        isSubRef.current = false;
-      }
-    }, 15000);
+        resolve({ success, error });
+      };
 
-    const finishSub = (success: boolean) => {
-      clearTimeout(safetyTimeout);
-      setIsSubscribing(false);
-      isSubRef.current = false;
-      return success;
-    };
+      const safetyTimeout = setTimeout(() => {
+        isTimeout = true;
+        console.warn('[PUSH] Subscription timed out after 15s');
+        finishSub(false, 'Tiempo de espera agotado. Verifica tu conexión a internet.');
+      }, 15000);
 
-    try {
-      // 1. Request notification permission (v286: Robust callback fallback)
-      console.log('[PUSH] Requesting permission...');
-      let permission: NotificationPermission;
       try {
-        permission = await Notification.requestPermission();
-      } catch (e) {
-        // Fallback for older browsers/iOS versions that use callbacks
-        permission = await new Promise((resolve) => {
-          Notification.requestPermission((result) => resolve(result));
-        });
-      }
+        // 1. Request notification permission (v286: Robust callback fallback)
+        console.log('[PUSH] Requesting permission...');
+        let permission: NotificationPermission;
+        try {
+          permission = await Notification.requestPermission();
+        } catch (e) {
+          // Fallback for older browsers/iOS versions that use callbacks
+          permission = await new Promise((res) => {
+            Notification.requestPermission((result) => res(result));
+          });
+        }
 
-      console.log('[PUSH] Permission result:', permission);
-      if (permission !== 'granted') {
-        setStatus('denied');
-        console.warn('[PUSH] Permission denied by user');
-        return { success: false, error: 'Permiso denegado por el usuario.' };
-      }
+        if (isTimeout) return;
+
+        console.log('[PUSH] Permission result:', permission);
+        if (permission !== 'granted') {
+          setStatus('denied');
+          console.warn('[PUSH] Permission denied by user');
+          clearTimeout(safetyTimeout);
+          return finishSub(false, 'Permiso denegado por el usuario.');
+        }
 
       // 2. Get service worker registration
       console.log('[PUSH] Waiting for Service Worker ready...');
       const registration = await navigator.serviceWorker.ready;
+      if (isTimeout) return;
+
       if (!registration.pushManager) {
         console.error('[PUSH] PushManager not available in this browser');
         setStatus('unsupported');
-        return { success: false, error: 'Tu navegador no soporta notificaciones Push.' };
+        clearTimeout(safetyTimeout);
+        return finishSub(false, 'Tu navegador no soporta notificaciones Push.');
       }
 
       // 3. Get VAPID key from server (v296: Dynamic runtime fetch to bypass Docker build-time issues)
       console.log('[PUSH] Fetching VAPID key from server...');
       const configRes = await fetch('/api/push/config');
+      if (isTimeout) return;
+
       if (!configRes.ok) {
-        throw new Error('No se pudo obtener la configuración de notificaciones del servidor.');
+        clearTimeout(safetyTimeout);
+        return finishSub(false, 'No se pudo obtener la configuración de notificaciones del servidor.');
       }
       const { publicKey: vapidKey, error: serverError } = await configRes.json();
       
       if (serverError) {
-        throw new Error(`Error del servidor: ${serverError}`);
+        clearTimeout(safetyTimeout);
+        return finishSub(false, `Error del servidor: ${serverError}`);
       }
 
       if (!vapidKey || vapidKey === 'dummy') {
         console.error('[PUSH] Invalid VAPID key received:', vapidKey);
-        return { 
-          success: false, 
-          error: `Error de Configuración: La llave VAPID recibida es ${!vapidKey ? 'nula' : 'dummy'}. Verifica las variables NEXT_PUBLIC_VAPID_PUBLIC_KEY en el servidor.` 
-        };
+        clearTimeout(safetyTimeout);
+        return finishSub(false, `Error de Configuración: La llave VAPID recibida es ${!vapidKey ? 'nula' : 'dummy'}. Verifica las variables NEXT_PUBLIC_VAPID_PUBLIC_KEY en el servidor.`);
       }
       
       console.log('[PUSH] Subscribing with dynamic VAPID key (first 10 chars):', vapidKey.substring(0, 10) + '...');
@@ -152,6 +173,8 @@ export function usePushNotifications() {
         userVisibleOnly: true,
         applicationServerKey: urlBase64ToUint8Array(vapidKey) as any
       });
+
+      if (isTimeout) return;
 
       console.log('[PUSH] Subscription successful, sending to server...');
 
@@ -172,6 +195,8 @@ export function usePushNotifications() {
         })
       });
 
+      if (isTimeout) return;
+
       if (res.ok) {
         console.log('[PUSH] Server registration successful');
         setStatus('subscribed');
@@ -185,20 +210,23 @@ export function usePushNotifications() {
           setShowOnboarding(true);
         }
 
-        return { success: finishSub(true) };
+        clearTimeout(safetyTimeout);
+        return finishSub(true);
       } else {
         const errorData = await res.json().catch(() => ({}));
         console.error('[PUSH] Server rejected subscription:', res.status, errorData);
-        return { success: finishSub(false), error: `El servidor rechazó la suscripción (${res.status})` };
+        clearTimeout(safetyTimeout);
+        return finishSub(false, `El servidor rechazó la suscripción (${res.status})`);
       }
     } catch (error: any) {
       console.error('[PUSH] Subscription error details:', error);
-      return { 
-        success: finishSub(false), 
-        error: `Error técnico: ${error.message || 'Desconocido'}` 
-      };
+      clearTimeout(safetyTimeout);
+      if (!isTimeout) {
+        return finishSub(false, `Error técnico: ${error.message || 'Desconocido'}`);
+      }
     }
-  }, [status])
+    });
+  }, [status]);
 
   const unsubscribe = useCallback(async () => {
     try {

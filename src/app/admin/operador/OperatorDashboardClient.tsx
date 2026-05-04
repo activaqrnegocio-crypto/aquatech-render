@@ -73,10 +73,10 @@ export default function OperatorDashboardClient({
   const [isHydratingAuth, setIsHydratingAuth] = useState(true)
 
   const [appointments, setAppointments] = useState<any[]>(() => {
-    // v293: Recuperación síncrona de tareas para evitar flash de carga
+    // v316: Recuperación síncrona de tareas con localStorage para sobrevivir al cierre de app
     if (typeof window !== 'undefined') {
       try {
-        const saved = sessionStorage.getItem('last_op_tasks_snapshot')
+        const saved = localStorage.getItem('last_op_tasks_snapshot')
         if (saved) {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed) && parsed.length > 0) return parsed
@@ -116,7 +116,23 @@ export default function OperatorDashboardClient({
     async () => {
       // v292: Try user prop first (available immediately), fallback to localUser
       const uId = user?.id || localUser?.id
-      if (!uId) return undefined
+      if (!uId) {
+        // v316: Si no tenemos userId todavía, intentar cargar TODOS los proyectos
+        // del cache sin filtro. En offline, si el operador solo tiene sus proyectos
+        // en el cache (porque el backend ya filtró), esto es seguro.
+        const isOffline = typeof navigator !== 'undefined' && !navigator.onLine
+        if (isOffline) {
+          const allProjects = await db.projectsCache
+            .orderBy('lastAccessedAt')
+            .reverse()
+            .limit(500)
+            .toArray()
+          if (allProjects.length > 0) {
+            return allProjects
+          }
+        }
+        return undefined
+      }
 
       const userId = Number(uId)
       if (isNaN(userId) || userId <= 0) return undefined
@@ -128,12 +144,20 @@ export default function OperatorDashboardClient({
         .limit(500)
         .toArray()
       
-      return allProjects.filter(p => {
+      const filtered = allProjects.filter(p => {
         // v294: Usar comparación flexible (==) y verificar tanto team como createdBy
         const isInTeam = p.team?.some((m: any) => Number(m.userId) === userId)
         const isCreator = Number(p.createdBy || p.createdById) === userId
         return isInTeam || isCreator
       })
+
+      // v316: Si el filtro no encontró nada pero hay proyectos en cache Y estamos offline,
+      // devolver todos (el backend ya los filtró al sincronizar)
+      if (filtered.length === 0 && allProjects.length > 0 && !navigator.onLine) {
+        return allProjects
+      }
+
+      return filtered
     },
     [localUser?.id, user?.id] // Removed isHydratingAuth to prevent blocking
   )
@@ -158,16 +182,17 @@ export default function OperatorDashboardClient({
   useEffect(() => {
     if (appointmentsFromCache && appointmentsFromCache.length > 0) {
       setAppointments(appointmentsFromCache)
-      try { sessionStorage.setItem('last_op_tasks_snapshot', JSON.stringify(appointmentsFromCache)) } catch(e) {}
+      try { localStorage.setItem('last_op_tasks_snapshot', JSON.stringify(appointmentsFromCache)) } catch(e) {}
     }
   }, [appointmentsFromCache])
 
   // v292: Emergency Fallback for Offline "DEAD" state
   const [emergencyProjects, setEmergencyProjects] = useState<any[] | undefined>(() => {
-    // v293: Recuperación síncrona instantánea desde sessionStorage para evitar el flash de "0" al navegar
+    // v316: Usar localStorage en vez de sessionStorage para que el snapshot sobreviva
+    // al cierre y reapertura de la app (sessionStorage se borra al cerrar la pestaña)
     if (typeof window !== 'undefined') {
       try {
-        const saved = sessionStorage.getItem('last_op_projects_snapshot')
+        const saved = localStorage.getItem('last_op_projects_snapshot')
         if (saved) {
           const parsed = JSON.parse(saved)
           if (Array.isArray(parsed) && parsed.length > 0) return parsed
@@ -201,8 +226,8 @@ export default function OperatorDashboardClient({
         if (myProjects.length > 0) {
           // console.log(`[EmergencyLoad] Loaded ${myProjects.length} projects directly from Dexie`)
           setEmergencyProjects(myProjects)
-          // v293: Persistir para la próxima navegación
-          try { sessionStorage.setItem('last_op_projects_snapshot', JSON.stringify(myProjects)) } catch(e) {}
+          // v316: Persistir en localStorage para sobrevivir al cierre de app
+          try { localStorage.setItem('last_op_projects_snapshot', JSON.stringify(myProjects)) } catch(e) {}
         }
       } catch (e) {
         console.error('[EmergencyLoad] Failed:', e)
@@ -215,7 +240,8 @@ export default function OperatorDashboardClient({
   // v293: Efecto adicional para persistir cuando el LiveQuery cambie (siempre mantener el snapshot fresco)
   useEffect(() => {
     if (projectsFromCache && projectsFromCache.length > 0) {
-      try { sessionStorage.setItem('last_op_projects_snapshot', JSON.stringify(projectsFromCache)) } catch(e) {}
+      // v316: Persistir en localStorage para sobrevivir al cierre de app
+      try { localStorage.setItem('last_op_projects_snapshot', JSON.stringify(projectsFromCache)) } catch(e) {}
     }
   }, [projectsFromCache])
 
@@ -273,28 +299,30 @@ export default function OperatorDashboardClient({
   const [currentPage, setCurrentPage] = useState(1)
   const ITEMS_PER_PAGE = 10
 
-  // Merge server projects with cache projects (Smart Merge v224)
+  // Merge server projects with cache projects (Smart Merge v317)
   const projects = useMemo(() => {
-    // v292: Robust Source Selection (Priority: LiveQuery > Emergency > Server Props)
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+
+    // v317: Robust Source Selection (Priority: LiveQuery > Emergency > Server Props)
     // If projectsFromCache is undefined, it means Dexie hasn't responded yet.
-    // If emergencyProjects is also undefined, we are in the initial 2s window.
+    // If emergencyProjects is also undefined, we are in the initial window.
     const sourceProjects = 
       (projectsFromCache && projectsFromCache.length > 0) ? projectsFromCache :
       (emergencyProjects && emergencyProjects.length > 0) ? emergencyProjects :
-      (projectsFromCache === undefined && emergencyProjects === undefined) ? undefined :
-      initialProjects; // Last resort (usually [] from server)
+      (projectsFromCache === undefined || isHydratingAuth) ? undefined :
+      initialProjects;
 
-    // v293: Si estamos cargando (undefined), NO caer a initialProjects todavía
-    // initialProjects es [] por diseño para carga rápida, pero si lo mostramos
-    // el usuario ve "0 proyectos" durante la hidratación.
+    // v317: Si estamos cargando o hidratando auth, NO caer a initialProjects (que es [] offline)
     if (sourceProjects === undefined) {
-       return undefined // Mantiene el estado de carga (skeletons/spinner)
+       return undefined; // Mantiene el estado de carga (spinner)
     }
 
-    // Create a map to merge projects by ID
+    // v317: Si estamos offline y el source sigue siendo [], intentar forzar el snapshot de emergencia una vez más
+    if (isOffline && sourceProjects.length === 0 && emergencyProjects === undefined) {
+       return undefined; // Esperar un ciclo más por el emergency sync
+    }
+
     const projectMap = new Map();
-    
-    // Process source projects
     sourceProjects.forEach((p: any) => projectMap.set(p.id, p));
 
     return Array.from(projectMap.values())
@@ -313,7 +341,7 @@ export default function OperatorDashboardClient({
       .sort((a, b) => 
         new Date(b.updatedAt || 0).getTime() - new Date(a.updatedAt || 0).getTime()
       );
-  }, [projectsFromCache, emergencyProjects, initialProjects, unreadCounts, searchTerm])
+  }, [projectsFromCache, emergencyProjects, initialProjects, unreadCounts, searchTerm, isHydratingAuth])
 
   const paginatedProjects = useMemo(() => {
     if (!projects) return undefined;

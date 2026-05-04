@@ -27,6 +27,7 @@ interface PushPayload {
   url?: string       // URL to open on click
   tag?: string        // Groups notifications of the same type
   badge?: string
+  image?: string
 }
 
 /**
@@ -46,6 +47,7 @@ export async function sendPushToUser(userId: number, payload: PushPayload) {
       body: payload.body,
       icon: payload.icon || '/icon-192.png',
       badge: payload.badge || '/icon-192.png',
+      image: payload.image,
       url: payload.url || '/admin/operador',
       tag: payload.tag || 'general',
       vibrate: [300, 100, 300, 100, 400],
@@ -128,8 +130,8 @@ export async function sendPushToProjectTeam(
  * Send push notification to a single specific user by ID.
  * Convenience wrapper with error swallowing for fire-and-forget usage.
  */
-export async function notifyUser(userId: number, title: string, body: string, url?: string, tag?: string) {
-  return sendPushToUser(userId, { title, body, url, tag }).catch(() => {})
+export async function notifyUser(userId: number, title: string, body: string, url?: string, tag?: string, image?: string) {
+  return sendPushToUser(userId, { title, body, url, tag, image }).catch(() => {})
 }
 
 /**
@@ -142,14 +144,15 @@ export async function notifyProjectTeam(
   title: string, 
   body: string, 
   url?: string, 
-  tag?: string
+  tag?: string,
+  image?: string
 ) {
-  return sendPushToProjectTeam(projectId, excludeUserId, { title, body, url, tag }).catch(() => {})
+  return sendPushToProjectTeam(projectId, excludeUserId, { title, body, url, tag, image }).catch(() => {})
 }
 /**
  * Send push notification to all admins in the system.
  */
-export async function notifyAdmins(title: string, body: string, url?: string, tag?: string) {
+export async function notifyAdmins(title: string, body: string, url?: string, tag?: string, image?: string) {
   try {
     const admins = await prisma.user.findMany({
       where: { 
@@ -162,7 +165,7 @@ export async function notifyAdmins(title: string, body: string, url?: string, ta
     if (admins.length === 0) return []
     
     return Promise.allSettled(
-      admins.map(a => notifyUser(a.id, title, body, url, tag))
+      admins.map(a => notifyUser(a.id, title, body, url, tag, image))
     )
   } catch (error) {
     console.error('[PUSH] Error notifying admins:', error)

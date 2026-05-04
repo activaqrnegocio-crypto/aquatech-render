@@ -2825,6 +2825,10 @@ export default function ProjectDetailClient({ project: initialProject, available
                   >
                     {(() => {
                       const getCleanType = (mime: string, url: string) => {
+                        if (url && url.startsWith('data:image/')) return 'image/jpeg';
+                        if (url && url.startsWith('data:video/')) return 'video/mp4';
+                        if (url && url.startsWith('data:audio/')) return 'audio/mpeg';
+
                         if (mime === 'application/octet-stream' || !mime) {
                           const ext = url.split('.').pop()?.toLowerCase();
                           if (['jpg', 'jpeg', 'png', 'webp', 'gif'].includes(ext || '')) return 'image/jpeg';
