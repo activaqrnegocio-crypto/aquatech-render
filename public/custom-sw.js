@@ -1,4 +1,4 @@
-const SW_VERSION = 'v329-ultra-fix';
+const SW_VERSION = 'v331-syntax-fix';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
@@ -1432,10 +1432,9 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
         }
       });
       
-      // v324: If forced, clear history of failed contexts and ignore backoff
+      // v331: Fixed syntax error (failedContexts) that was killing the robot
       if (isForced) {
-        failedContexts.clear();
-        console.log('[SW] Forced sync: cleared failed contexts and ignoring backoffs.');
+        console.log('[SW] Forced sync requested.');
       }
 
       const transaction = db.transaction(['outbox'], 'readwrite');
