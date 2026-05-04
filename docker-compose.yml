@@ -2,12 +2,7 @@ version: '3.8'
 
 services:
   app:
-    build:
-      context: .
-      args:
-        - NEXT_PUBLIC_VAPID_PUBLIC_KEY=${NEXT_PUBLIC_VAPID_PUBLIC_KEY}
-        - NEXTAUTH_URL=${NEXTAUTH_URL}
-        - DATABASE_URL=${DATABASE_URL}
+    image: ghcr.io/activaqrnegocio-crypto/aquatech-render:latest
     container_name: aquatech-crm-v2
     restart: always
     ports:
