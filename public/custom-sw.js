@@ -1343,29 +1343,15 @@ async function processOutboxSync(isForced = false, specificType = null) {
   } finally {
     isSyncingGlobal = false;
     console.log('[SW] Sync finished.');
-        // v317: Ensure notification is closed even if _internalProcessOutbox hangs or crashes
-        try {
-          const notifs = await self.registration.getNotifications();
-          notifs.forEach(n => {
-            if (n.tag === 'sync-progress' || n.title?.includes('Sincronizando')) {
-              n.close();
-            }
-          });
-        } catch (e) {}
-      }
-    });
-  } else {
-    // Fallback for older browsers
-    if (isSyncingGlobal && !isForced) {
-      console.log('[SW] Sync already in progress (global flag), skipping.');
-      return;
-    }
-    isSyncingGlobal = true;
+    // v317: Ensure notification is closed even if _internalProcessOutbox hangs or crashes
     try {
-      await _internalProcessOutbox(isForced, specificType);
-    } finally {
-      isSyncingGlobal = false;
-    }
+      const notifs = await self.registration.getNotifications();
+      notifs.forEach(n => {
+        if (n.tag === 'sync-progress' || n.title?.includes('Sincronizando')) {
+          n.close();
+        }
+      });
+    } catch (e) {}
   }
 }
 
