@@ -459,14 +459,31 @@ export default function ProjectUploader({
                 onClick={(e) => e.stopPropagation()}
               />
             ) : selectedFileForPreview.type === 'VIDEO' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('video/')) ? (
+              (() => {
+                // v352fix: If the video URL is a data: URL (offline), use URL.createObjectURL
+                // with the raw File object instead. Data URLs don't support Range requests
+                // needed for video seeking/streaming, so the browser can't play them.
+                const rawFile = (selectedFileForPreview as any).file;
+                const videoSrc = (rawFile instanceof File || rawFile instanceof Blob)
+                  ? URL.createObjectURL(rawFile)
+                  : selectedFileForPreview.url;
+                return (
               <video 
-                src={selectedFileForPreview.url} 
+                src={videoSrc} 
                 controls 
                 autoPlay 
                 playsInline
                 style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', outline: 'none' }}
                 onClick={(e) => e.stopPropagation()}
+                onLoadedMetadata={() => {
+                  // Revoke object URL after video metadata loads to free memory
+                  if (videoSrc.startsWith('blob:')) {
+                    setTimeout(() => URL.revokeObjectURL(videoSrc), 5000);
+                  }
+                }}
               />
+                );
+              })()
             ) : selectedFileForPreview.type === 'AUDIO' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('audio/')) ? (
               <div 
                 style={{ backgroundColor: 'var(--bg-card)', padding: '40px', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
@@ -479,7 +496,12 @@ export default function ProjectUploader({
                   <h3 style={{ margin: '0 0 5px 0', fontSize: '1.2rem' }}>{formatFileName(selectedFileForPreview.filename)}</h3>
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Audio / Grabación</p>
                 </div>
-                <audio src={selectedFileForPreview.url} controls autoPlay style={{ width: '100%' }} />
+                <audio 
+                  src={(selectedFileForPreview as any).file instanceof Blob 
+                    ? URL.createObjectURL((selectedFileForPreview as any).file) 
+                    : selectedFileForPreview.url} 
+                  controls autoPlay style={{ width: '100%' }} 
+                />
                 <button onClick={() => handleDownload(selectedFileForPreview)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)', marginTop: '10px' }}>
                   {isDownloading === selectedFileForPreview.url ? 'Descargando...' : 'Descargar'}
                 </button>
