@@ -167,8 +167,10 @@ function getChunkSize(fileSizeBytes) {
 const PRE_CACHE = [
   '/admin',
   '/admin/operador',
+  '/admin/operador/nuevo',
   '/admin/login',
   '/admin/proyectos',
+  '/admin/proyectos/nuevo',
   '/admin/calendario',
   '/admin/cotizaciones',
   '/admin/cotizaciones/nuevo',
@@ -605,8 +607,9 @@ async function navigationHandler(request) {
       return cleanResponse(cached);
     }
 
-    // 2b. Try shell for admin/operator routes
-    if (isOpNav || isAdminNav) {
+    // 2b. Try shell for admin/operator routes (except /nuevo — son formularios, no detalles de proyecto)
+    const isNuevoPage = url.pathname.endsWith('/nuevo') || url.pathname.endsWith('/nuevo/');
+    if (!isNuevoPage && (isOpNav || isAdminNav)) {
       const shellUrl = isOpNav
         ? '/admin/operador/proyecto/offline-shell'
         : '/admin/proyectos/offline-shell';
