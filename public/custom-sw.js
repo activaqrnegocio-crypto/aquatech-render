@@ -1842,7 +1842,7 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
 
                 // v273: Use chunked upload for anything > 1MB
                 if (blob.size > 1024 * 1024) {
-                   const url = await uploadInChunksSW(blob, name, subfolder);
+                   const url = await uploadInChunksSW(blob, name, subfolder, mimeType);
                    if (!url) throw new Error('Chunked upload returned no URL');
                    return url;
                 }
@@ -1876,7 +1876,7 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
               }
             };
 
-const uploadInChunksSW = async (blob, filename, subfolder = 'uploads') => {
+const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType = '') => {
               const CHUNK_SIZE = getChunkSize(blob.size);
               const totalChunks = Math.ceil(blob.size / CHUNK_SIZE);
               const uploadId = self.crypto.randomUUID();
@@ -1890,6 +1890,7 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads') => {
                 formData.append('chunkIndex', i.toString());
                 formData.append('totalChunks', totalChunks.toString());
                 formData.append('filename', filename);
+                formData.append('mimeType', mimeType || blob.type || 'application/octet-stream');
                 
                 // v316: Ensure we send the correct subfolder
                 let finalSubfolder = subfolder;
@@ -2100,6 +2101,36 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads') => {
             }), 30000); // 30s timeout for API
 
             if (res.ok) {
+               // v352: For PROJECT sync, save the newly created project into projectsCache
+               // so the operator dashboard LiveQuery picks it up immediately (no reload needed).
+               if (item.type === 'PROJECT') {
+                 try {
+                   const serverProject = await res.clone().json();
+                   if (serverProject && serverProject.id) {
+                     const cacheEntry = {
+                       ...finalPayload,
+                       id: serverProject.id,
+                       team: finalPayload.team ? finalPayload.team.map((uid: any) => ({ userId: Number(uid) })) : [],
+                       client: finalPayload.client || null,
+                       phases: finalPayload.phases || [],
+                       lastAccessedAt: Date.now(),
+                       createdAt: serverProject.createdAt || new Date(item.timestamp).toISOString(),
+                       updatedAt: serverProject.updatedAt || new Date().toISOString(),
+                       status: serverProject.status || finalPayload.status || 'LEAD',
+                       isSkeleton: false
+                     };
+                     // Guardar en projectsCache usando IDB directamente
+                     const putTx = db.transaction(['projectsCache'], 'readwrite');
+                     const putStore = putTx.objectStore('projectsCache');
+                     putStore.put(cacheEntry);
+                     await new Promise(r => { putTx.oncomplete = r; putTx.onerror = r; });
+                     console.log(`[SW v352] Saved synced project #${serverProject.id} to projectsCache for instant UI update`);
+                   }
+                 } catch (parseErr) {
+                   console.warn('[SW v352] Could not save project to cache after sync:', parseErr);
+                 }
+               }
+
                await new Promise((deleteRes) => {
                  const txd = db.transaction(['outbox'], 'readwrite');
                  const stored = txd.objectStore('outbox');

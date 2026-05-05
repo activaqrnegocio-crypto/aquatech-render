@@ -52,6 +52,7 @@ export async function POST(req: NextRequest) {
     const pullZoneUrl = process.env.BUNNY_PULLZONE_URL || process.env.BUNNY_PULL_ZONE_URL;
 
     const subfolder = formData.get('subfolder') as string || 'uploads';
+    const mimeType = formData.get('mimeType') as string || 'application/octet-stream';
     const safeName = filename.replace(/[^a-zA-Z0-9._-]/g, '_');
     const timestamp = Date.now();
     const remotePath = `${subfolder}/${timestamp}-${safeName}`;
@@ -62,7 +63,7 @@ export async function POST(req: NextRequest) {
         method: 'PUT',
         headers: {
           'AccessKey': accessKey,
-          'Content-Type': 'application/octet-stream',
+          'Content-Type': mimeType,
         },
         body: completeBuffer,
       }
