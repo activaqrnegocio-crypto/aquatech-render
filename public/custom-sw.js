@@ -1986,6 +1986,9 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
 
             // v352: Process media for PROJECT creation — image + ALL attached files (videos, fotos, docs)
             // Cada archivo se sube individualmente a Bunny CDN para evitar payloads JSON enormes.
+            // v352fix: Priorizar el File crudo (item.payload.files[i].file) sobre base64.
+            // El File crudo sobrevive structured clone de IndexedDB y evita la decodificación
+            // de base64 (atob + loop charCodeAt de millones de iteraciones que corrompe videos grandes).
             if (item.type === 'PROJECT') {
               // 1. Main project image
               if (payload.image || payload.fileData) {
@@ -1998,11 +2001,20 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
               }
               // 2. All attached files (ProjectFile[]) — one by one to Bunny CDN
               if (payload.files && Array.isArray(payload.files)) {
-                for (const f of payload.files) {
-                  const source = f.fileData || f.url;
-                  if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
+                for (let fi = 0; fi < payload.files.length; fi++) {
+                  const f = payload.files[fi];
+                  // v352fix: Use raw File from original payload (survives IDB structured clone)
+                  // instead of base64 → atob → Uint8Array → Blob (which is slow and can corrupt large files).
+                  const originalFile = item.payload?.files?.[fi]?.file;
+                  const isRawFile = originalFile instanceof File || originalFile instanceof Blob;
+                  const source = isRawFile ? originalFile : (f.fileData || f.url);
+                  if (source && (isRawFile || source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
                     f.url = await uploadMediaSW(source, f.filename || f.name || 'project_file.jpg', f.mimeType, 'projects');
                     delete f.fileData;
+                    // v352fix: Remove raw File from original payload to save IDB space
+                    if (isRawFile && item.payload?.files?.[fi]) {
+                      delete item.payload.files[fi].file;
+                    }
                     await persistProgress();
                   }
                 }
