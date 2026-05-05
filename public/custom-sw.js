@@ -1839,17 +1839,11 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
                   }
                 }
 
-                // v352fix: Use chunked upload only for files > 50MB.
-                // Files ≤ 50MB go directly to Bunny CDN via PUT (simpler, no server-side assembly).
-                // This fixes truncated video playback caused by chunk assembly issues on the VPS.
-                if (blob.size > 50 * 1024 * 1024) {
-                   const url = await uploadInChunksSW(blob, name, subfolder, mimeType);
-                   if (!url) throw new Error('Chunked upload returned no URL');
-                   return url;
-                }
-                // Direct upload to Bunny CDN for files ≤ 50MB
-                // Adjust timeout: up to 50MB needs more time than the old <1MB default
-                const directTimeout = getUploadTimeout(blob.size);
+                // v352fix: ALWAYS upload directly to Bunny CDN via PUT.
+                // Chunked uploads (uploadInChunksSW) were causing truncated files
+                // because the server-side assembly had race conditions and retry duplication bugs.
+                // Bunny CDN supports files up to 5TB via PUT — no chunking needed.
+                // Timeouts are generous: up to 20 min for files >200MB.
                 const timestamp = Date.now();
                 const safeName = (name || `file_${timestamp}`).replace(/[^a-zA-Z0-9.-]/g, '_');
                 
