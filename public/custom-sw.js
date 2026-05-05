@@ -1,4 +1,4 @@
-const SW_VERSION = 'v340-online-fallback';
+const SW_VERSION = 'v340-cache-first';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
@@ -590,44 +590,30 @@ async function navigationHandler(request) {
       return fetch(request);
     }
 
-    const isProjectDetail = url.pathname.match(/\/(proyecto|proyectos)\/\d+/);
+    // v340: ROBUST STRATEGY — Cache-first for offline, network-first for online
     
-    // v340: Simplified — just try network first, then cache, then let browser handle.
+    // ── STEP 2: CACHE FIRST (instant for offline, background update for online) ──
+    // For admin/operator routes, prefer serving the cached shell immediately
+    const isOpNav = url.pathname.includes('/operador/') || url.pathname === '/admin/operador' || url.pathname === '/admin/operador/';
+    const isAdminNav = url.pathname.includes('/admin/proyectos') || url.pathname.includes('/admin/calendario') || url.pathname === '/admin';
 
-    // ── STEP 2: Network first with timeout (v340: 25s for cold SSR)
-    try {
-      const response = await fetchWithTimeout(request.clone(), 25000);
-      if (response.ok) {
-        const contentType = response.headers.get('Content-Type') || '';
-        const isHTML = contentType.includes('text/html');
-        const finalUrl = response.url || '';
-        if (isHTML && !finalUrl.includes('/login')) {
-          const cache = await caches.open(PAGES_CACHE);
-          cache.put(request.url, response.clone());
-          const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
-          cache.put(alt, response.clone());
-          if (response.redirected && finalUrl) cache.put(finalUrl, response.clone());
-          trimCache(PAGES_CACHE, 400);
-        }
-      }
-      return response;
-    } catch (_e) {
+    // 2a. Try exact URL cache
+    let cached = await caches.match(request.url, { ignoreVary: true, ignoreSearch: true });
+    if (isValidHTMLResponse(cached)) {
+      // Serve immediately, update in background if online
+      updatePageInBackground(request.clone(), url.pathname);
+      return cleanResponse(cached);
     }
 
-    // ── STEP 3: Try cache / offline-shell ───────────────────
-    let cachedPage = await caches.match(request.url, { ignoreVary: true, ignoreSearch: true });
-    if (isValidHTMLResponse(cachedPage)) return cachedPage;
-
-    // Try the offline-shell for ANY admin/operator route
-    const isOpRoute = url.pathname.includes('/operador/') || url.pathname.includes('/admin/operador');
-    const isAdminProjRoute = url.pathname.includes('/admin/proyectos');
-    if (isOpRoute || isAdminProjRoute) {
-      const shellUrl = isOpRoute
+    // 2b. Try shell for admin/operator routes
+    if (isOpNav || isAdminNav) {
+      const shellUrl = isOpNav
         ? '/admin/operador/proyecto/offline-shell'
         : '/admin/proyectos/offline-shell';
       const shell = await caches.match(shellUrl, { ignoreVary: true, ignoreSearch: true });
       if (isValidHTMLResponse(shell)) {
         console.log(`[SW v340] Serving offline-shell for: ${url.pathname}`);
+        updatePageInBackground(request.clone(), url.pathname);
         return shell;
       }
       // Search ALL caches (in case shell is in a different versioned cache)
@@ -637,22 +623,52 @@ async function navigationHandler(request) {
         const match = await c.match(shellUrl, { ignoreVary: true, ignoreSearch: true });
         if (isValidHTMLResponse(match)) {
           console.log(`[SW v340] Shell found in cache '${cName}' for: ${url.pathname}`);
+          updatePageInBackground(request.clone(), url.pathname);
           return match;
         }
       }
     }
 
-    // ── STEP 4: If online, let browser handle it ────────────
+    // ── STEP 3: NETWORK FIRST (online fallback) ─────────────────
     if (navigator.onLine) {
-      console.log(`[SW v340] Online — letting browser handle: ${url.pathname}`);
-      return fetch(request);
+      try {
+        const response = await fetchWithTimeout(request.clone(), 25000);
+        if (response.ok) {
+          const ct = response.headers.get('Content-Type') || '';
+          const finalUrl = response.url || '';
+          if (ct.includes('text/html') && !finalUrl.includes('/login')) {
+            const cache = await caches.open(PAGES_CACHE);
+            cache.put(request.url, response.clone());
+            const alt = request.url.endsWith('/') ? request.url.slice(0, -1) : request.url + '/';
+            cache.put(alt, response.clone());
+            if (response.redirected && finalUrl) cache.put(finalUrl, response.clone());
+            trimCache(PAGES_CACHE, 400);
+          }
+        }
+        return response;
+      } catch (_e) {
+        // Network failed — try one more time with native fetch
+        try {
+          const nativeRes = await fetch(request);
+          if (nativeRes.ok) {
+            const ct = nativeRes.headers.get('Content-Type') || '';
+            if (ct.includes('text/html') && !nativeRes.url?.includes('/login')) {
+              const cache = await caches.open(PAGES_CACHE);
+              cache.put(request.url, nativeRes.clone());
+            }
+          }
+          return nativeRes;
+        } catch (_e2) {
+          // Both failed — fall through to offline recovery
+        }
+      }
     }
 
-    // ── STEP 5: Offline — try offline.html ──────────────────
+    // ── STEP 4: OFFLINE FALLBACK ────────────────────────────
     const offlinePage = await caches.match('/offline.html');
     if (offlinePage) return offlinePage;
 
-    // ── STEP 6: Absolute last resort ────────────────────────
+    // ── STEP 5: Absolute last resort ────────────────────────
     return new Response(
       '<!DOCTYPE html><html lang="es"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1">' +
       '<title>Sin conexión</title></head>' +
