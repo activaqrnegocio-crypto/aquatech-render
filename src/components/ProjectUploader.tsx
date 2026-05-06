@@ -107,27 +107,43 @@ export default function ProjectUploader({
           const isImage = isCompressibleImage(file)
 
           if (!isOnline) {
-            let base64: string
+            // v354: Large file support for offline mode
+            // Files > 10MB must NOT be converted to base64 (a 500MB video → 667MB string = CRASH)
+            // Instead, pass the raw File object — IndexedDB structured clone preserves it.
+            const OFFLINE_BASE64_LIMIT = 10 * 1024 * 1024; // 10MB
+            const OFFLINE_MAX_SIZE = 300 * 1024 * 1024; // 300MB
+            
+            if (file.size > OFFLINE_MAX_SIZE) {
+              alert(`El archivo "${file.name}" (${(file.size / (1024*1024)).toFixed(0)} MB) es demasiado grande para guardar offline. \n\nLímite Offline: 300MB (Aprox. 5 min de video). \n\nPor favor conéctate a internet para subir archivos más pesados.`);
+              continue;
+            }
+
+            let previewUrl: string;
             if (isImage) {
               const blob = await optimizedCompress(file)
-              base64 = await blobToBase64(blob)
-            } else {
+              previewUrl = await blobToBase64(blob)
+            } else if (file.size <= OFFLINE_BASE64_LIMIT) {
+              // Small non-image files: base64 is fine
               const reader = new FileReader()
-              base64 = await new Promise((resolve, reject) => {
+              previewUrl = await new Promise((resolve, reject) => {
                 reader.onload = () => resolve(reader.result as string)
                 reader.onerror = reject
                 reader.readAsDataURL(file)
               })
+            } else {
+              // v353: Large files (videos/audio 10MB-200MB): use blob URL for preview only.
+              // The raw File object goes to IndexedDB via structured clone (no base64 overhead).
+              previewUrl = URL.createObjectURL(file)
             }
 
             const localFile: ProjectFile & { file?: File } = {
-              url: base64,
+              url: previewUrl,
               filename: file.name,
               mimeType: file.type,
               type: (isImage ? 'IMAGE' : (file.type.startsWith('video/') ? 'VIDEO' : (file.type.startsWith('audio/') ? 'AUDIO' : 'DOCUMENT'))) as any,
               category: defaultCategory,
               size: file.size,
-              file: file // v324: pass raw File so handleUploadMedia can serialize it correctly
+              file: file // v353: Raw File object — IndexedDB structured clone preserves it
             }
             
             onAddFile(localFile)
@@ -201,39 +217,69 @@ export default function ProjectUploader({
 
         <div style={{ 
           display: 'flex', 
-          alignItems: 'center', 
-          gap: '12px', 
-          flexWrap: 'wrap',
+          flexDirection: 'column',
           width: '100%',
-          justifyContent: 'space-between'
+          gap: '12px'
         }}>
-          {!readOnly && (
-            <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
-              <button 
-                onClick={() => fileInputRef.current?.click()}
-                disabled={isUploading}
-                className="btn btn-primary btn-sm"
-                style={{ 
-                  padding: '8px 16px', 
-                  borderRadius: '8px', 
-                  display: 'flex', 
-                  alignItems: 'center', 
-                  gap: '8px',
-                  flexShrink: 0
-                }}
-              >
-                {isUploading ? (
-                  <>
-                    <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-                    <span>Subiendo...</span>
-                  </>
-                ) : (
-                  <>
-                    <UploadCloud size={16} />
-                    <span>Subir Archivos</span>
-                  </>
-                )}
-              </button>
+          {/* v354: Offline Limit Warning Banner */}
+          {typeof navigator !== 'undefined' && !navigator.onLine && (
+            <div style={{
+              background: 'rgba(239, 68, 68, 0.1)',
+              border: '1px solid rgba(239, 68, 68, 0.3)',
+              borderRadius: '12px',
+              padding: '12px 16px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '12px',
+              marginBottom: '8px'
+            }}>
+              <span style={{ fontSize: '20px' }}>⚠️</span>
+              <div>
+                <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 'bold', color: '#ef4444' }}>
+                  Modo Offline: Límite de 300MB por video
+                </p>
+                <p style={{ margin: 0, fontSize: '0.75rem', color: '#666' }}>
+                  Aprox. 5 minutos max. Videos más grandes requieren internet.
+                </p>
+              </div>
+            </div>
+          )}
+
+          <div style={{ 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '12px', 
+            flexWrap: 'wrap',
+            width: '100%',
+            justifyContent: 'space-between'
+          }}>
+            {!readOnly && (
+              <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap' }}>
+                <button 
+                  onClick={() => fileInputRef.current?.click()}
+                  disabled={isUploading}
+                  className="btn btn-primary btn-sm"
+                  style={{ 
+                    padding: '8px 16px', 
+                    borderRadius: '8px', 
+                    display: 'flex', 
+                    alignItems: 'center', 
+                    gap: '8px',
+                    flexShrink: 0
+                  }}
+                >
+                  {isUploading ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+                      <span>Subiendo...</span>
+                    </>
+                  ) : (
+                    <>
+                      <UploadCloud size={16} />
+                      <span>Subir Archivos</span>
+                    </>
+                  )}
+                </button>
 
               {!hideCaptureButtons && (
                 <>
@@ -460,7 +506,7 @@ export default function ProjectUploader({
               />
             ) : selectedFileForPreview.type === 'VIDEO' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('video/')) ? (
               (() => {
-                // v352fix: If the video URL is a data: URL (offline), use URL.createObjectURL
+                // v353fix: If the video URL is a data: URL (offline), use URL.createObjectURL
                 // with the raw File object instead. Data URLs don't support Range requests
                 // needed for video seeking/streaming, so the browser can't play them.
                 const rawFile = (selectedFileForPreview as any).file;
@@ -473,18 +519,23 @@ export default function ProjectUploader({
                 controls 
                 autoPlay 
                 playsInline
+                preload="auto"
                 style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', outline: 'none' }}
                 onClick={(e) => e.stopPropagation()}
-                onLoadedMetadata={() => {
-                  // Revoke object URL after video metadata loads to free memory
-                  if (videoSrc.startsWith('blob:')) {
-                    setTimeout(() => URL.revokeObjectURL(videoSrc), 5000);
-                  }
-                }}
+                // v353fix: Do NOT revoke blob URL while video is playing!
+                // The old code revoked after 5s which killed playback for videos > 5s.
+                // Blob URLs are garbage-collected when the page/modal closes.
               />
                 );
               })()
             ) : selectedFileForPreview.type === 'AUDIO' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('audio/')) ? (
+              (() => {
+                // v353fix: Create blob URL once for audio, same pattern as video
+                const rawAudioFile = (selectedFileForPreview as any).file;
+                const audioSrc = (rawAudioFile instanceof File || rawAudioFile instanceof Blob)
+                  ? URL.createObjectURL(rawAudioFile)
+                  : selectedFileForPreview.url;
+                return (
               <div 
                 style={{ backgroundColor: 'var(--bg-card)', padding: '40px', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
                 onClick={(e) => e.stopPropagation()}
@@ -497,15 +548,15 @@ export default function ProjectUploader({
                   <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Audio / Grabación</p>
                 </div>
                 <audio 
-                  src={(selectedFileForPreview as any).file instanceof Blob 
-                    ? URL.createObjectURL((selectedFileForPreview as any).file) 
-                    : selectedFileForPreview.url} 
+                  src={audioSrc} 
                   controls autoPlay style={{ width: '100%' }} 
                 />
                 <button onClick={() => handleDownload(selectedFileForPreview)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)', marginTop: '10px' }}>
                   {isDownloading === selectedFileForPreview.url ? 'Descargando...' : 'Descargar'}
                 </button>
               </div>
+                );
+              })()
             ) : (
               <div 
                 style={{ backgroundColor: 'var(--bg-card)', padding: '30px', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', maxWidth: '400px', width: '100%' }}

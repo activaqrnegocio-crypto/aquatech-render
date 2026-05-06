@@ -1209,15 +1209,43 @@ export default function ProjectDetailClient({ project: initialProject, available
     // Offline support
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
        try {
+          // v354: Large file support — DON'T convert to base64 for files > 10MB
+          const OFFLINE_BASE64_LIMIT = 10 * 1024 * 1024; // 10MB
+          const OFFLINE_MAX_SIZE = 300 * 1024 * 1024; // 300MB
+          
+          const fileSize = (file as any).size || 0;
+          
+          if (fileSize > OFFLINE_MAX_SIZE) {
+            alert(`El archivo "${file.filename}" (${(fileSize / (1024*1024)).toFixed(0)} MB) es demasiado grande para guardar offline. \n\nLímite Offline: 300MB (Aprox. 5 min de video). \n\nConéctate a internet para subir archivos más pesados.`);
+            setIsUploading(false);
+            saveLockRef.current = false;
+            return;
+          }
+
           let processedUrl = file.url;
+          let fileData: any = null;
+          
           if (typeof file.url === 'string' && file.url.startsWith('blob:')) {
              try {
-               // v294: PROBLEMA 1 — Garantizar Base64 para evitar expiración de blobs
                const res = await fetch(file.url);
                const blob = await res.blob();
-               processedUrl = await blobToBase64(blob);
+               
+               if (blob.size <= OFFLINE_BASE64_LIMIT) {
+                 // Small files: base64 is fine
+                 processedUrl = await blobToBase64(blob);
+               } else {
+                 // v353: Large files: store as File object in outbox (structured clone)
+                 // DON'T use base64 — it would crash the browser
+                 const rawFile = new File([blob], file.filename, { type: file.mimeType });
+                 fileData = { 
+                   buffer: await blob.arrayBuffer(), 
+                   type: file.mimeType, 
+                   name: file.filename 
+                 };
+                 processedUrl = ''; // Will be replaced by Bunny URL during sync
+               }
              } catch (e) {
-               console.warn("Could not convert blob to base64", e);
+               console.warn("Could not process blob for offline storage", e);
              }
           }
 
@@ -1225,7 +1253,13 @@ export default function ProjectDetailClient({ project: initialProject, available
             await db.outbox.add({
                type: 'GALLERY_UPLOAD',
                projectId: project.id,
-               payload: { ...file, url: processedUrl, base64: processedUrl, category },
+               payload: { 
+                 ...file, 
+                 url: processedUrl, 
+                 base64: processedUrl || null, 
+                 fileData: fileData,
+                 category 
+               },
                timestamp: Date.now(),
                status: 'pending',
                syncId
@@ -1236,8 +1270,14 @@ export default function ProjectDetailClient({ project: initialProject, available
           triggerBackgroundSync()
           saveLockRef.current = false;
           return
-       } catch (e) {
+       } catch (e: any) {
           console.error('Error saving offline gallery item:', e)
+          if (e?.message?.includes('ARCHIVO_MUY_GRANDE')) {
+            alert(e.message);
+            setIsUploading(false);
+            saveLockRef.current = false;
+            return;
+          }
        }
     }
 

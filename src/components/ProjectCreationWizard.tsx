@@ -328,10 +328,53 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
 
     try {
       if (!navigator.onLine) {
+        // v353: For offline, strip raw File objects from payload before storing
+        // The File objects are preserved in the `file` property of each uploadedFile
+        // and the GlobalSyncWorker will handle uploading them to Bunny during sync.
+        const offlinePayload = {
+          ...payload,
+          files: payload.files.map((f: any) => {
+            // Keep the file reference for sync, but don't try to JSON.stringify it
+            const { file, ...rest } = f;
+            return {
+              ...rest,
+              // v353: For large files (blob: URLs), store binary data for offline sync
+              fileData: file instanceof File ? { 
+                buffer: null, // Will be populated below
+                type: file.type, 
+                name: file.name,
+                size: file.size
+              } : null
+            };
+          })
+        };
+
+        // v353: Read ArrayBuffers for large files that need offline storage
+        for (let i = 0; i < payload.files.length; i++) {
+          const f = payload.files[i] as any;
+          if (f.file instanceof File && f.file.size > 0) {
+            try {
+              offlinePayload.files[i].fileData = {
+                buffer: await f.file.arrayBuffer(),
+                type: f.file.type,
+                name: f.file.name,
+                size: f.file.size
+              };
+              // Clear the base64/blob URL to save space since we have the binary
+              if (offlinePayload.files[i].url?.startsWith('blob:') || 
+                  (offlinePayload.files[i].url?.startsWith('data:') && f.file.size > 10 * 1024 * 1024)) {
+                offlinePayload.files[i].url = '';
+              }
+            } catch (e) {
+              console.warn(`[Wizard] Could not read file ${f.filename} for offline storage:`, e);
+            }
+          }
+        }
+
         await db.outbox.add({
           type: 'PROJECT',
           projectId: 0,
-          payload: payload,
+          payload: offlinePayload,
           timestamp: Date.now(),
           status: 'pending'
         })
@@ -366,10 +409,19 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
         return
       }
 
+      // v353: Clean non-serializable File objects from the payload before sending
+      const cleanPayload = {
+        ...payload,
+        files: payload.files.map((f: any) => {
+          const { file, ...rest } = f;
+          return rest;
+        })
+      };
+
       const resp = await fetch('/api/projects', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(cleanPayload)
       })
 
       if (!resp.ok) {

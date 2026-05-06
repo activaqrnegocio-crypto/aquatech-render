@@ -1056,8 +1056,16 @@ export default function ProjectExecutionClient({
 
             if (fileToPrepare) {
               const prep = await prepareFileForOutbox(fileToPrepare);
-              receiptPhotoData = prep.data;
-              receiptStorageType = prep.storageType;
+              // v353: prepareFileForOutbox now returns 'file' for large files,
+              // but receipt photos are always small images, so this handles all cases.
+              if (prep.storageType === 'file') {
+                // Large file — convert to arraybuffer for expense receipt compatibility
+                receiptPhotoData = await (prep.data as File).arrayBuffer();
+                receiptStorageType = 'arraybuffer';
+              } else {
+                receiptPhotoData = prep.data as string | ArrayBuffer;
+                receiptStorageType = prep.storageType;
+              }
             }
           }
 
@@ -1461,7 +1469,18 @@ export default function ProjectExecutionClient({
 
       if (isOffline) {
         try {
-          // v301/v321: Use consistent preparation helper for Gallery, preferring the raw File object to avoid broken images.
+          // v354: Large file support — prevent browser crashes with 500MB+ files
+          const OFFLINE_MAX_SIZE = 300 * 1024 * 1024; // 300MB
+          const fileSize = (file as any).size || (file as any).file?.size || 0;
+          
+          if (fileSize > OFFLINE_MAX_SIZE) {
+            alert(`El archivo "${file.filename}" (${(fileSize / (1024*1024)).toFixed(0)} MB) es demasiado grande para guardar offline. \n\nLímite Offline: 300MB (Aprox. 5 min de video). \n\nPor favor conéctate a internet para subir archivos más pesados.`);
+            setLoading(false);
+            saveLockRef.current = false;
+            return;
+          }
+
+          // v301/v321: Use consistent preparation helper for Gallery, preferring the raw File object.
           let fileToPrepare: File;
           const anyFile = file as any;
           if (anyFile.file && anyFile.file instanceof File) {
@@ -1484,7 +1503,6 @@ export default function ProjectExecutionClient({
               fileToPrepare = new File([], file.filename, { type: file.mimeType });
             }
           } else {
-            // Assume it's already a File or we need to handle data:
             fileToPrepare = new File([], file.filename, { type: file.mimeType });
           }
           
@@ -1493,23 +1511,29 @@ export default function ProjectExecutionClient({
           galleryPayload.mimeType = prep.mimeType;
           galleryPayload.storageType = prep.storageType;
           
-          // v335: Forzar base64 para TODOS los archivos de galería
-          // Los ArrayBuffers no sobreviven bien el roundtrip IndexedDB → Dexie → UI
-          // y la preview se rompe, haciendo que el indicador de pendiente desaparezca.
-          if (prep.storageType === 'arraybuffer') {
-            // Convertir ArrayBuffer a base64 para persistencia confiable
-            const bytes = new Uint8Array(prep.data as ArrayBuffer);
-            let binary = '';
-            for (let i = 0; i < bytes.byteLength; i++) {
-              binary += String.fromCharCode(bytes[i]);
-            }
-            galleryPayload.url = 'data:' + (prep.mimeType || 'image/jpeg') + ';base64,' + btoa(binary);
-            galleryPayload.fileData = null;
+          // v353: Handle each storage type correctly
+          if (prep.storageType === 'file') {
+            // Large files: store as File object via structured clone (no base64 conversion!)
+            // The GlobalSyncWorker will read the File when it's time to upload to Bunny.
+            galleryPayload.url = ''; // Will be replaced by Bunny URL during sync
+            galleryPayload.fileData = { 
+              buffer: await fileToPrepare.arrayBuffer(), 
+              type: prep.mimeType, 
+              name: prep.filename 
+            };
           } else {
+            // Small files (< 10MB): base64 is fine
             galleryPayload.url = prep.data;
+            galleryPayload.fileData = null;
           }
-        } catch (e) {
+        } catch (e: any) {
           console.warn('[Gallery] Offline preparation failed:', e);
+          if (e?.message?.includes('ARCHIVO_MUY_GRANDE')) {
+            alert(e.message);
+            setLoading(false);
+            saveLockRef.current = false;
+            return;
+          }
           galleryPayload.url = file.url; // Fallback
         }
 

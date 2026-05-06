@@ -45,11 +45,17 @@ export async function uploadToBunnyClientSide(
      };
   }
 
+  // v353fix: Send the REAL Content-Type to Bunny.net so the CDN serves files
+  // with correct headers. Without this, videos were served as application/octet-stream
+  // which prevents browsers from doing Range requests (needed for streaming/seeking).
+  // This was the root cause of videos "not playing completely" in online mode.
+  const uploadContentType = file.type || 'application/octet-stream';
+  
   const response = await fetch(uploadUrl, {
     method: 'PUT',
     headers: {
       'AccessKey': accessKey,
-      'Content-Type': 'application/octet-stream',
+      'Content-Type': uploadContentType,
     },
     body: file,
   });

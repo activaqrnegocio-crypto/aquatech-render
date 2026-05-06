@@ -769,6 +769,41 @@ export default function GlobalSyncWorker() {
                }
              }
 
+             // v353: Handle PROJECT files — upload each file's binary data to Bunny
+             // When created offline, files have fileData: { buffer, type, name } instead of URLs
+             if (item.type === 'PROJECT' && Array.isArray(finalPayload.files)) {
+               try {
+                 const processedFiles = [];
+                 for (const f of finalPayload.files) {
+                   if (f.fileData && f.fileData.buffer) {
+                     // File has binary data stored from offline — upload to Bunny
+                     const blob = new Blob([f.fileData.buffer], { type: f.fileData.type || f.mimeType || 'application/octet-stream' });
+                     const uploadResult = await uploadToBunnyClientSide(blob, f.fileData.name || f.filename, 'projects');
+                     processedFiles.push({
+                       url: uploadResult.url,
+                       filename: f.filename || f.fileData.name,
+                       mimeType: uploadResult.mimeType,
+                       type: uploadResult.type,
+                       category: f.category,
+                       size: f.size
+                     });
+                   } else if (f.url && f.url.startsWith('data:')) {
+                     // Small file with base64 — let the API handle it
+                     processedFiles.push({ url: f.url, filename: f.filename, mimeType: f.mimeType, type: f.type, category: f.category, size: f.size });
+                   } else if (f.url && f.url.startsWith('http')) {
+                     // Already uploaded — pass through
+                     processedFiles.push(f);
+                   }
+                   // Skip files with empty/blob URLs that have no fileData (corrupted)
+                 }
+                 finalPayload.files = processedFiles;
+               } catch (err) {
+                 console.error('[Sync] Failed to upload PROJECT files:', err);
+                 await db.outbox.update(item.id!, { status: 'pending' });
+                 continue;
+               }
+             }
+
              const res = await fetch(endpoint, {
                  method,
                  headers: { 
