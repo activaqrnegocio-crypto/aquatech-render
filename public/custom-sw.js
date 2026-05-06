@@ -2046,30 +2046,27 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
             // 4. Handle TASK (Attachments & Links)
             if (item.type === 'TASK') {
               const uploadedMap = {};
-              if (payload.attachments) {
-                for (let a of payload.attachments) {
-                  const source = a.fileData || a.base64 || a.data || a.url;
-                  if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
-                    const cacheKey = typeof source === 'string' ? (source.length > 100 ? source.substring(0, 100) : source) : source;
-                    if (!uploadedMap[cacheKey]) {
-                      uploadedMap[cacheKey] = await uploadMediaSW(source, a.name, a.mimeType, 'appointments');
-                    }
-                    a.url = uploadedMap[cacheKey];
-                    a.data = a.url;
-                    delete a.fileData;
-                    delete a.base64;
-                    await persistProgress();
+              // v357: Unify attachments and files to avoid double-processing/uploading
+              const allMedia = [
+                ...(payload.attachments || []),
+                ...(payload.files || [])
+              ];
+              
+              for (let media of allMedia) {
+                const source = media.fileData || media.base64 || media.data || media.url;
+                if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
+                  const cacheKey = typeof source === 'string' ? (source.length > 100 ? source.substring(0, 100) : source) : source;
+                  if (!uploadedMap[cacheKey]) {
+                    // Avoid multiple uploads of the same binary data
+                    uploadedMap[cacheKey] = await uploadMediaSW(source, media.name, media.mimeType, 'appointments');
                   }
-                }
-              }
-              if (payload.files) {
-                for (let f of payload.files) {
-                  const source = f.fileData || f.url;
-                  if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
-                    f.url = await uploadMediaSW(source, f.name, f.mimeType, 'appointments');
-                    delete f.fileData;
-                    await persistProgress();
-                  }
+                  
+                  // Update all references in place
+                  media.url = uploadedMap[cacheKey];
+                  if (media.data !== undefined) media.data = media.url;
+                  delete media.fileData;
+                  delete media.base64;
+                  await persistProgress();
                 }
               }
             }

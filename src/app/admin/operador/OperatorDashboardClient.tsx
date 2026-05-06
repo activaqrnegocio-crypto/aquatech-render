@@ -204,7 +204,13 @@ export default function OperatorDashboardClient({
   useEffect(() => {
     // v293: Reducido a 400ms para una respuesta instantánea al navegar.
     const timer = setTimeout(async () => {
-      if (projectsFromCache && projectsFromCache.length > 0) return 
+      // v356: Only skip emergency loader if we have a healthy number of real projects.
+      // If we only have 1 or 2 (likely just-created ones), or if ALL are pending, 
+      // we should still load the snapshot to avoid the "disappearing projects" issue.
+      const realProjects = projectsFromCache?.filter(p => !p.isPending && !String(p.id).startsWith('pending')) || []
+      if (realProjects.length > 5) return 
+      
+      console.log(`[Dashboard] Emergency loader triggered. Real projects: ${realProjects.length}, Cache total: ${projectsFromCache?.length || 0}`);
       
       try {
         const uId = user?.id || localUser?.id
@@ -335,8 +341,10 @@ export default function OperatorDashboardClient({
     // compared to what we know we had (emergencyProjects), merge them.
     // This prevents the "disappearing projects" issue when creating a new one.
     let finalSource = sourceProjects;
+    
+    // v356: Enhanced merge — if projectsFromCache is suspiciously small, ALWAYS merge with snapshot
     if (Array.isArray(projectsFromCache) && Array.isArray(emergencyProjects) && 
-        projectsFromCache.length < emergencyProjects.length && projectsFromCache.length < 5) {
+        (projectsFromCache.length < 5 || projectsFromCache.length < (emergencyProjects.length * 0.5))) {
        const map = new Map();
        emergencyProjects.forEach(p => map.set(p.id, p));
        projectsFromCache.forEach(p => map.set(p.id, p));

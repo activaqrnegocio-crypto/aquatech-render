@@ -200,7 +200,19 @@ export async function POST(request: Request) {
               const phoneClientText = clientPhone ? `\n📞 *Teléfono Cliente:*\n${clientPhone}` : '';
               const locOpText = operatorLocation ? `\n📡 *Ubicación Operario (GPS):*\n${operatorLocation}` : '';
               
-              const allAttachments = [...(attachments || []), ...(attachmentLinks || [])];
+              // v357: Deduplicate all attachments to avoid redundant entries in the WA message
+              const rawAllAttachments = [...(attachments || []), ...(attachmentLinks || [])];
+              const seenAtts = new Set();
+              const allAttachments = [];
+              
+              for (const att of rawAllAttachments) {
+                const fingerprint = `${att.name}_${att.url || att.data}`;
+                if (!seenAtts.has(fingerprint)) {
+                  seenAtts.add(fingerprint);
+                  allAttachments.push(att);
+                }
+              }
+
               const fileManifest = allAttachments.length > 0 
                 ? `\n📦 *Archivos adjuntos:* ${allAttachments.map(a => a.name).join(', ')}` 
                 : '';

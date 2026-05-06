@@ -126,19 +126,36 @@ export async function POST(request: Request) {
     }
 
     // 0. Idempotency check: Don't create same project for same user/client in last 60s
+    // v356: Robust check using SyncLog (absolute) and fallback title/creator check
+    const syncId = request.headers.get('x-sync-id');
+    
+    if (syncId) {
+      const existingLog = await prisma.syncLog.findUnique({
+        where: { syncId: syncId }
+      });
+      if (existingLog) {
+        console.log(`[IDEMPOTENCY] Found SyncLog for syncId: ${syncId}, returning project: ${existingLog.resultId}`);
+        const existingProject = await prisma.project.findUnique({
+          where: { id: Number(existingLog.resultId) },
+          include: { client: true, phases: true, team: { include: { user: true } } }
+        });
+        if (existingProject) return NextResponse.json(existingProject, { status: 201 });
+      }
+    }
+
     const sixtySecondsAgo = new Date(Date.now() - 60000);
     const existingRecentProject = await prisma.project.findFirst({
       where: {
-        title,
+        title: { equals: title.trim() },
         createdBy: Number(userId),
-        clientId: clientId ? Number(clientId) : undefined,
+        clientId: clientId ? Number(clientId) : null,
         createdAt: { gte: sixtySecondsAgo }
       }
     });
 
     if (existingRecentProject) {
       console.log(`[IDEMPOTENCY] Project "${title}" already created recently (ID: ${existingRecentProject.id})`);
-      return NextResponse.json(existingRecentProject, { status: 201 }); // Return existing instead of erroring
+      return NextResponse.json(existingRecentProject, { status: 201 });
     }
 
     // 0.1 Handle Base64 files before transaction
@@ -302,6 +319,16 @@ export async function POST(request: Request) {
             }
           }
         })
+      }
+
+      // v356: Log sync to prevent duplicates (Absolute Idempotency)
+      if (syncId) {
+        await tx.syncLog.create({
+          data: {
+            syncId: syncId,
+            resultId: String(newProject.id)
+          }
+        }).catch(e => console.warn('[Idempotency] SyncLog already exists or error:', e.message));
       }
 
       return newProject

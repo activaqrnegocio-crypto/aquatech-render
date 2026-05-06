@@ -711,19 +711,30 @@ export default function GlobalSyncWorker() {
           // 2. Handle multiple media (TASK / CALENDAR)
           if (item.type === 'TASK' && (finalPayload.attachments || finalPayload.attachmentLinks || finalPayload.files)) {
             try {
-              const allAttachments = [
+              // v357: Deduplicate source attachments more robustly.
+              // Often 'files' and 'attachments' contain the same data during offline creation.
+              const rawAttachments = [
                 ...(finalPayload.attachments || []), 
                 ...(finalPayload.attachmentLinks || []),
                 ...(finalPayload.files || [])
               ];
-              const processedIds = new Set();
+              
+              const seenIdentifiers = new Set();
+              const uniqueSources = [];
+
+              for (const att of rawAttachments) {
+                // Use a combination of name and the actual content (or URL) as a fingerprint
+                const content = att.url || att.data || att.base64 || '';
+                const fingerprint = `${att.name}_${content.substring(0, 100)}`; 
+                
+                if (!seenIdentifiers.has(fingerprint) && content) {
+                  seenIdentifiers.add(fingerprint);
+                  uniqueSources.push(att);
+                }
+              }
+
               const uploadedFiles = [];
-
-              for (const att of allAttachments) {
-                const identifier = att.name + (att.url || att.data || att.base64);
-                if (processedIds.has(identifier)) continue;
-                processedIds.add(identifier);
-
+              for (const att of uniqueSources) {
                 const sourceData = att.base64 || att.url || att.data;
                 const isBase64 = typeof sourceData === 'string' && sourceData.startsWith('data:');
                 const isBlobUrl = typeof sourceData === 'string' && sourceData.startsWith('blob:');
@@ -815,6 +826,13 @@ export default function GlobalSyncWorker() {
                  await db.outbox.update(item.id!, { status: 'pending' });
                  continue;
                }
+             }
+
+             // v356: Re-check if item was already synced by Service Worker or another tab
+             const recheckItem = await db.outbox.get(item.id!);
+             if (!recheckItem || recheckItem.status !== 'syncing') {
+               console.log(`[Sync] Item ${item.id} already processed or status changed, skipping.`);
+               continue;
              }
 
              const res = await fetch(endpoint, {
