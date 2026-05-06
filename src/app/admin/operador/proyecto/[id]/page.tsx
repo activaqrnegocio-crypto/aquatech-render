@@ -57,7 +57,7 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
     prisma.chatMessage.findMany({
       where: { projectId },
       orderBy: { createdAt: 'desc' },
-      take: 40, // v280: reduced from 50
+      take: 150, // v369: Increased to 150 to accommodate large offline bulk syncs of photos without truncating text msgs
       include: { user: { select: { name: true } }, media: true }
     }),
     prisma.projectView.upsert({

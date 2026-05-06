@@ -463,7 +463,7 @@ export default function ProjectChatUnified({
                  )}
                  
                  {/* v360: Unified Text & Quote Rendering */}
-                    {msg.content && !isExpense && (
+                    {typeof msg.content === 'string' && msg.content && !isExpense && (
                       msg.content.includes('COTIZACIÓN COMPARTIDA') ? (
                         <div className="quote-bubble" style={{ 
                           backgroundColor: 'rgba(59, 130, 246, 0.05)', 
@@ -511,7 +511,7 @@ export default function ProjectChatUnified({
                       )
                     )}
 
-                                  {(msg.type === 'LOCATION' || (msg.content && msg.content.includes('google.com/maps'))) && (
+                                  {(msg.type === 'LOCATION' || (typeof msg.content === 'string' && msg.content && msg.content.includes('google.com/maps'))) && (
                       <div className="location-bubble" style={{ 
                         backgroundColor: 'rgba(255,255,255,0.05)', 
                         borderRadius: '8px', 

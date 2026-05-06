@@ -59,19 +59,45 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
   try {
     const { id } = await params
     
-    // v301: Robust DB-backed idempotency check
     const syncId = req.headers.get('x-sync-id');
     if (syncId) {
-      const existingSync = await prisma.syncLog.findUnique({
-        where: { syncId }
-      });
-      if (existingSync) {
-        console.log(`[Idempotency] Skipping already processed sync-id: ${syncId}`);
-        return NextResponse.json({ 
-          success: true, 
-          id: Number(existingSync.resultId), 
-          isDuplicate: true 
+      try {
+        // v365: ATOMIC idempotency — claim syncId BEFORE creating message
+        // This prevents the race condition where two parallel requests both pass
+        // findUnique and create duplicate messages.
+        await prisma.syncLog.create({
+          data: { syncId, resultId: '__pending__' }
         });
+        // Claim succeeded — this request owns this syncId
+      } catch (claimErr: any) {
+        if (claimErr.code === 'P2002') {
+          // syncId already claimed by another request
+          const existing = await prisma.syncLog.findUnique({ where: { syncId } });
+          if (existing && existing.resultId !== '__pending__') {
+            // Success, just returning existing id without noise
+            return NextResponse.json({ 
+              success: true, 
+              id: Number(existing.resultId), 
+              isDuplicate: true 
+            });
+          }
+          
+          // v367: HIJACK STALLED CLAIMS
+          // If the claim has been pending for more than 2 minutes, assume the process crashed
+          // and allow this request to proceed/hijack.
+          if (existing && existing.createdAt < new Date(Date.now() - 120000)) {
+            console.warn(`[Idempotency] Hijacking stalled syncLog for ${syncId}`);
+            await prisma.syncLog.update({
+              where: { syncId },
+              data: { createdAt: new Date() } // Update timestamp to hold it for another cycle
+            }).catch(() => {}); // Ignore if already updated
+          } else {
+            // Still pending from the first request — tell client to retry
+            return NextResponse.json({ success: true, isDuplicate: true, id: 0 });
+          }
+        } else {
+          throw claimErr;
+        }
       }
     }
 
@@ -155,16 +181,13 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
       select: { title: true }
     })
 
-    // v301: Register sync in log for persistent idempotency
+    // v365: Update the sync log with the real message ID (was '__pending__')
     if (syncId) {
-      await prisma.syncLog.create({
-        data: {
-          syncId,
-          resultId: String(msg.id)
-        }
+      await prisma.syncLog.update({
+        where: { syncId },
+        data: { resultId: String(msg.id) }
       }).catch(err => {
-        // We log it but don't fail the request since the message was already created
-        console.error('[Idempotency] Failed to save sync log:', err);
+        console.error('[Idempotency] Failed to update sync log:', err);
       });
     }
     const projectTitle = project?.title || 'Proyecto'

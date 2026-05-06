@@ -1,4 +1,4 @@
-const SW_VERSION = 'v359-rsc';
+const SW_VERSION = 'v367-final';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
@@ -13,7 +13,7 @@ const RSC_CACHE    = `aquatech-rsc-${SW_VERSION}`;
 // and processes pending items regardless of external triggers.
 // 
 // Stops polling when the outbox is empty to save battery.
-// Restarts via the global poller interval.
+// custom-sw.js - v368: Data Loss Prevention (Net/Auth error handling)
 let outboxPollerInterval = null;
 let pollerCheckCount = 0;
 let lastOutboxCount = -1;
@@ -53,9 +53,19 @@ function startOutboxPoller() {
       }
       
       if (count > 0 && !isSyncingGlobal) {
-        console.log(`[SW] Poller found ${count} pending items — waking robot!`);
-        await logSyncSW('info', '🔍 Poller #' + pollerCheckCount + ': ' + count + ' items pendientes — procesando', 'poller').catch(() => {});
-        processOutboxSync(true).catch(() => {});
+        // v369: Do NOT process if the page is open and visible. GlobalSyncWorker will handle it.
+        // This completely eliminates the race condition where custom-sw.js steals text messages
+        // while GlobalSyncWorker is busy uploading an image.
+        const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        const isVisible = windowClients.some(c => c.visibilityState === 'visible');
+        
+        if (isVisible) {
+          // console.log(`[SW] Poller #${pollerCheckCount}: Page is visible. Deferring to GlobalSyncWorker.`);
+        } else {
+          console.log(`[SW] Poller found ${count} pending items — waking robot!`);
+          await logSyncSW('info', '🔍 Poller #' + pollerCheckCount + ': ' + count + ' items pendientes — procesando', 'poller').catch(() => {});
+          processOutboxSync(true).catch(() => {});
+        }
       }
     } catch (e) {
       // Outbox might not be accessible yet
@@ -1523,32 +1533,23 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
       const outboxStore = transaction.objectStore('outbox');
       const getAllRequest = outboxStore.getAll();
 
-    getAllRequest.onsuccess = async () => {
-      try {
-        const allItems = getAllRequest.result || [];
-        
-        // Filtrar por tipo si se especificó una etiqueta de sync
-        let toSync = allItems.filter(i => (i.status === 'pending' || i.status === 'failed'));
-        if (specificType) {
-          toSync = toSync.filter(i => i.type === specificType);
-        }
-        
-        // v272: Sort chronologically (FIFO) for dependency order
-        toSync.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-        
-        // Marcamos todos como 'syncing' en la misma transacción original
-        for (const item of toSync) {
-          const lockedItem = { ...item, status: 'syncing' };
-          outboxStore.put(lockedItem);
-        }
+      getAllRequest.onsuccess = async () => {
+        try {
+          const allItems = getAllRequest.result || [];
+          
+          // v366: Strictly FIFO — get pending/failed items sorted by timestamp
+          let toSync = allItems.filter(i => (i.status === 'pending' || i.status === 'failed'));
+          toSync.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+          
+          // v366: NO MARCAR TODOS COMO SYNCING AL PRINCIPIO.
+          // Esto causaba que si el SW moría a mitad de un upload grande, 
+          // todos los mensajes de texto quedaran bloqueados en 'syncing' permanentemente.
+          // Ahora marcamos uno a uno justo antes de procesar.
 
-        // v339 FIX: Wait for transaction to complete BEFORE any async operations.
-        // logSyncSW opens its own IDB transaction on 'syncLogs', which causes THIS
-        // transaction to auto-commit. Any put/delete after that throws TransactionInactiveError.
-        await new Promise((resolveTx) => {
-          transaction.oncomplete = () => resolveTx();
-          transaction.onerror = () => resolveTx();
-        });
+          await new Promise((resolveTx) => {
+            transaction.oncomplete = () => resolveTx();
+            transaction.onerror = () => resolveTx();
+          });
 
     const pendingItems = toSync;
 
@@ -1616,35 +1617,65 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
 
     // v278: Pre-fetch storage config once per cycle for better performance
     let storageConfig = null;
+    let configFailedPermanently = false;
     try {
       // v318: Use explicit signal for config fetch
       const configResp = await fetchWithTimeout(new Request('/api/storage/config', { 
         credentials: 'same-origin',
         signal: abortController.signal 
       }), 10000);
-      if (configResp.ok) storageConfig = await configResp.json();
+      
+      if (configResp.ok) {
+        storageConfig = await configResp.json();
+      } else if (configResp.status === 401 || configResp.status === 403) {
+        console.warn('[SW] Auth error fetching config — aborting sync cycle');
+        isSyncingGlobal = false;
+        resolve();
+        return;
+      }
     } catch (e) {
-      console.warn('[SW] Could not pre-fetch storage config');
+      console.warn('[SW] Could not pre-fetch storage config (Network issue?)');
     }
 
     let processedCount = 0;
     const totalToSync = pendingItems.length;
 
-    for (const item of pendingItems) {
+    for (let item of toSync) {
+      // v366: Re-fetch item to ensure it's still pending (avoid race with GlobalSyncWorker)
+      const freshItem = await new Promise(r => {
+        try {
+          const tx = db.transaction(['outbox'], 'readonly');
+          const req = tx.objectStore('outbox').get(item.id);
+          req.onsuccess = () => r(req.result);
+          req.onerror = () => r(null);
+        } catch(e) { r(null); }
+      });
+
+      if (!freshItem || (freshItem.status !== 'pending' && freshItem.status !== 'failed')) {
+        continue;
+      }
+      item = freshItem;
+
+      // v366: Mark ONLY THIS item as syncing
+      await new Promise(r => {
+        try {
+          const tx = db.transaction(['outbox'], 'readwrite');
+          tx.objectStore('outbox').put({ ...item, status: 'syncing', lastAttemptAt: Date.now() });
+          tx.oncomplete = r; tx.onerror = r;
+        } catch(e) { r(); }
+      });
+
       processedCount++;
       await logSyncSW('info', `Procesando item ${processedCount}/${totalToSync}: ${item.type}`, item.type, { itemId: item.id });
 
-      
       // Actualizar notificación de progreso principal
       try {
-        // v325: Evitar spam de notificaciones por cada item si no hay red
         if (self.Notification && self.Notification.permission === 'granted' && (navigator.onLine || isForced)) {
           self.registration.showNotification(`Sincronizando (${SW_VERSION})`, {
             body: `Item ${processedCount} de ${totalToSync}: Procesando ${item.type}...`,
             icon: '/icon-192.png',
             tag: 'sync-progress',
             silent: true,
-            // @ts-ignore
             priority: 'low'
           });
         }
@@ -1732,16 +1763,32 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
 
       if (!storageConfig && itemTieneMedia(item)) {
         console.log(`[SW] Item ${item.id} requires media sync but config is missing. Retrying config fetch...`);
+        let retryOk = false;
         try {
           const retry = await fetchWithTimeout(new Request('/api/storage/config', { credentials: 'same-origin' }), 8000);
-          if (retry.ok) storageConfig = await retry.json();
+          if (retry.ok) {
+            storageConfig = await retry.json();
+            retryOk = true;
+          } else if (retry.status === 401 || retry.status === 403) {
+            console.warn('[SW] Auth error during config retry — aborting sync');
+            // Reset this item to pending and stop cycle
+            await new Promise(r => {
+               try {
+                 const tx = db.transaction(['outbox'], 'readwrite');
+                 tx.objectStore('outbox').put({ ...item, status: 'pending' });
+                 tx.oncomplete = r; tx.onerror = r;
+               } catch(e) { r(); }
+            });
+            isSyncingGlobal = false;
+            resolve();
+            return;
+          }
         } catch(e) {
-          console.warn('[SW] Emergency config retry failed');
+          console.warn('[SW] Emergency config retry failed (Offline?)');
         }
+        
         if (!storageConfig) {
           // v339 FIX: Don't kill the item — reset to 'pending' and skip.
-          // The config might be temporarily unavailable (server restart, etc).
-          // Killing items causes permanent data loss for offline uploads.
           console.warn(`[SW] Item ${item.id} skipped — storage config unavailable. Will retry on next cycle.`);
           await new Promise(r => {
             try {
@@ -2157,63 +2204,77 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
               },
               credentials: 'same-origin',
               signal: abortController.signal,
-              body: JSON.stringify({ 
+                body: JSON.stringify({ 
                 ...finalPayload, 
-                lat: item.lat, 
-                lng: item.lng, 
+                // v366: Secure lat/lng preservation
+                lat: (item.lat !== undefined && item.lat !== null) ? item.lat : (finalPayload.lat || null), 
+                lng: (item.lng !== undefined && item.lng !== null) ? item.lng : (finalPayload.lng || null), 
                 createdAt: new Date(item.timestamp).toISOString(),
                 isOfflineSync: true
               })
             }), 30000); // 30s timeout for API
 
             if (res.ok) {
-               // v352: For PROJECT sync, save the newly created project into projectsCache
-               // so the operator dashboard LiveQuery picks it up immediately (no reload needed).
-               if (item.type === 'PROJECT') {
-                 try {
-                   const serverProject = await res.clone().json();
-                   if (serverProject && serverProject.id) {
-                     const cacheEntry = {
-                       ...finalPayload,
-                       id: serverProject.id,
-                       team: finalPayload.team ? finalPayload.team.map((uid) => ({ userId: Number(uid) })) : [],
-                       client: finalPayload.client || null,
-                       phases: finalPayload.phases || [],
-                       lastAccessedAt: Date.now(),
-                       createdAt: serverProject.createdAt || new Date(item.timestamp).toISOString(),
-                       updatedAt: serverProject.updatedAt || new Date().toISOString(),
-                       status: serverProject.status || finalPayload.status || 'LEAD',
-                       isSkeleton: false
-                     };
-                     // Guardar en projectsCache usando IDB directamente
-                     const putTx = db.transaction(['projectsCache'], 'readwrite');
-                     const putStore = putTx.objectStore('projectsCache');
-                     putStore.put(cacheEntry);
-                     await new Promise(r => { putTx.oncomplete = r; putTx.onerror = r; });
-                     console.log(`[SW v352] Saved synced project #${serverProject.id} to projectsCache for instant UI update`);
-                     // v352: Notify ALL window clients so the operator/admin dashboard refreshes instantly
-                     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
-                       clients.forEach(c => c.postMessage({
-                         type: 'PROJECT_SYNCED',
-                         projectId: serverProject.id,
-                         projectTitle: finalPayload.title || ''
-                       }));
-                     });
-                   }
-                 } catch (parseErr) {
-                   console.warn('[SW v352] Could not save project to cache after sync:', parseErr);
-                 }
-               }
+                const resData = await res.clone().json().catch(() => ({}));
+                // v366: CRITICAL IDEMPOTENCY FIX
+                // If the server returns id: 0, it means the syncId is claimed but the result is still pending.
+                // We must NOT delete the item from the outbox yet.
+                if (resData.isDuplicate && resData.id === 0) {
+                  console.log(`[SW] Item ${item.id} is still pending on server (id: 0). Skipping delete to allow retry.`);
+                  await new Promise(r => {
+                    try {
+                      const tx = db.transaction(['outbox'], 'readwrite');
+                      tx.objectStore('outbox').put({ ...item, status: 'pending', lastAttemptAt: Date.now() });
+                      tx.oncomplete = r; tx.onerror = r;
+                    } catch(e) { r(); }
+                  });
+                  continue;
+                }
 
-               await new Promise((deleteRes) => {
-                 const txd = db.transaction(['outbox'], 'readwrite');
-                 const stored = txd.objectStore('outbox');
-                 const req = stored.delete(item.id);
-                 req.onsuccess = deleteRes;
-                 req.onerror = deleteRes; // Prevent hang on error
-               });
-               console.log(`[SW] Successfully synced ${item.type} (ID: ${item.id})`);
-               await logSyncSW('success', `Item completado exitosamente: ${item.type}`, item.type, { itemId: item.id });
+                // v352: For PROJECT sync, save the newly created project into projectsCache
+                if (item.type === 'PROJECT') {
+                  try {
+                    const serverProject = resData; // Use the parsed data
+                    if (serverProject && serverProject.id) {
+                      const cacheEntry = {
+                        ...finalPayload,
+                        id: serverProject.id,
+                        team: finalPayload.team ? finalPayload.team.map((uid) => ({ userId: Number(uid) })) : [],
+                        client: finalPayload.client || null,
+                        phases: finalPayload.phases || [],
+                        lastAccessedAt: Date.now(),
+                        createdAt: serverProject.createdAt || new Date(item.timestamp).toISOString(),
+                        updatedAt: serverProject.updatedAt || new Date().toISOString(),
+                        status: serverProject.status || finalPayload.status || 'LEAD',
+                        isSkeleton: false
+                      };
+                      const putTx = db.transaction(['projectsCache'], 'readwrite');
+                      const putStore = putTx.objectStore('projectsCache');
+                      putStore.put(cacheEntry);
+                      await new Promise(r => { putTx.oncomplete = r; putTx.onerror = r; });
+                      console.log(`[SW v352] Saved synced project #${serverProject.id} to projectsCache for instant UI update`);
+                      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+                        clients.forEach(c => c.postMessage({
+                          type: 'PROJECT_SYNCED',
+                          projectId: serverProject.id,
+                          projectTitle: finalPayload.title || ''
+                        }));
+                      });
+                    }
+                  } catch (parseErr) {
+                    console.warn('[SW v352] Could not save project to cache after sync:', parseErr);
+                  }
+                }
+
+                await new Promise((deleteRes) => {
+                  const txd = db.transaction(['outbox'], 'readwrite');
+                  const stored = txd.objectStore('outbox');
+                  const req = stored.delete(item.id);
+                  req.onsuccess = deleteRes;
+                  req.onerror = deleteRes;
+                });
+                console.log(`[SW] Successfully synced ${item.type} (ID: ${item.id})`);
+                await logSyncSW('success', `Item completado exitosamente: ${item.type}`, item.type, { itemId: item.id });
             } else {
                throw new Error('Server returned ' + res.status);
             }
@@ -2221,8 +2282,43 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
         } catch (e) {
           console.error(`[SW] Failed to sync item ${item.id}:`, e);
           logSyncSW('error', `Error procesando item: ${item.id} (${item.type})`, item.type, { error: e.message });
-          // v324 FIX: Only poison context if a PROJECT creation itself failed.
-          // Previously, ANY item failure (msg, gallery) would block the whole project queue.
+          
+          // v368: INTELLIGENT ERROR HANDLING
+          // We must NOT increment attempts for network errors or auth issues.
+          const isNetworkError = e.message?.includes('Failed to fetch') || 
+                                 e.message?.includes('network error') || 
+                                 e.message?.includes('timeout') ||
+                                 e.message?.includes('disconnected');
+          
+          const isAuthError = e.message?.includes('401') || e.message?.includes('403');
+
+          if (isAuthError) {
+            console.warn('[SW] Authentication error — stopping sync to preserve items');
+            await new Promise(r => {
+              try {
+                const tx = db.transaction(['outbox'], 'readwrite');
+                tx.objectStore('outbox').put({ ...item, status: 'pending' }); // Reset to pending
+                tx.oncomplete = r; tx.onerror = r;
+              } catch(err) { r(); }
+            });
+            isSyncingGlobal = false;
+            resolve();
+            return;
+          }
+
+          if (isNetworkError) {
+            console.log(`[SW] Item ${item.id} failed due to network. Retrying as 'pending' without penalty.`);
+            await new Promise(r => {
+              try {
+                const tx = db.transaction(['outbox'], 'readwrite');
+                tx.objectStore('outbox').put({ ...item, status: 'pending' });
+                tx.oncomplete = r; tx.onerror = r;
+              } catch(err) { r(); }
+            });
+            continue;
+          }
+
+          // If it's a real server error (500, etc), then increment attempts
           if (ctx && item.type === 'PROJECT') failedContexts.add(ctx);
           await new Promise((res) => {
             try {
@@ -2233,9 +2329,9 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
               item.lastAttemptAt = Date.now();
               const req = storeError.put(item);
               req.onsuccess = res;
-              req.onerror = res; // Prevent hang on error
+              req.onerror = res;
             } catch (err) {
-              res(); // Resolve if transaction creation fails
+              res();
             }
           });
         }

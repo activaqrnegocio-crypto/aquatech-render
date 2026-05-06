@@ -6,9 +6,9 @@ import { db } from '@/lib/db'
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
-    const SW_VERSION = 'v338';
+    const SW_VERSION = 'v368'; // v368: Data Loss Prevention (Net/Auth error handling)
     const swUrl = `/custom-sw.js?v=${SW_VERSION}`
-    console.log('[App] Solicitando registro de Robot v338 (Fetch Trigger)...');
+    console.log(`[App] Solicitando registro de Robot ${SW_VERSION} (Fetch Trigger)...`);
     // v338: NO recargar la página cuando un nuevo SW toma control.
     // El nuevo SW se activará en la próxima navegación sin recarga forzada.
 

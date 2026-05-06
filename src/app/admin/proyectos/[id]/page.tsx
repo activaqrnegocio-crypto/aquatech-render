@@ -29,12 +29,12 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
       team: { include: { user: { select: { id: true, name: true, phone: true, role: true } } } },
       gallery: {
         orderBy: { createdAt: 'desc' },
-        take: 20,
+        take: 150, // v369: increased to 150 for bulk offline syncs
         select: { id: true, url: true, filename: true, mimeType: true, category: true, createdAt: true }
       },
       chatMessages: {
         orderBy: { createdAt: 'desc' },
-        take: 20,
+        take: 150, // v369: increased to 150 for bulk offline syncs
         include: { 
           user: { select: { id: true, name: true, role: true } }, 
           media: { select: { id: true, url: true, filename: true, mimeType: true } }
@@ -42,7 +42,7 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
       },
       expenses: {
         orderBy: { date: 'desc' },
-        take: 20
+        take: 150
       }
     }
   })

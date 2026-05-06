@@ -630,17 +630,29 @@ export default function OperatorDashboardClient({
     
     // Add real appointments to seenMap
     finalResult.forEach(ra => {
-      const timeStr = new Date(ra.startTime).toISOString().slice(0, 16); // Minute precision
-      seenMap.add(`${ra.title}_${ra.projectId}_${timeStr}`);
+      try {
+        if (ra.startTime) {
+          const timeStr = new Date(ra.startTime).toISOString().slice(0, 16); // Minute precision
+          seenMap.add(`${ra.title}_${ra.projectId}_${timeStr}`);
+        }
+      } catch (e) { /* Ignore invalid dates */ }
     });
 
     pendingMapped.forEach(pt => {
-      const timeStr = new Date(pt.startTime).toISOString().slice(0, 16);
-      const key = `${pt.title}_${pt.projectId}_${timeStr}`;
-      
-      if (!seenMap.has(key)) {
-        finalResult.push(pt);
-        seenMap.add(key);
+      try {
+        if (pt.startTime) {
+          const timeStr = new Date(pt.startTime).toISOString().slice(0, 16);
+          const key = `${pt.title}_${pt.projectId}_${timeStr}`;
+          
+          if (!seenMap.has(key)) {
+            finalResult.push(pt);
+            seenMap.add(key);
+          }
+        } else {
+          finalResult.push(pt);
+        }
+      } catch (e) { 
+        finalResult.push(pt); 
       }
     });
 

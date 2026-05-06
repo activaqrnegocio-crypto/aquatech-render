@@ -34,18 +34,37 @@ export async function POST(
   { params }: { params: Promise<{ id: string }> }
 ) {
   try {
+    const { id } = await params
+    const projectId = Number(id)
     const syncId = request.headers.get('x-sync-id');
+
     if (syncId) {
-      const existingSync = await prisma.syncLog.findUnique({
-        where: { syncId }
-      });
-      if (existingSync) {
-        console.log('[Idempotency] Skipping already processed gallery sync:', syncId);
-        // Intentar recuperar el item original
-        const existingItem = await prisma.projectGalleryItem.findUnique({
-          where: { id: Number(existingSync.resultId) }
+      try {
+        // v365: Atomic claim — INSERT first. If syncId exists, P2002 fires.
+        await prisma.syncLog.create({
+          data: { syncId, resultId: '__pending__' }
         });
-        return NextResponse.json(existingItem || { success: true, id: existingSync.resultId });
+        // Claim succeeded
+      } catch (claimErr: any) {
+        if (claimErr.code === 'P2002') {
+          const existing = await prisma.syncLog.findUnique({ where: { syncId } });
+          if (existing && existing.resultId !== '__pending__') {
+            // Duplicate detected, return existing without noise
+            const existingItem = await prisma.projectGalleryItem.findUnique({
+              where: { id: Number(existing.resultId) }
+            });
+            return NextResponse.json(existingItem || { success: true, id: Number(existing.resultId), isDuplicate: true });
+          }
+          // v367: Hijack Stall
+          if (existing && existing.createdAt < new Date(Date.now() - 120000)) {
+            await prisma.syncLog.update({ where: { syncId }, data: { createdAt: new Date() } }).catch(() => {});
+          } else {
+            // Still pending from first request
+            return NextResponse.json({ success: true, isDuplicate: true, id: 0 });
+          }
+        } else {
+          throw claimErr;
+        }
       }
     }
     const session = await getServerSession(authOptions)
@@ -58,8 +77,6 @@ export async function POST(
       return NextResponse.json({ error: 'No autorizado' }, { status: 401 })
     }
 
-    const { id } = await params
-    const projectId = Number(id)
     let { url, filename, mimeType, sizeBytes, category, createdAt } = await request.json()
 
     if (!url) {
@@ -95,12 +112,10 @@ export async function POST(
     })
 
     if (syncId) {
-      await prisma.syncLog.create({
-        data: {
-          syncId,
-          resultId: String(newItem.id)
-        }
-      }).catch(err => console.error('[Idempotency] Failed to save sync log:', err));
+      await prisma.syncLog.update({
+        where: { syncId },
+        data: { resultId: String(newItem.id) }
+      }).catch(err => console.error('[Idempotency] Failed to finalize gallery sync log:', err));
     }
 
     return NextResponse.json(newItem, { status: 201 })

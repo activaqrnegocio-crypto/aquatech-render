@@ -22,7 +22,8 @@ export async function POST() {
     const userId = Number(session.user.id)
     
     console.log(`[WakeUp] Silent push requested for user ${userId}`);
-    await sendSilentPush(userId);
+    // Fire and forget to avoid hanging the client request
+    sendSilentPush(userId).catch(err => console.error('[WakeUp Background Error]:', err));
     
     return NextResponse.json({ 
       success: true, 

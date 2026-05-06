@@ -130,16 +130,30 @@ export async function POST(request: Request) {
     const syncId = request.headers.get('x-sync-id');
     
     if (syncId) {
-      const existingLog = await prisma.syncLog.findUnique({
-        where: { syncId: syncId }
-      });
-      if (existingLog) {
-        console.log(`[IDEMPOTENCY] Found SyncLog for syncId: ${syncId}, returning project: ${existingLog.resultId}`);
-        const existingProject = await prisma.project.findUnique({
-          where: { id: Number(existingLog.resultId) },
-          include: { client: true, phases: true, team: { include: { user: true } } }
+      try {
+        await prisma.syncLog.create({
+          data: { syncId, resultId: '__pending__' }
         });
-        if (existingProject) return NextResponse.json(existingProject, { status: 201 });
+      } catch (claimErr: any) {
+        if (claimErr.code === 'P2002') {
+          const existing = await prisma.syncLog.findUnique({ where: { syncId } });
+          if (existing && existing.resultId !== '__pending__') {
+             console.log(`[IDEMPOTENCY] Found SyncLog for syncId: ${syncId}, returning project: ${existing.resultId}`);
+             const existingProject = await prisma.project.findUnique({
+                where: { id: Number(existing.resultId) },
+                include: { client: true, phases: true, team: { include: { user: true } } }
+             });
+             return NextResponse.json(existingProject || { success: true, id: Number(existing.resultId), isDuplicate: true });
+          }
+          // v367: Hijack Stall
+          if (existing && existing.createdAt < new Date(Date.now() - 120000)) {
+            await prisma.syncLog.update({ where: { syncId }, data: { createdAt: new Date() } }).catch(() => {});
+          } else {
+            return NextResponse.json({ success: true, isDuplicate: true, id: 0 });
+          }
+        } else {
+          throw claimErr;
+        }
       }
     }
 
@@ -321,14 +335,12 @@ export async function POST(request: Request) {
         })
       }
 
-      // v356: Log sync to prevent duplicates (Absolute Idempotency)
+
       if (syncId) {
-        await tx.syncLog.create({
-          data: {
-            syncId: syncId,
-            resultId: String(newProject.id)
-          }
-        }).catch(e => console.warn('[Idempotency] SyncLog already exists or error:', e.message));
+        await prisma.syncLog.update({
+          where: { syncId },
+          data: { resultId: String(newProject.id) }
+        }).catch(() => {});
       }
 
       return newProject

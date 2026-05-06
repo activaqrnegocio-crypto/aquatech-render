@@ -492,14 +492,20 @@ export default function GlobalSyncWorker() {
   const syncOutbox = async () => {
     if (typeof window === 'undefined' || !navigator.onLine || outboxLock.current) return
     
-    // v272: Reset stuck 'syncing' items every cycle (not just on mount)
+    // v365: Reset stuck 'syncing' items — only if they have lastAttemptAt (were actually claimed)
+    // Increased to 120s to allow large media uploads to complete
     try {
       const stuckItems = await db.outbox.where('status').equals('syncing').toArray();
       const now = Date.now();
       for (const item of stuckItems) {
-        const stuckTime = now - (item.lastAttemptAt || item.timestamp || 0);
-        if (stuckTime > 30000) { // Stuck for more than 30 seconds
-          // console.log(`[Sync] Reseteando elemento bloqueado ${item.id} (${item.type}) a 'pending'`);
+        // Only reset if lastAttemptAt is set (item was actually claimed for processing)
+        if (!item.lastAttemptAt) {
+          // Item was marked 'syncing' without lastAttemptAt — legacy; reset it
+          await db.outbox.update(item.id!, { status: 'pending' });
+          continue;
+        }
+        const stuckTime = now - item.lastAttemptAt;
+        if (stuckTime > 120000) { // Stuck for more than 2 minutes
           await db.outbox.update(item.id!, { status: 'pending' });
         }
       }
@@ -522,12 +528,12 @@ export default function GlobalSyncWorker() {
 
     outboxLock.current = true
     try {
-      const items = await db.outbox
-        .where('status')
-        .anyOf(['pending', 'failed'])
-        .toArray();
+      // v369: Fetch ALL items to properly detect 'syncing' items and preserve chronolocical order.
+      // Otherwise, we wouldn't see the 'syncing' items blocking the queue!
+      const items = await db.outbox.toArray();
       
-      if (items.length === 0) {
+      const pendingOrFailed = items.filter(i => i.status === 'pending' || i.status === 'failed');
+      if (pendingOrFailed.length === 0) {
         localStorage.removeItem('global_sync_lock')
         return
       }
@@ -542,12 +548,22 @@ export default function GlobalSyncWorker() {
 
       let hasSyncedAnything = false
       const failedContexts = new Set<string>(); // v272: Track failed projects/contexts
+      const syncingContexts = new Set<string>(); // v369: Track currently syncing projects to preserve strictly chronological order
+
+      // First pass: identify any project/context that already has a 'syncing' item
+      for (const item of items) {
+        if (item.status === 'syncing') {
+          const ctx = item.projectId ? `proj-${item.projectId}` : (item.type === 'DAY_START' || item.type === 'DAY_END' ? 'day-record' : null);
+          if (ctx) syncingContexts.add(ctx);
+        }
+      }
 
       for (const item of items) {
-        // v272: If a previous item for this project failed, skip dependents
         const ctx = item.projectId ? `proj-${item.projectId}` : (item.type === 'DAY_START' || item.type === 'DAY_END' ? 'day-record' : null);
-        if (ctx && failedContexts.has(ctx)) {
-          // console.log(`[Sync] Skipping ${item.type} — earlier dependency for ${ctx} failed`);
+        
+        // v369: If this project has ANY earlier item that failed OR is currently syncing, skip this item!
+        // This PREVENTS text messages from bypassing large image uploads!
+        if (ctx && (failedContexts.has(ctx) || (item.status !== 'syncing' && syncingContexts.has(ctx)))) {
           continue;
         }
 
@@ -565,13 +581,13 @@ export default function GlobalSyncWorker() {
         }
 
         try {
-          await db.outbox.update(item.id!, { status: 'syncing' })
+          await db.outbox.update(item.id!, { status: 'syncing', lastAttemptAt: Date.now() })
           let endpoint = ''
           let method = 'POST'
           
           if (item.type === 'QUOTE') { endpoint = '/api/quotes' }
           else if (item.type === 'MATERIAL') { endpoint = '/api/materials' }
-          else if (item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD') { endpoint = `/api/projects/${item.projectId}/messages` }
+          else if (item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD' || item.type === 'LOCATION') { endpoint = `/api/projects/${item.projectId}/messages` }
           else if (item.type === 'EXPENSE') { 
             if (item.payload.id) {
               endpoint = `/api/projects/${item.projectId}/expenses/${item.payload.id}`;
@@ -867,6 +883,9 @@ export default function GlobalSyncWorker() {
                continue;
              }
 
+             // v365: AbortController with 60s timeout to prevent hanging requests
+             const controller = new AbortController();
+             const timeoutId = setTimeout(() => controller.abort(), 30000);
              const res = await fetch(endpoint, {
                  method,
                  headers: { 
@@ -875,20 +894,30 @@ export default function GlobalSyncWorker() {
                  },
                  body: JSON.stringify({ 
                    ...finalPayload, 
-                   lat: item.lat, 
-                   lng: item.lng, 
+                   lat: (item.lat !== null && item.lat !== undefined) ? item.lat : finalPayload.lat, 
+                   lng: (item.lng !== null && item.lng !== undefined) ? item.lng : finalPayload.lng, 
                    createdAt: item.timestamp ? new Date(item.timestamp).toISOString() : undefined,
                    isOfflineSync: true 
-                 })
+                 }),
+                 signal: controller.signal
              })
-             if (res.ok) {
-               await db.outbox.delete(item.id!)
-               hasSyncedAnything = true
-               await logSync('success', `✓ Sincronizado: ${item.type} #${item.id}`, item.type, `Proyecto ${item.projectId}`);
-               if (typeof window !== 'undefined') {
-                 window.dispatchEvent(new CustomEvent('sync-success', { detail: { type: item.type, projectId: item.projectId } }))
-               }
-             } else {
+             clearTimeout(timeoutId);
+              if (res.ok) {
+                const resData = await res.json().catch(() => ({}));
+                // v366: CRITICAL IDEMPOTENCY FIX
+                if (resData.isDuplicate && resData.id === 0) {
+                  console.log(`[Sync] Item ${item.id} still pending on server (id: 0). Skipping.`);
+                  await db.outbox.update(item.id!, { status: 'pending' });
+                  continue;
+                }
+
+                await db.outbox.delete(item.id!)
+                hasSyncedAnything = true
+                await logSync('success', `✓ Sincronizado: ${item.type} #${item.id}`, item.type, `Proyecto ${item.projectId}`);
+                if (typeof window !== 'undefined') {
+                  window.dispatchEvent(new CustomEvent('sync-success', { detail: { type: item.type, projectId: item.projectId } }))
+                }
+              } else {
                const status = res.status
                if (status === 401 || status === 429) {
                  // Unauthorized or rate limited -> keep pending and retry later
@@ -912,8 +941,8 @@ export default function GlobalSyncWorker() {
              }
           }
           
-          // v261: Pacing delay to prevent server saturation and race conditions
-          await new Promise(r => setTimeout(r, 500));
+          // v365: Increased pacing delay to prevent connection saturation
+          await new Promise(r => setTimeout(r, 1000));
        } catch (e) {
           // v272: Mark context as failed so dependents are skipped
           if (ctx) failedContexts.add(ctx);

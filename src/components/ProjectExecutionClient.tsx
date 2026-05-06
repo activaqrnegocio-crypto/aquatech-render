@@ -203,10 +203,27 @@ export default function ProjectExecutionClient({
       }
     }
     
+    // v365: Debounce to prevent rapid-fire fetches during batch sync
+    let syncSuccessTimer: NodeJS.Timeout | null = null;
     const handleSyncSuccess = (e: any) => {
       if (e.detail?.projectId === idFromUrl) {
         // Revalidate server cache without full page reload
         startTransition(() => { revalidateRoute(pathname) })
+        
+        // Debounced full chat refresh to catch offline messages
+        if (e.detail?.type === 'MESSAGE' || e.detail?.type === 'MEDIA_UPLOAD') {
+          if (syncSuccessTimer) clearTimeout(syncSuccessTimer);
+          syncSuccessTimer = setTimeout(async () => {
+            try {
+              const freshMsgs = await fetchMessages()
+              if (freshMsgs && freshMsgs.length > 0) {
+                setLiveChat((prev: any[]) => deduplicateMessages([...prev, ...freshMsgs]))
+              }
+            } catch(err) {
+              console.error('Failed to refresh chat on sync success', err)
+            }
+          }, 2000); // Wait 2s after last sync-success to batch the fetch
+        }
       }
     }
 
@@ -257,6 +274,9 @@ export default function ProjectExecutionClient({
         const isDuplicate = result.some(rm => 
           rm.content === msg.content && 
           rm.type === msg.type && 
+          // v366: Only deduplicate if the IDs are NOT both temporary or if one is real.
+          // Don't hide two different temporary messages just because they have the same text.
+          (typeof rm.id === 'number' || typeof msg.id === 'number') &&
           Math.abs(new Date(rm.createdAt).getTime() - new Date(msg.createdAt).getTime()) < 30000
         );
 
@@ -439,7 +459,9 @@ export default function ProjectExecutionClient({
           console.log('[Offline] Proyecto recuperado de IndexDB:', idFromUrl);
           setLocalProject(cached);
           const chat = await db.chatCache.get(idFromUrl);
-          setLocalChat(chat?.messages || []);
+          const cachedMsgs = chat?.messages || [];
+          setLocalChat(cachedMsgs);
+          setLiveChat((prev: any[]) => prev.length > 0 ? deduplicateMessages([...prev, ...cachedMsgs]) : cachedMsgs);
 
           // v316: Recover clientName, address, city from cached data
           if (cached.client) {
@@ -540,13 +562,26 @@ export default function ProjectExecutionClient({
       })
     }
 
+        // v365: Counter for periodic full refresh to catch offline-synced messages
+        let pollCount = 0;
         const pollInterval = setInterval(async () => {
       if (typeof navigator !== 'undefined' && !navigator.onLine) return
       if (typeof document !== 'undefined' && document.hidden) return
-      const currentChat = liveChatRef.current
-      const lastMsg = currentChat[currentChat.length - 1]
-      const since = lastMsg?.createdAt
+      pollCount++;
       try {
+        // v365: Every 6th poll (~30s), do a FULL fetch to catch offline messages
+        // that were synced with older timestamps (skipped by incremental 'since')
+        if (pollCount % 6 === 0) {
+          const allMsgs = await fetchMessages()
+          if (allMsgs && allMsgs.length > 0) {
+            setLiveChat((prev: any[]) => deduplicateMessages([...prev, ...allMsgs]))
+          }
+          return;
+        }
+        // Normal incremental poll
+        const currentChat = liveChatRef.current
+        const lastMsg = currentChat[currentChat.length - 1]
+        const since = lastMsg?.createdAt
         const freshMsgs = await fetchMessages(since)
         if (freshMsgs && freshMsgs.length > 0) {
           setLiveChat((prev: any[]) => deduplicateMessages([...prev, ...freshMsgs]))
@@ -1325,8 +1360,8 @@ export default function ProjectExecutionClient({
               projectId: project.id,
               payload: payload,
               timestamp: Date.now(),
-              lat: location?.lat,
-              lng: location?.lng,
+              lat: extraData?.lat ?? location?.lat,
+              lng: extraData?.lng ?? location?.lng,
               status: 'pending',
               syncId
            })
@@ -1345,7 +1380,7 @@ export default function ProjectExecutionClient({
               'Content-Type': 'application/json',
               'x-sync-id': syncId 
             },
-            body: JSON.stringify({ ...payload, lat: location?.lat, lng: location?.lng })
+            body: JSON.stringify({ ...payload, lat: extraData?.lat ?? location?.lat, lng: extraData?.lng ?? location?.lng })
         })
         
         if (res.ok) {
@@ -1390,8 +1425,8 @@ export default function ProjectExecutionClient({
               projectId: project.id,
               payload: payload,
               timestamp: Date.now(),
-              lat: location?.lat,
-              lng: location?.lng,
+              lat: extraData?.lat ?? location?.lat,
+              lng: extraData?.lng ?? location?.lng,
               status: 'pending',
               syncId
            })
