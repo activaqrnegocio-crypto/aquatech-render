@@ -431,6 +431,89 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
 
       const newProj = await resp.json()
       
+      // ─── v370: Cachear el nuevo proyecto en IndexedDB con datos COMPLETOS ───
+      // La API devuelve el proyecto SIN relaciones (team, client, phases).
+      // Construimos el team desde los datos del wizard para que el filtro
+      // useLiveQuery (isInTeam / isCreator) funcione correctamente.
+      try {
+        const u = session?.user as any;
+        const cacheKey = `projects_bulk_${u?.id || 'default'}`;
+        const creatorId = Number(u?.id);
+        
+        // Construir team completo usando los datos del wizard
+        const fullTeam = (payload.team || []).map((teamUserId: string | number) => {
+          const numId = Number(teamUserId);
+          const userInfo = availableTeam.find((t: any) => Number(t.id) === numId);
+          return {
+            id: 0, // ID temporal, el sync lo actualizará
+            userId: numId,
+            user: {
+              id: numId,
+              name: userInfo?.name || 'Operador',
+              role: userInfo?.role || 'OPERATOR',
+              phone: userInfo?.phone || ''
+            }
+          };
+        });
+        
+        // Proyecto completo para IndexedDB (con team, client, phases del wizard)
+        const completeProject = {
+          ...newProj,
+          // Asegurar que createdBy sea numérico
+          createdBy: creatorId,
+          // Team construido del wizard (la API no lo incluye en la respuesta)
+          team: fullTeam,
+          // Client desde los datos del wizard
+          client: {
+            id: newProj.clientId || clientData.id,
+            name: clientData.name || '',
+            phone: clientData.phone || '',
+            address: clientData.address || '',
+            email: clientData.email || '',
+            ruc: clientData.ruc || '',
+            city: clientData.city || '',
+            notes: clientData.notes || ''
+          },
+          // Phases desde el wizard
+          phases: (payload.phases || []).map((p: any, i: number) => ({
+            id: 0,
+            title: p.title,
+            description: p.description || '',
+            status: 'PENDIENTE',
+            displayOrder: i + 1,
+            estimatedDays: p.estimatedDays || 0,
+            estimatedHours: null,
+            startedAt: null,
+            completedAt: null
+          })),
+          isSkeleton: false,
+          lastAccessedAt: Date.now(),
+          categoryList: payload.categoryList || [],
+          contractTypeList: payload.contractTypeList || [],
+          chatMessages: [],
+          expenses: [],
+          dayRecords: [],
+          unreadCount: 0
+        };
+        
+        await db.projectsCache.put(completeProject);
+        
+        // Invalidar metadata para que el botón NO muestre verde falso
+        // lastSync=0 hace que el check del ManualSyncButton falle
+        const existingMeta = await db.cacheMetadata.get(cacheKey);
+        if (existingMeta) {
+          await db.cacheMetadata.update(cacheKey, { 
+            lastSync: 0,
+            count: (existingMeta.count || 0) + 1 
+          });
+        }
+        
+        // Disparar re-sync en background para bajar datos del servidor (fotos, etc.)
+        if (typeof window !== 'undefined') {
+          window.dispatchEvent(new CustomEvent('trigger-bulk-sync', { detail: { force: true } }));
+        }
+      } catch (e) { /* no bloquear la UX si falla */ }
+      
       // Cleanup localStorage
       setStep(1)
       removeProjectData()

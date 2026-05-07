@@ -63,14 +63,24 @@ export default function ManualSyncButton() {
       }
     }
 
+    // v370: Cuando se crea un proyecto nuevo, se dispara trigger-bulk-sync.
+    // Resetear el estado verde inmediatamente para no mentir al usuario.
+    const handleForceSync = () => {
+      setIsSyncing(true)
+      setSyncFinished(false)
+      setProgress({ current: 0, total: 0 })
+    }
+
     window.addEventListener('bulk-cache-sync-progress', handleProgress)
     window.addEventListener('bulk-cache-sync-finished', handleFinished)
     window.addEventListener('bulk-cache-sync-log', handleLog)
+    window.addEventListener('trigger-bulk-sync', handleForceSync)
 
     return () => {
       window.removeEventListener('bulk-cache-sync-progress', handleProgress)
       window.removeEventListener('bulk-cache-sync-finished', handleFinished)
       window.removeEventListener('bulk-cache-sync-log', handleLog)
+      window.removeEventListener('trigger-bulk-sync', handleForceSync)
     }
   }, [])
 

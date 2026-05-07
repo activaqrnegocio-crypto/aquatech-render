@@ -219,6 +219,17 @@ export default function OperatorDashboardClient({
             if (res.ok) {
               const apiProjects = await res.json()
               if (Array.isArray(apiProjects) && apiProjects.length > 0) {
+                // v370: Solo sobrescribir si la API devuelve >= proyectos que el snapshot actual
+                const currentSaved = localStorage.getItem('last_op_projects_snapshot');
+                if (currentSaved) {
+                  try {
+                    const parsed = JSON.parse(currentSaved);
+                    if (Array.isArray(parsed) && parsed.length > apiProjects.length) {
+                      setEmergencyProjects(parsed); // Mantener el snapshot más grande
+                      return;
+                    }
+                  } catch(e) {}
+                }
                 setEmergencyProjects(apiProjects)
                 try { localStorage.setItem('last_op_projects_snapshot', JSON.stringify(apiProjects)) } catch(e) {}
                 return // Ya tenemos datos, no necesitamos seguir con Dexie
@@ -239,9 +250,20 @@ export default function OperatorDashboardClient({
         })
         
         if (myProjects.length > 0) {
+          // v370: NO sobrescribir localStorage si el snapshot actual tiene MÁS proyectos
+          const currentSaved = localStorage.getItem('last_op_projects_snapshot');
+          if (currentSaved) {
+            try {
+              const parsed = JSON.parse(currentSaved);
+              if (Array.isArray(parsed) && parsed.length > myProjects.length) {
+                // console.log(`[EmergencyLoad] Skipping overwrite: snapshot has ${parsed.length} > ${myProjects.length}`);
+                setEmergencyProjects(parsed); // Mantener el snapshot más grande
+                return;
+              }
+            } catch(e) {}
+          }
           // console.log(`[EmergencyLoad] Loaded ${myProjects.length} projects directly from Dexie`)
           setEmergencyProjects(myProjects)
-          // v316: Persistir en localStorage para sobrevivir al cierre de app
           try { localStorage.setItem('last_op_projects_snapshot', JSON.stringify(myProjects)) } catch(e) {}
         }
       } catch (e) {
