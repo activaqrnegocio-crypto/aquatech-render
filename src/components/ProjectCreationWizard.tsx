@@ -328,9 +328,31 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
 
     try {
       if (!navigator.onLine) {
+        // v370 FIX: Check TOTAL file size BEFORE processing to prevent "Aw, Snap!" crashes
+        // Each arrayBuffer() loads the ENTIRE file into RAM. On mobile with limited memory,
+        // multiple large files (photos + videos) can easily crash the browser tab.
+        const SMALL_FILE_LIMIT = 10 * 1024 * 1024; // 10MB - files under this get arrayBuffer
+        const TOTAL_OFFLINE_LIMIT = 200 * 1024 * 1024; // 200MB total cap
+        
+        let totalSize = 0;
+        for (const f of payload.files) {
+          totalSize += (f as any).file?.size || f.size || 0;
+        }
+        
+        if (totalSize > TOTAL_OFFLINE_LIMIT) {
+          alert(
+            `Los archivos adjuntos pesan ${(totalSize / (1024 * 1024)).toFixed(0)} MB en total. ` +
+            `El límite offline es ${TOTAL_OFFLINE_LIMIT / (1024 * 1024)} MB. ` +
+            `Reduce la cantidad de archivos o conéctate a internet para subirlos.`
+          );
+          setLoading(false);
+          isCreatingRef.current = false;
+          return;
+        }
+
         // v353: For offline, strip raw File objects from payload before storing
         // The File objects are preserved in the `file` property of each uploadedFile
-        // and the GlobalSyncWorker will handle uploading them to Bunny during sync.
+        // and the GlobalSyncWorker/SW will handle uploading them to Bunny during sync.
         const offlinePayload = {
           ...payload,
           files: payload.files.map((f: any) => {
@@ -338,9 +360,11 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
             const { file, ...rest } = f;
             return {
               ...rest,
-              // v353: For large files (blob: URLs), store binary data for offline sync
-              fileData: file instanceof File ? { 
-                buffer: null, // Will be populated below
+              file: file instanceof File ? file : null, // Keep raw File for structured clone (SW uses it directly)
+              // v353: For small files (<10MB), store binary data for offline sync
+              // v370: Files >= 10MB use structured clone (File object) to avoid RAM crash
+              fileData: (file instanceof File && file.size > 0 && file.size <= SMALL_FILE_LIMIT) ? { 
+                buffer: null, // Will be populated below for small files
                 type: file.type, 
                 name: file.name,
                 size: file.size
@@ -349,25 +373,57 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
           })
         };
 
-        // v353: Read ArrayBuffers for large files that need offline storage
+        // v370: Only read arrayBuffer for SMALL files (<10MB) to avoid RAM exhaustion.
+        // Large files (>10MB) keep the raw File object via structured clone — IndexedDB
+        // preserves it natively. The Service Worker checks `item.payload.files[i].file`
+        // first, and falls back to fileData.buffer for small files.
+        const SMALL_BATCH_SIZE = 3;
+        let processedCount = 0;
+        
         for (let i = 0; i < payload.files.length; i++) {
           const f = payload.files[i] as any;
-          if (f.file instanceof File && f.file.size > 0) {
-            try {
-              offlinePayload.files[i].fileData = {
-                buffer: await f.file.arrayBuffer(),
-                type: f.file.type,
-                name: f.file.name,
-                size: f.file.size
-              };
-              // Clear the base64/blob URL to save space since we have the binary
-              if (offlinePayload.files[i].url?.startsWith('blob:') || 
-                  (offlinePayload.files[i].url?.startsWith('data:') && f.file.size > 10 * 1024 * 1024)) {
-                offlinePayload.files[i].url = '';
+          
+          // Only process small files (<10MB) with arrayBuffer
+          if (!(f.file instanceof File) || f.file.size <= 0 || f.file.size > SMALL_FILE_LIMIT) {
+            // Large file: keep blob: URL for preview, raw File for structured clone
+            if (f.file instanceof File && f.file.size > SMALL_FILE_LIMIT) {
+              // Clear base64 URLs for large files (they're too big for the payload)
+              if (offlinePayload.files[i].url?.startsWith('data:')) {
+                offlinePayload.files[i].url = ''; // blob: URL or raw File will be used by SW
               }
-            } catch (e) {
-              console.warn(`[Wizard] Could not read file ${f.filename} for offline storage:`, e);
+              // Release blob URL from memory after we've stored the reference
+              if (f.url?.startsWith('blob:')) {
+                // Keep the blob: URL - it will be released when the page unloads
+                // The raw File object in `.file` is what the SW uses for upload
+              }
             }
+            continue; // Skip arrayBuffer for large files
+          }
+
+          try {
+            // Process in batches of 3 with GC delay between batches
+            offlinePayload.files[i].fileData = {
+              buffer: await f.file.arrayBuffer(),
+              type: f.file.type,
+              name: f.file.name,
+              size: f.file.size
+            };
+            
+            // Clear base64 URL to save space since we have the binary
+            if (offlinePayload.files[i].url?.startsWith('data:')) {
+              offlinePayload.files[i].url = '';
+            }
+            
+            processedCount++;
+            
+            // Every SMALL_BATCH_SIZE files, yield to let the GC breathe
+            // This prevents "Aw, Snap!" crashes on mobile devices
+            if (processedCount % SMALL_BATCH_SIZE === 0) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+          } catch (e) {
+            console.warn(`[Wizard] Could not read file ${f.filename} for offline storage:`, e);
+            // Fallback: keep the raw File object - SW will handle it
           }
         }
 

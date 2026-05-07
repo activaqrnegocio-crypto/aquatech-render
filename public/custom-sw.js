@@ -1,4 +1,4 @@
-const SW_VERSION = 'v370-attachmentLinks-fix';
+const SW_VERSION = 'v371-crash-fix';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;

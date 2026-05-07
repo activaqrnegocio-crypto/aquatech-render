@@ -872,6 +872,21 @@ export default function GlobalSyncWorker() {
                      
                      // Small delay to let the browser Garbage Collector work
                      await new Promise(resolve => setTimeout(resolve, 150));
+                   } else if (f.file instanceof File || f.file instanceof Blob) {
+                     // v370: Large file (>10MB) stored as raw File via structured clone.
+                     // Upload directly to Bunny without loading entire file into RAM.
+                     const uploadResult = await uploadToBunnyClientSide(f.file, f.filename || f.file.name, 'projects');
+                     processedFiles.push({
+                       url: uploadResult.url,
+                       filename: f.filename || f.file.name,
+                       mimeType: uploadResult.mimeType || f.file.type,
+                       type: uploadResult.type,
+                       category: f.category,
+                       size: f.file.size
+                     });
+                     // Release the File reference to free IndexedDB space
+                     f.file = null;
+                     await new Promise(resolve => setTimeout(resolve, 100));
                    } else if (f.url && f.url.startsWith('data:')) {
                      // Small file with base64 — let the API handle it
                      processedFiles.push({ url: f.url, filename: f.filename, mimeType: f.mimeType, type: f.type, category: f.category, size: f.size });
