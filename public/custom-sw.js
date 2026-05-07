@@ -1,4 +1,4 @@
-const SW_VERSION = 'v367-final';
+const SW_VERSION = 'v370-attachmentLinks-fix';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
@@ -2110,6 +2110,7 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
               
               const rawMedia = [
                 ...(payload.attachments || []),
+                ...(payload.attachmentLinks || []),
                 ...(payload.files || [])
               ];
 
@@ -2148,6 +2149,7 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
                   };
                   
                   updateAll(payload.attachments);
+                  updateAll(payload.attachmentLinks);
                   updateAll(payload.files);
                   await persistProgress();
                 }
@@ -2187,6 +2189,24 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
             if (Array.isArray(finalPayload.files)) {
               finalPayload.files = finalPayload.files.map(f => {
                 const clean = { ...f };
+                delete clean.isOffline;
+                delete clean.isNew;
+                return clean;
+              });
+            }
+            // v370: Also clean attachmentLinks and attachments so WhatsApp message
+            // doesn't get polluted with base64 or isOffline flags
+            if (Array.isArray(finalPayload.attachmentLinks)) {
+              finalPayload.attachmentLinks = finalPayload.attachmentLinks.map(a => {
+                const clean = { ...a };
+                delete clean.isOffline;
+                delete clean.isNew;
+                return clean;
+              });
+            }
+            if (Array.isArray(finalPayload.attachments)) {
+              finalPayload.attachments = finalPayload.attachments.map(a => {
+                const clean = { ...a };
                 delete clean.isOffline;
                 delete clean.isNew;
                 return clean;

@@ -829,6 +829,19 @@ export default function GlobalSyncWorker() {
                    return clean
                  })
                }
+               // v370: Also clean attachmentLinks/attachments of offline flags
+               if (Array.isArray(finalPayload.attachmentLinks)) {
+                 finalPayload.attachmentLinks = finalPayload.attachmentLinks.map((a: any) => {
+                   const { isOffline, isNew: _n, ...clean } = a
+                   return clean
+                 })
+               }
+               if (Array.isArray(finalPayload.attachments)) {
+                 finalPayload.attachments = finalPayload.attachments.map((a: any) => {
+                   const { isOffline, isNew: _n, ...clean } = a
+                   return clean
+                 })
+               }
              }
 
              // v353: Handle PROJECT files — upload each file's binary data to Bunny
