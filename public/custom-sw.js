@@ -1486,13 +1486,14 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
 
     // Evitar race condition: Si la app está abierta, GlobalSyncWorker se encargará
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (windowClients) => {
-      // v272: Always process outbox items even if app is visible.
-      // The previous "delegate to GlobalSyncWorker" logic caused a deadlock
-      // because GlobalSyncWorker's syncOutbox was blocked by startBulkSync's syncLock.
+      // v372: Coordination with GlobalSyncWorker.
+      // When the app is visible, GlobalSyncWorker handles gallery/media uploads.
+      // The SW only processes them when the app is in background (phone locked).
+      // Text messages, expenses, and other lightweight items are still processed
+      // by both for redundancy, but heavy media uploads are delegated to avoid
+      // double Bunny uploads and race conditions.
       const isAppActive = windowClients.some(client => client.visibilityState === 'visible');
-      if (isAppActive && !isForced) {
-        console.log('[SW] App is visible but processing outbox anyway (v272 fix).');
-      }
+      const skipHeavyMediaItems = isAppActive && !isForced;
 
       // v272: Reset items stuck in 'syncing' for more than 2 minutes (sequential)
       await new Promise((resolveReset) => {
@@ -1552,6 +1553,19 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
           });
 
     const pendingItems = toSync;
+
+    // v372: When page is visible, skip heavy media items — GlobalSyncWorker handles them.
+    // This prevents double Bunny uploads and race conditions.
+    if (skipHeavyMediaItems) {
+      const heavyTypes = new Set(['GALLERY_UPLOAD', 'MEDIA_UPLOAD']);
+      const filteredItems = pendingItems.filter(i => !heavyTypes.has(i.type));
+      const skippedCount = pendingItems.length - filteredItems.length;
+      if (skippedCount > 0) {
+        console.log(`[SW v372] Page visible — skipping ${skippedCount} heavy media items (GlobalSyncWorker will handle)`);
+      }
+      pendingItems.length = 0;
+      pendingItems.push(...filteredItems);
+    }
 
     if (allItems.length > 0) {
       await logSyncSW('info', `Robot ${SW_VERSION}: Encontrados ${allItems.length} ítems en cola.`, 'system');
@@ -2295,6 +2309,39 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
                 });
                 console.log(`[SW] Successfully synced ${item.type} (ID: ${item.id})`);
                 await logSyncSW('success', `Item completado exitosamente: ${item.type}`, item.type, { itemId: item.id });
+                
+                // v372: Notify ALL clients about every successful sync
+                const syncLabel = item.type === 'GALLERY_UPLOAD' ? 'Archivo subido a galería' :
+                                  item.type === 'MESSAGE' ? 'Mensaje sincronizado' :
+                                  item.type === 'MEDIA_UPLOAD' ? 'Multimedia sincronizada' :
+                                  item.type === 'PROJECT' ? 'Proyecto creado' :
+                                  item.type === 'EXPENSE' ? 'Gasto sincronizado' :
+                                  item.type === 'TASK' ? 'Tarea sincronizada' :
+                                  item.type === 'DAY_START' ? 'Jornada iniciada' :
+                                  item.type === 'DAY_END' ? 'Jornada finalizada' :
+                                  item.type === 'TEAM_UPDATE' ? 'Equipo actualizado' :
+                                  item.type === 'GALLERY_DELETE' ? 'Archivo eliminado' :
+                                  item.type === 'PHASE_COMPLETE' ? 'Fase completada' :
+                                  `Item sincronizado (${item.type})`;
+                
+                self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+                  clients.forEach(c => c.postMessage({
+                    type: 'SYNC_COMPLETED',
+                    itemType: item.type,
+                    projectId: item.projectId,
+                    label: syncLabel,
+                    success: true
+                  }));
+                  // v372: Also send GALLERY_SYNCED for gallery refresh
+                  if (item.type === 'GALLERY_UPLOAD') {
+                    const galleryResp = resData || {};
+                    c.postMessage({
+                      type: 'GALLERY_SYNCED',
+                      projectId: item.projectId,
+                      galleryItem: galleryResp
+                    });
+                  }
+                });
             } else {
                throw new Error('Server returned ' + res.status);
             }

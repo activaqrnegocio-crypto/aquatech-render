@@ -13,6 +13,7 @@ import OfflineErrorBoundary from '@/components/OfflineErrorBoundary'
 // They don't affect visual render, so they load AFTER the UI paints
 const GlobalSyncWorker = dynamic(() => import('@/components/GlobalSyncWorker'), { ssr: false })
 const OfflinePrefetcher = dynamic(() => import('@/components/OfflinePrefetcher'), { ssr: false })
+const SyncToast = dynamic(() => import('@/components/SyncToast'), { ssr: false })
 import { useState, useEffect } from 'react'
 
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
@@ -74,6 +75,7 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
         <>
           <GlobalSyncWorker />
           <OfflinePrefetcher urls={pagesToPrefetch} />
+          <SyncToast />
         </>
       )}
       <Sidebar />

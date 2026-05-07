@@ -943,7 +943,21 @@ export default function GlobalSyncWorker() {
                 hasSyncedAnything = true
                 await logSync('success', `✓ Sincronizado: ${item.type} #${item.id}`, item.type, `Proyecto ${item.projectId}`);
                 if (typeof window !== 'undefined') {
-                  window.dispatchEvent(new CustomEvent('sync-success', { detail: { type: item.type, projectId: item.projectId } }))
+                  const syncLabel = item.type === 'GALLERY_UPLOAD' ? 'Archivo subido a galería' :
+                                    item.type === 'MESSAGE' ? 'Mensaje sincronizado' :
+                                    item.type === 'MEDIA_UPLOAD' ? 'Multimedia sincronizada' :
+                                    item.type === 'PROJECT' ? 'Proyecto creado' :
+                                    item.type === 'EXPENSE' ? 'Gasto sincronizado' :
+                                    item.type === 'TASK' ? 'Tarea sincronizada' :
+                                    item.type === 'DAY_START' ? 'Jornada iniciada' :
+                                    item.type === 'DAY_END' ? 'Jornada finalizada' :
+                                    item.type === 'TEAM_UPDATE' ? 'Equipo actualizado' :
+                                    item.type === 'GALLERY_DELETE' ? 'Archivo eliminado' :
+                                    item.type === 'GALLERY_RENAME' ? 'Archivo renombrado' :
+                                    item.type === 'PHASE_COMPLETE' ? 'Fase completada' :
+                                    item.type === 'PHASE_CREATE' ? 'Fase creada' :
+                                    `Item sincronizado (${item.type})`;
+                  window.dispatchEvent(new CustomEvent('sync-success', { detail: { type: item.type, projectId: item.projectId, label: syncLabel } }))
                 }
               } else {
                const status = res.status

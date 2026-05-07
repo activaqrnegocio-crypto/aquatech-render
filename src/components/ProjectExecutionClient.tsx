@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useTransition, useMemo, useRef } from 'react'
+import { useState, useEffect, useTransition, useMemo, useRef, useCallback } from 'react'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
 import ProjectUploader, { ProjectFile } from '@/components/ProjectUploader'
 import { db } from '@/lib/db'
@@ -187,6 +187,25 @@ export default function ProjectExecutionClient({
     }
   }, [project?.team])
 
+  // v372: Refresh gallery data after sync completes
+  const refreshGallery = useCallback(async () => {
+    if (!idFromUrl || typeof navigator === 'undefined' || !navigator.onLine) return;
+    try {
+      const resp = await fetch(`/api/projects/${idFromUrl}?_t=${Date.now()}`, { cache: 'no-store' });
+      if (!resp.ok) return;
+      const data = await resp.json();
+      if (data?.gallery && Array.isArray(data.gallery)) {
+        // v372: Always set gallery — even if localProject is null (Dexie recovery pending)
+        setLocalProject((prev: any) => {
+          if (prev) return { ...prev, gallery: data.gallery };
+          // If localProject is not yet recovered from Dexie, create a minimal object with gallery
+          // so the evidenceGallery doesn't show empty.
+          return { id: idFromUrl, gallery: data.gallery };
+        });
+      }
+    } catch(e) { /* silent */ }
+  }, [idFromUrl]);
+
   // Single mount effect
   useEffect(() => {
     setMounted(true)
@@ -224,7 +243,22 @@ export default function ProjectExecutionClient({
             }
           }, 2000); // Wait 2s after last sync-success to batch the fetch
         }
+        
+        // v372: Refresh gallery when a GALLERY_UPLOAD completes
+        if (e.detail?.type === 'GALLERY_UPLOAD') {
+          refreshGallery();
+        }
       }
+    }
+
+    // v372: Listen for SW messages about gallery sync
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'GALLERY_SYNCED' && event.data?.projectId === idFromUrl) {
+        refreshGallery();
+      }
+    };
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', handleSWMessage);
     }
 
     window.addEventListener('online', updateOnlineStatus)
@@ -245,6 +279,9 @@ export default function ProjectExecutionClient({
       window.removeEventListener('online', updateOnlineStatus)
       window.removeEventListener('offline', updateOnlineStatus)
       window.removeEventListener('sync-success', handleSyncSuccess)
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', handleSWMessage);
+      }
     }
   }, [])
 
@@ -627,11 +664,9 @@ export default function ProjectExecutionClient({
   }, [mounted, idFromUrl])
 
   // v370: Refrescar galería si está vacía (post-recovery desde caché que no tenía gallery)
+  // v372: También se ejecuta periódicamente cada 30s para mantener galería actualizada
   useEffect(() => {
     if (!mounted || !idFromUrl || !navigator.onLine) return;
-    const hasGallery = (project?.gallery && project.gallery.length > 0) ||
-                       (localProject?.gallery && localProject.gallery.length > 0);
-    if (hasGallery) return; // Ya tenemos datos de galería
     
     const fetchGallery = async () => {
       try {
@@ -639,14 +674,25 @@ export default function ProjectExecutionClient({
         if (!resp.ok) return;
         const data = await resp.json();
         if (data?.gallery && Array.isArray(data.gallery)) {
-          setLocalProject((prev: any) => prev ? { ...prev, gallery: data.gallery } : prev);
+          setLocalProject((prev: any) => {
+            if (prev) return { ...prev, gallery: data.gallery };
+            return { id: idFromUrl, gallery: data.gallery };
+          });
         }
       } catch(e) { /* silent */ }
     };
     
-    const timer = setTimeout(fetchGallery, 500);
-    return () => clearTimeout(timer);
-  }, [mounted, idFromUrl, project?.gallery?.length, localProject?.gallery?.length]);
+    // First fetch after 500ms (for post-recovery)
+    const initialTimer = setTimeout(fetchGallery, 500);
+    
+    // v372: Periodic refresh every 30s to catch newly synced items
+    const periodicInterval = setInterval(fetchGallery, 30000);
+    
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(periodicInterval);
+    };
+  }, [mounted, idFromUrl]);
 
   const allExpenses = useMemo(() => {
     let list = [...localExpenses]
@@ -744,6 +790,9 @@ export default function ProjectExecutionClient({
       if (!objUrl && (p.mimeType || '').startsWith('image/')) {
         objUrl = '/placeholder-image.png';
       }
+
+      // v372: Pass actual sync status for proper UI feedback
+      const syncStatus = item.status || 'pending';
       
       return {
         id: `pending-${item.id}`, 
@@ -751,7 +800,10 @@ export default function ProjectExecutionClient({
         filename: p.filename || 'Pendiente...', 
         mimeType: p.mimeType || 'image/jpeg',
         category: p.category || 'MASTER', 
-        isPending: true
+        isPending: syncStatus === 'pending',
+        isSyncing: syncStatus === 'syncing',
+        isFailed: syncStatus === 'failed',
+        syncStatus
       }
     })
     const list = [...baseFiles, ...expenseFiles, ...pendingGallery]
@@ -813,10 +865,11 @@ export default function ProjectExecutionClient({
 
   const [evidenceFilter, setEvidenceFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
   const evidenceGallery = useMemo(() => {
-    if (!project?.gallery) return []
+    // v372: Don't return [] immediately if gallery is undefined — pending items should still show
+    const existingGallery = project?.gallery || [];
     const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
     
-    const list = [...(project?.gallery || []).filter((item: any) => {
+    const list = [...existingGallery.filter((item: any) => {
       const cat = (item.category || '').toUpperCase();
       // v332: Support more tags for final delivery gallery
       return !item.isFromChat && (cat === 'EVIDENCE' || cat === 'FINALES' || cat === 'ENTREGA' || cat === 'ENTREGA_FINAL' || cat === 'ADJUNTO' || cat === 'MASTER_FINAL');
@@ -853,13 +906,19 @@ export default function ProjectExecutionClient({
         objUrl = '/placeholder-image.png';
       }
 
+      // v372: Pass the actual outbox status for proper UI indicators
+      const syncStatus = item.status || 'pending';
+
       return {
         id: `pending-ev-${item.id}`, 
         url: objUrl || '/placeholder-image.png',
         filename: p.filename || 'Pendiente...', 
         mimeType: p.mimeType || 'image/jpeg',
         category: p.category || 'EVIDENCE', 
-        isPending: true
+        isPending: syncStatus === 'pending',
+        isSyncing: syncStatus === 'syncing',
+        isFailed: syncStatus === 'failed',
+        syncStatus
       }
     })
     const combinedList = [...list, ...pendingEvidence]
@@ -1506,9 +1565,32 @@ export default function ProjectExecutionClient({
     }
   }
 
-  const handleUploadMedia = async (file: ProjectFile) => {
-    if (saveLockRef.current) return;
+  // v372: Cola de archivos para batch upload — procesa uno por uno
+  const uploadQueue = useRef<ProjectFile[]>([]);
+  const processNextInQueue = useCallback(async () => {
+    if (uploadQueue.current.length === 0 || saveLockRef.current) return;
     saveLockRef.current = true;
+    const nextFile = uploadQueue.current.shift()!;
+    try {
+      await processSingleUpload(nextFile);
+    } finally {
+      saveLockRef.current = false;
+      // Procesar siguiente si hay más en cola
+      if (uploadQueue.current.length > 0) {
+        processNextInQueue();
+      }
+    }
+  }, []);
+
+  const handleUploadMedia = (file: ProjectFile) => {
+    // Poner en cola en lugar de dropear
+    uploadQueue.current.push(file);
+    if (!saveLockRef.current) {
+      processNextInQueue();
+    }
+  }
+
+  const processSingleUpload = async (file: ProjectFile) => {
     setLoading(true)
 
     try {
@@ -1543,7 +1625,6 @@ export default function ProjectExecutionClient({
           if (fileSize > OFFLINE_MAX_SIZE) {
             alert(`El archivo "${file.filename}" (${(fileSize / (1024*1024)).toFixed(0)} MB) es demasiado grande para guardar offline. \n\nLímite Offline: 300MB (Aprox. 5 min de video). \n\nPor favor conéctate a internet para subir archivos más pesados.`);
             setLoading(false);
-            saveLockRef.current = false;
             return;
           }
 
@@ -1598,7 +1679,6 @@ export default function ProjectExecutionClient({
           if (e?.message?.includes('ARCHIVO_MUY_GRANDE')) {
             alert(e.message);
             setLoading(false);
-            saveLockRef.current = false;
             return;
           }
           galleryPayload.url = file.url; // Fallback
@@ -1619,7 +1699,6 @@ export default function ProjectExecutionClient({
         })
         setLoading(false)
         triggerBackgroundSync()
-        saveLockRef.current = false;
         return
       }
 
@@ -1662,7 +1741,6 @@ export default function ProjectExecutionClient({
       console.error(e)
     } finally {
       setLoading(false)
-      saveLockRef.current = false;
     }
   }
 
@@ -2607,9 +2685,19 @@ export default function ProjectExecutionClient({
                           }}
                         >
                           {/* v260: Pending Overlays */}
+                          {item.isSyncing && (
+                            <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 10, background: '#3b82f6', color: 'white', padding: '4px', borderRadius: '50%', boxShadow: '0 2px 8px rgba(0,0,0,0.4)', display: 'flex' }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+                            </div>
+                          )}
                           {item.isPending && (
                             <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 10, background: 'var(--warning)', color: 'white', padding: '4px', borderRadius: '50%', boxShadow: '0 2px 8px rgba(0,0,0,0.4)', display: 'flex' }}>
                               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+                            </div>
+                          )}
+                          {item.isFailed && (
+                            <div style={{ position: 'absolute', top: '8px', right: '8px', zIndex: 10, background: '#ef4444', color: 'white', padding: '4px', borderRadius: '50%', boxShadow: '0 2px 8px rgba(0,0,0,0.4)', display: 'flex' }}>
+                              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>
                             </div>
                           )}
                           {item.isPendingDelete && (
@@ -2677,6 +2765,28 @@ export default function ProjectExecutionClient({
                             }
                           })()}
 
+                          {item.isSyncing && (
+                            <div style={{ 
+                              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                              background: 'linear-gradient(135deg, rgba(59,130,246,0.6), rgba(37,99,235,0.4))', 
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                              zIndex: 10 
+                            }}>
+                              <span style={{ fontSize: '1.2rem' }}>🔄</span>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subiendo</span>
+                            </div>
+                          )}
+                          {item.isFailed && (
+                            <div style={{ 
+                              position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                              background: 'linear-gradient(135deg, rgba(239,68,68,0.6), rgba(220,38,38,0.4))', 
+                              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', 
+                              zIndex: 10 
+                            }}>
+                              <span style={{ fontSize: '1.2rem' }}>❌</span>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Falló</span>
+                            </div>
+                          )}
                           {item.isPending && (
                             <div style={{ 
                               position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
@@ -2685,7 +2795,7 @@ export default function ProjectExecutionClient({
                               zIndex: 10 
                             }}>
                               <span style={{ fontSize: '1.2rem' }}>🕒</span>
-                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subiendo</span>
+                              <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Pendiente</span>
                             </div>
                           )}
                           {item.isPendingDelete && (
@@ -2900,6 +3010,31 @@ export default function ProjectExecutionClient({
                         </div>
                       </div>
 
+                      {/* v372: Sync status overlays with distinct colors */}
+                      {item.isSyncing && (
+                        <div style={{ 
+                          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                          background: 'linear-gradient(135deg, rgba(59,130,246,0.6), rgba(37,99,235,0.4))', 
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexDirection: 'column', gap: '4px',
+                          zIndex: 30
+                        }}>
+                          <span style={{ fontSize: '1.2rem' }}>🔄</span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Subiendo</span>
+                        </div>
+                      )}
+                      {item.isFailed && (
+                        <div style={{ 
+                          position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 
+                          background: 'linear-gradient(135deg, rgba(239,68,68,0.6), rgba(220,38,38,0.4))', 
+                          display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          flexDirection: 'column', gap: '4px',
+                          zIndex: 30
+                        }}>
+                          <span style={{ fontSize: '1.2rem' }}>❌</span>
+                          <span style={{ fontSize: '0.65rem', fontWeight: 'bold', color: 'white', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Falló</span>
+                        </div>
+                      )}
                       {item.isPending && (
                         <div style={{ 
                           position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, 

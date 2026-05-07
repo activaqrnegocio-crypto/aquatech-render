@@ -179,6 +179,54 @@ export default function OperatorDashboardClient({
     }
   }, [appointmentsFromCache])
 
+  // v371: Fetch fresh appointments from API when online.
+  // The operator dashboard previously relied ONLY on IndexedDB cache (populated by GlobalSyncWorker).
+  // But if an admin creates a task for this operator, it won't appear until the next bulk sync (~15 min).
+  // This ensures the operator sees tasks created by others immediately.
+  useEffect(() => {
+    let isMounted = true
+
+    const fetchFreshAppointments = async () => {
+      const uId = user?.id || localUser?.id
+      if (!uId || typeof navigator === 'undefined' || !navigator.onLine) return
+
+      try {
+        const now = new Date()
+        const start = new Date(now.getFullYear(), now.getMonth() - 1, 1).toISOString()
+        const end = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString()
+        
+        const res = await fetch(`/api/appointments?userId=${uId}&start=${start}&end=${end}`)
+        if (!isMounted) return
+        
+        if (res.ok) {
+          const data = await res.json()
+          if (Array.isArray(data) && data.length > 0) {
+            // Update the cache — useLiveQuery will react automatically
+            await db.appointmentsCache.bulkPut(data)
+          }
+        }
+      } catch (e) {
+        // Silent — stay with cached data
+      }
+    }
+
+    // Fetch on mount and when user changes
+    fetchFreshAppointments()
+
+    // Also listen for sync-success events to refresh
+    const handleSyncSuccess = (event: any) => {
+      if (event.detail?.type === 'TASK') {
+        fetchFreshAppointments()
+      }
+    }
+    window.addEventListener('sync-success' as any, handleSyncSuccess)
+
+    return () => {
+      isMounted = false
+      window.removeEventListener('sync-success' as any, handleSyncSuccess)
+    }
+  }, [user?.id, localUser?.id])
+
   // v292: Emergency Fallback for Offline "DEAD" state
   const [emergencyProjects, setEmergencyProjects] = useState<any[] | undefined>(() => {
     // v316: Usar localStorage en vez de sessionStorage para que el snapshot sobreviva
