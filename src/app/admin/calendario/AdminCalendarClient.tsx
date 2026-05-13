@@ -383,19 +383,30 @@ export default function AdminCalendarClient({
         )}
 
         <div className="calendar-wrapper">
-          <CalendarView 
-            events={allAppointments}
-            isAdmin={isAdmin}
-            viewMode="WEEK"
-            onAddEvent={(date) => { 
-                setEditingEvent({ startTime: date }); 
-                setIsModalOpen(true); 
-            }}
-            onEditEvent={(event) => { 
-                setEditingEvent(event); 
-                setIsModalOpen(true); 
-            }}
-          />
+          {loading && !initialDataLoaded ? (
+            <div className="calendar-skeleton">
+              <div className="skeleton-header" />
+              <div className="skeleton-grid">
+                {[...Array(28)].map((_, i) => (
+                  <div key={i} className="skeleton-cell" />
+                ))}
+              </div>
+            </div>
+          ) : (
+            <CalendarView 
+              events={allAppointments}
+              isAdmin={isAdmin}
+              viewMode="WEEK"
+              onAddEvent={(date) => { 
+                  setEditingEvent({ startTime: date }); 
+                  setIsModalOpen(true); 
+              }}
+              onEditEvent={(event) => { 
+                  setEditingEvent(event); 
+                  setIsModalOpen(true); 
+              }}
+            />
+          )}
         </div>
       </div>
 
@@ -406,9 +417,9 @@ export default function AdminCalendarClient({
           onSave={handleSaveAppointment}
           onDelete={handleDeleteAppointment}
           initialData={editingEvent}
-          userId={selectedOperatorId === 'all' ? 0 : Number(selectedOperatorId)} // This will be handled by the specialized modal
+          userId={selectedOperatorId === 'all' ? 0 : Number(selectedOperatorId)} 
           projects={cachedProjects}
-          operators={cachedOperators} // New prop for admin selection
+          operators={cachedOperators}
           isAdminView={true}
         />
       )}
@@ -418,6 +429,38 @@ export default function AdminCalendarClient({
       <style jsx>{`
         .calendar-wrapper {
           min-height: 600px;
+          position: relative;
+        }
+        .calendar-skeleton {
+          display: flex;
+          flex-direction: column;
+          gap: 1rem;
+        }
+        .skeleton-header {
+          height: 40px;
+          width: 300px;
+          background: rgba(255,255,255,0.05);
+          border-radius: 8px;
+          animation: pulse 1.5s infinite;
+        }
+        .skeleton-grid {
+          display: grid;
+          grid-template-columns: repeat(7, 1fr);
+          gap: 1px;
+          background: var(--border);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          overflow: hidden;
+        }
+        .skeleton-cell {
+          height: 120px;
+          background: var(--bg-card);
+          animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+          0% { opacity: 0.5; }
+          50% { opacity: 0.8; }
+          100% { opacity: 0.5; }
         }
         .calendar-header-mobile {
           display: flex;

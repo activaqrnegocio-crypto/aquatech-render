@@ -176,8 +176,9 @@ export default function ProjectExecutionClient({
     const handleSyncSuccess = (e: any) => {
       if (e.detail?.projectId === idFromUrl) {
         if (e.detail?.type === 'MESSAGE' || e.detail?.type === 'MEDIA_UPLOAD') {
-          // Refresh handled by deduplication and live queries usually, 
-          // but we can trigger a manual fetch if needed
+          // v400: Explicitly refresh gallery and chat when a sync success is detected
+          if (e.detail?.type === 'MEDIA_UPLOAD') refreshGallery()
+          if (e.detail?.type === 'MESSAGE') fetchMessages()
         }
       }
     }
@@ -195,7 +196,17 @@ export default function ProjectExecutionClient({
     }
   }, [idFromUrl])
 
+  // v400: Periodic gallery refresh to catch background syncs while on the page
+  useEffect(() => {
+    if (activeTab !== 'records' || !isOnline) return
+    const interval = setInterval(() => {
+      refreshGallery()
+    }, 20000) // Every 20s catch-all refresh
+    return () => clearInterval(interval)
+  }, [activeTab, isOnline, refreshGallery])
+
   const userRole = session?.user?.role
+
   const isFieldStaff = userRole === 'OPERATOR' || userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA'
   const hasActiveRecordInThisProject = activeRecord && Number(activeRecord.projectId) === Number(idFromUrl)
   const hasActiveRecordInOtherProject = activeRecord && !hasActiveRecordInThisProject

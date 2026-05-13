@@ -533,8 +533,8 @@ export default function GlobalSyncWorker() {
 
     // Cross-tab and remount lock
     const now = Date.now()
-    if (now - lastSyncExecution < 3000) {
-      // v282: Reduced throttle to 3s for faster processing
+    if (now - lastSyncExecution < 1500) {
+      // v400: Reduced throttle to 1.5s for faster sync pickup
       return
     }
 
@@ -892,53 +892,69 @@ export default function GlobalSyncWorker() {
              // When created offline, files have fileData: { buffer, type, name } instead of URLs
              if (item.type === 'PROJECT' && Array.isArray(finalPayload.files)) {
                try {
-                 const processedFiles = [];
-                 for (const f of finalPayload.files) {
-                   if (f.fileData && f.fileData.buffer) {
-                     // v355: File has binary data stored from offline — upload to Bunny
-                     const blob = new Blob([f.fileData.buffer], { type: f.fileData.type || f.mimeType || 'application/octet-stream' });
-                     const uploadResult = await uploadToBunnyClientSide(blob, f.fileData.name || f.filename, 'projects');
-                     
-                     processedFiles.push({
-                       url: uploadResult.url,
-                       filename: f.filename || f.fileData.name,
-                       mimeType: uploadResult.mimeType,
-                       type: uploadResult.type,
-                       category: f.category,
-                       size: f.size
-                     });
+                 const processedFiles: any[] = [];
 
-                     // v355: CRITICAL MEMORY RELEASE
-                     // Clear the buffer from memory immediately after upload
-                     // This prevents OOM crashes when syncing multiple large videos (e.g. 600MB total)
-                     f.fileData.buffer = null;
-                     f.fileData = null;
-                     
-                     // Small delay to let the browser Garbage Collector work
-                     await new Promise(resolve => setTimeout(resolve, 150));
-                   } else if (f.file instanceof File || f.file instanceof Blob) {
-                     // v370: Large file (>10MB) stored as raw File via structured clone.
-                     // Upload directly to Bunny without loading entire file into RAM.
-                     const uploadResult = await uploadToBunnyClientSide(f.file, f.filename || f.file.name, 'projects');
-                     processedFiles.push({
-                       url: uploadResult.url,
-                       filename: f.filename || f.file.name,
-                       mimeType: uploadResult.mimeType || f.file.type,
-                       type: uploadResult.type,
-                       category: f.category,
-                       size: f.file.size
-                     });
-                     // Release the File reference to free IndexedDB space
-                     f.file = null;
-                     await new Promise(resolve => setTimeout(resolve, 100));
+                 // v400: Classify files into uploadable vs pass-through
+                 const toUpload: { index: number; f: any }[] = [];
+                 const passThrough: { index: number; result: any }[] = [];
+
+                 for (let fi = 0; fi < finalPayload.files.length; fi++) {
+                   const f = finalPayload.files[fi];
+                   if ((f.fileData && f.fileData.buffer) || (f.file instanceof File || f.file instanceof Blob)) {
+                     toUpload.push({ index: fi, f });
                    } else if (f.url && f.url.startsWith('data:')) {
-                     // Small file with base64 — let the API handle it
-                     processedFiles.push({ url: f.url, filename: f.filename, mimeType: f.mimeType, type: f.type, category: f.category, size: f.size });
+                     passThrough.push({ index: fi, result: { url: f.url, filename: f.filename, mimeType: f.mimeType, type: f.type, category: f.category, size: f.size } });
                    } else if (f.url && f.url.startsWith('http')) {
-                     // Already uploaded — pass through
-                     processedFiles.push(f);
+                     passThrough.push({ index: fi, result: f });
                    }
-                   // Skip files with empty/blob URLs that have no fileData (corrupted)
+                 }
+
+                 // v400: Upload in parallel batches of 3 for speed
+                 const UPLOAD_BATCH = 3;
+                 const uploadResults: { index: number; result: any }[] = [];
+
+                 for (let bi = 0; bi < toUpload.length; bi += UPLOAD_BATCH) {
+                   const batch = toUpload.slice(bi, bi + UPLOAD_BATCH);
+                   const batchResults = await Promise.all(batch.map(async ({ index: fi, f }) => {
+                     if (f.fileData && f.fileData.buffer) {
+                       const blob = new Blob([f.fileData.buffer], { type: f.fileData.type || f.mimeType || 'application/octet-stream' });
+                       const uploadResult = await uploadToBunnyClientSide(blob, f.fileData.name || f.filename, 'projects');
+                       const result = {
+                         url: uploadResult.url,
+                         filename: f.filename || f.fileData.name,
+                         mimeType: uploadResult.mimeType,
+                         type: uploadResult.type,
+                         category: f.category,
+                         size: f.size
+                       };
+                       // Memory release
+                       f.fileData.buffer = null;
+                       f.fileData = null;
+                       return { index: fi, result };
+                     } else {
+                       // File or Blob
+                       const uploadResult = await uploadToBunnyClientSide(f.file, f.filename || f.file.name, 'projects');
+                       const result = {
+                         url: uploadResult.url,
+                         filename: f.filename || f.file.name,
+                         mimeType: uploadResult.mimeType || f.file.type,
+                         type: uploadResult.type,
+                         category: f.category,
+                         size: f.file.size
+                       };
+                       f.file = null;
+                       return { index: fi, result };
+                     }
+                   }));
+                   uploadResults.push(...batchResults);
+                   // GC breathing room between batches
+                   await new Promise(resolve => setTimeout(resolve, 100));
+                 }
+
+                 // Reassemble in original order
+                 const allResults = [...uploadResults, ...passThrough].sort((a, b) => a.index - b.index);
+                 for (const { result } of allResults) {
+                   processedFiles.push(result);
                  }
                  finalPayload.files = processedFiles;
                } catch (err) {
@@ -986,6 +1002,47 @@ export default function GlobalSyncWorker() {
                 await db.outbox.delete(item.id!)
                 hasSyncedAnything = true
                 await logSync('success', `✓ Sincronizado: ${item.type} #${item.id}`, item.type, `Proyecto ${item.projectId}`);
+
+                // v400: Immediately cache synced PROJECT in IndexedDB so it appears
+                // in the operator's list without waiting for the next bulk-sync (15 min)
+                if (item.type === 'PROJECT' && resData.id) {
+                  try {
+                    const wizardPayload = item.payload || {};
+                    const teamData = (wizardPayload.team || []).map((tid: any) => ({
+                      id: 0,
+                      userId: Number(tid),
+                      user: { id: Number(tid), name: 'Operador', role: 'OPERATOR', phone: '' }
+                    }));
+                    
+                    await db.projectsCache.put({
+                      ...resData,
+                      id: resData.id,
+                      createdBy: Number(session?.user?.id),
+                      team: teamData,
+                      client: wizardPayload.client || { name: '' },
+                      phases: (wizardPayload.phases || []).map((p: any, i: number) => ({
+                        id: 0, title: p.title, status: 'PENDIENTE', displayOrder: i + 1,
+                        estimatedDays: p.estimatedDays || 0
+                      })),
+                      gallery: (resData.gallery || wizardPayload.files || []),
+                      isSkeleton: false,
+                      lastAccessedAt: Date.now(),
+                      chatMessages: [],
+                      unreadCount: 0
+                    });
+                    
+                    // Invalidate cache metadata so the list refreshes
+                    const u = session?.user as any;
+                    const cacheKey = `projects_bulk_${u?.id || 'default'}`;
+                    const meta = await db.cacheMetadata.get(cacheKey);
+                    if (meta) {
+                      await db.cacheMetadata.update(cacheKey, { lastSync: 0, count: (meta.count || 0) + 1 });
+                    }
+                  } catch (cacheErr) {
+                    // Non-blocking — don't break sync if cache write fails
+                    console.warn('[Sync] Failed to cache synced project:', cacheErr);
+                  }
+                }
                 if (typeof window !== 'undefined') {
                   const syncLabel = item.type === 'GALLERY_UPLOAD' ? 'Archivo subido a galería' :
                                     item.type === 'MESSAGE' ? 'Mensaje sincronizado' :
@@ -1001,7 +1058,12 @@ export default function GlobalSyncWorker() {
                                     item.type === 'PHASE_COMPLETE' ? 'Fase completada' :
                                     item.type === 'PHASE_CREATE' ? 'Fase creada' :
                                     `Item sincronizado (${item.type})`;
-                  window.dispatchEvent(new CustomEvent('sync-success', { detail: { type: item.type, projectId: item.projectId, label: syncLabel } }))
+                  const eventProjectId = item.type === 'PROJECT' ? (resData?.id || item.projectId) : item.projectId;
+                  window.dispatchEvent(new CustomEvent('sync-success', { detail: { 
+                    type: item.type, 
+                    projectId: eventProjectId, 
+                    label: syncLabel 
+                  } }))
                 }
               } else {
                const status = res.status
@@ -1028,7 +1090,7 @@ export default function GlobalSyncWorker() {
           }
           
           // v365: Increased pacing delay to prevent connection saturation
-          await new Promise(r => setTimeout(r, 1000));
+          await new Promise(r => setTimeout(r, 300));
        } catch (e) {
           // v272: Mark context as failed so dependents are skipped
           if (ctx) failedContexts.add(ctx);

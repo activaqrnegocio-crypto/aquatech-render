@@ -24,11 +24,19 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
   const [isMounted, setIsMounted] = useState(false)
   const [step, setStep] = useLocalStorage('project_draft_step', 1)
   const [loading, setLoading] = useState(false)
+  const [uploadProgress, setUploadProgress] = useState('')
   const [gpsLoading, setGpsLoading] = useState(false)
   const isCreatingRef = useRef(false)
 
   useEffect(() => {
     setIsMounted(true)
+    
+    // v400: Listen for upload progress from the creation handler
+    const handleProgress = (e: any) => {
+      if (e.detail?.message) setUploadProgress(e.detail.message)
+    }
+    window.addEventListener('upload-progress', handleProgress)
+    return () => window.removeEventListener('upload-progress', handleProgress)
   }, [])
   const [error, setError] = useState('')
 
@@ -465,13 +473,67 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
         return
       }
 
-      // v353: Clean non-serializable File objects from the payload before sending
+      // v400: Upload files CLIENT-SIDE to BunnyCDN before sending to API
+      // This avoids sending 20MB+ base64 JSON bodies over slow mobile connections.
+      // Files are uploaded in parallel batches of 3 for speed.
+      const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
+      const filesToUpload = payload.files.filter((f: any) => f.file instanceof File || f.file instanceof Blob || (f.url && f.url.startsWith('data:')));
+      const alreadyUploaded = payload.files.filter((f: any) => f.url && f.url.startsWith('http'));
+      
+      const uploadedFiles: any[] = [...alreadyUploaded.map((f: any) => { const { file, ...rest } = f; return rest; })];
+      
+      if (filesToUpload.length > 0) {
+        const BATCH = 3;
+        for (let bi = 0; bi < filesToUpload.length; bi += BATCH) {
+          const batch = filesToUpload.slice(bi, bi + BATCH);
+          setError(''); // Clear any previous error
+          // v400: Visual progress feedback
+          const progressMsg = `Subiendo archivos ${bi + 1}-${Math.min(bi + BATCH, filesToUpload.length)} de ${filesToUpload.length}...`;
+          if (typeof window !== 'undefined') {
+            window.dispatchEvent(new CustomEvent('upload-progress', { detail: { message: progressMsg } }));
+          }
+          
+          const results = await Promise.all(batch.map(async (f: any) => {
+            try {
+              let blob: File | Blob;
+              let filename: string;
+              
+              if (f.file instanceof File || f.file instanceof Blob) {
+                blob = f.file;
+                filename = f.file instanceof File ? f.file.name : (f.filename || `upload_${Date.now()}.jpg`);
+              } else if (f.url && f.url.startsWith('data:')) {
+                const res = await fetch(f.url);
+                blob = await res.blob();
+                filename = f.filename || `upload_${Date.now()}.jpg`;
+              } else {
+                return { url: f.url, filename: f.filename, mimeType: f.mimeType, type: f.type, category: f.category, size: f.size };
+              }
+              
+              const uploadResult = await uploadToBunnyClientSide(blob, filename, 'projects');
+              return {
+                url: uploadResult.url,
+                filename: filename,
+                mimeType: uploadResult.mimeType || f.mimeType,
+                type: uploadResult.type || f.type,
+                category: f.category || 'MASTER',
+                size: f.size || (blob instanceof File ? blob.size : blob.size)
+              };
+            } catch (err) {
+              console.error('[Wizard] Client-side upload failed:', err);
+              // Fallback: send base64 to let the server handle it
+              const { file, ...rest } = f;
+              return rest;
+            }
+          }));
+          uploadedFiles.push(...results);
+          // GC breathing room
+          await new Promise(resolve => setTimeout(resolve, 50));
+        }
+      }
+
       const cleanPayload = {
         ...payload,
-        files: payload.files.map((f: any) => {
-          const { file, ...rest } = f;
-          return rest;
-        })
+        files: uploadedFiles
       };
 
       const resp = await fetch('/api/projects', {
@@ -743,6 +805,24 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
       boxSizing: 'border-box',
       paddingBottom: '120px' 
     }}>
+      {loading && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-md z-[9999] flex flex-col items-center justify-center animate-in fade-in duration-300">
+          <div className="bg-white p-8 rounded-3xl shadow-2xl flex flex-col items-center gap-6 max-w-xs w-full mx-4">
+            <div className="relative">
+              <div className="w-16 h-16 border-4 border-blue-50 border-t-blue-600 rounded-full animate-spin"></div>
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="w-3 h-3 bg-blue-600 rounded-full animate-pulse"></div>
+              </div>
+            </div>
+            <div className="flex flex-col items-center gap-2 text-center">
+              <p className="text-blue-600 font-bold text-lg animate-pulse">
+                {uploadProgress || 'Creando proyecto...'}
+              </p>
+              <p className="text-gray-400 text-sm">Por favor, no cierres esta ventana</p>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="dashboard-header mb-8">
         <div>
           <h2 style={{ fontSize: '1.8rem', fontWeight: '800' }}>Nuevo Proyecto</h2>

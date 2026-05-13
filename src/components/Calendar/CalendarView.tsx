@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useMemo } from 'react'
+import { useState, useEffect, useMemo } from 'react'
 import { getLocalNow, formatToEcuador, formatTimeEcuador, formatDateEcuador, toEcuadorISODate } from '@/lib/date-utils'
 
 // Inline SVG icons to match project pattern and avoid lucide-react issues
@@ -30,7 +30,13 @@ export default function CalendarView({
   isAdmin = false
 }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(getLocalNow())
+  // Use initialViewMode directly if it changes
   const [viewMode, setViewMode] = useState<'MONTH' | 'WEEK'>(initialViewMode)
+
+  useEffect(() => {
+    if (initialViewMode) setViewMode(initialViewMode)
+  }, [initialViewMode])
+
 
   const monthName = formatToEcuador(currentDate, { month: 'long', year: 'numeric' })
   
@@ -273,6 +279,7 @@ export default function CalendarView({
           overflow: hidden;
           border: 1px solid var(--border);
           min-width: 0;
+          min-height: 400px;
         }
         .calendar-header-cell {
           background: var(--bg-deep);

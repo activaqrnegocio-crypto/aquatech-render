@@ -65,6 +65,7 @@ export default function OperatorDashboardClient({
     }
     return null
   })
+  const [syncNotification, setSyncNotification] = useState<{ id: string, title: string } | null>(null)
 
   useEffect(() => {
     if (tabParam === 'calendario') {
@@ -347,6 +348,53 @@ export default function OperatorDashboardClient({
       } catch (e) {}
     }
   }, [projectsFromCache])
+
+  // v352: Listen for PROJECT_SYNCED messages from the Service Worker OR sync-success events from GlobalSyncWorker
+  useEffect(() => {
+    const processSyncedProject = async (projectId: any) => {
+      try {
+        const cached = await db.projectsCache.get(Number(projectId));
+        if (cached) {
+          setEmergencyProjects(prev => {
+            const existing = (prev || []).filter(p => p.id !== cached.id);
+            return [cached, ...existing];
+          });
+          
+          // Show visual notification
+          setSyncNotification({ id: String(cached.id), title: cached.title });
+          setTimeout(() => setSyncNotification(null), 5000);
+
+          // Persist to snapshot
+          try {
+            const prevSnap = JSON.parse(localStorage.getItem('last_op_projects_snapshot') || '[]');
+            const merged = [cached, ...prevSnap.filter((p: any) => p.id !== cached.id)];
+            localStorage.setItem('last_op_projects_snapshot', JSON.stringify(merged.slice(0, 100)));
+          } catch (e) {}
+        }
+      } catch (e) {
+        console.warn('[OpDashboard] Sync process error:', e);
+      }
+    };
+
+    const handleSwMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'PROJECT_SYNCED' && event.data?.projectId) {
+        processSyncedProject(event.data.projectId);
+      }
+    };
+
+    const handleSyncSuccess = (event: any) => {
+      if (event.detail?.type === 'PROJECT' && event.detail?.projectId) {
+        processSyncedProject(event.detail.projectId);
+      }
+    };
+
+    navigator.serviceWorker?.addEventListener('message', handleSwMessage);
+    window.addEventListener('sync-success', handleSyncSuccess);
+    return () => {
+      navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
+      window.removeEventListener('sync-success', handleSyncSuccess);
+    };
+  }, []);
 
   // v264: Delayed unread counts to prevent UI blocking on mobile
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({})
@@ -636,36 +684,6 @@ export default function OperatorDashboardClient({
     };
   }, []);
 
-  // v352: Listen for PROJECT_SYNCED messages from the Service Worker.
-  // When the SW syncs a pending project and saves it to projectsCache,
-  // Dexie's useLiveQuery may not detect the cross-context IDB write.
-  // So we manually read the synced project from projectsCache and add it.
-  useEffect(() => {
-    const handleSwMessage = async (event: MessageEvent) => {
-      if (event.data?.type === 'PROJECT_SYNCED' && event.data?.projectId) {
-        console.log('[OpDashboard] SW synced project:', event.data.projectId);
-        try {
-          const cached = await db.projectsCache.get(event.data.projectId);
-          if (cached) {
-            setEmergencyProjects(prev => {
-              const existing = (prev || []).filter(p => p.id !== cached.id);
-              return [cached, ...existing];
-            });
-            // v352: Also persist to localStorage for snapshot recovery
-            try {
-              const prevSnap = JSON.parse(localStorage.getItem('last_op_projects_snapshot') || '[]');
-              const merged = [cached, ...prevSnap.filter((p: any) => p.id !== cached.id)];
-              localStorage.setItem('last_op_projects_snapshot', JSON.stringify(merged.slice(0, 100)));
-            } catch (e) {}
-          }
-        } catch (e) {
-          console.warn('[OpDashboard] Could not read synced project from cache:', e);
-        }
-      }
-    };
-    navigator.serviceWorker?.addEventListener('message', handleSwMessage);
-    return () => navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
-  }, []);
 
 
   // 2. Local outbox tasks (created offline)
@@ -1457,6 +1475,38 @@ export default function OperatorDashboardClient({
           box-shadow: 0 2px 4px rgba(0,0,0,0.2);
           margin-left: 10px;
         }
+      `}</style>
+      {/* Sync Notification Toast */}
+      {syncNotification && (
+        <div 
+          className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[1000] animate-bounce-in"
+          style={{ width: '90%', maxWidth: '400px' }}
+        >
+          <div className="bg-green-600 text-white p-4 rounded-2xl shadow-2xl flex items-center gap-4 border border-white/20 backdrop-blur-md">
+            <div className="w-10 h-10 bg-white/20 rounded-full flex items-center justify-center text-xl">
+              ✅
+            </div>
+            <div className="flex-1">
+              <p className="font-bold text-sm">Proyecto Sincronizado</p>
+              <p className="text-xs opacity-90 line-clamp-1">{syncNotification.title}</p>
+            </div>
+            <button 
+              onClick={() => setSyncNotification(null)}
+              className="p-2 hover:bg-white/10 rounded-lg"
+            >
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
+      <style jsx global>{`
+        @keyframes bounce-in {
+          0% { transform: translate(-50%, 100px); opacity: 0; }
+          60% { transform: translate(-50%, -20px); opacity: 1; }
+          100% { transform: translate(-50%, 0); }
+        }
+        .animate-bounce-in { animation: bounce-in 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards; }
       `}</style>
     </div>
   )

@@ -19,6 +19,15 @@ import { useState, useEffect } from 'react'
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession()
   const pathname = usePathname()
+  const [isNavigating, setIsNavigating] = useState(false)
+
+  useEffect(() => {
+    // Show progress bar on path change
+    setIsNavigating(true)
+    const timer = setTimeout(() => setIsNavigating(false), 1000)
+    return () => clearTimeout(timer)
+  }, [pathname])
+
   const isLoginPage = pathname === '/admin/login'
   const isDashboard = 
     pathname === '/admin' || pathname === '/admin/' || 
@@ -78,6 +87,25 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
         </>
       )}
       <Sidebar />
+      {isNavigating && (
+        <div style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          height: '3px',
+          background: 'linear-gradient(90deg, var(--primary) 0%, #38bdf8 50%, var(--primary) 100%)',
+          zIndex: 9999,
+          width: '100%',
+          animation: 'shimmer 2s infinite linear'
+        }}>
+          <style jsx>{`
+            @keyframes shimmer {
+              0% { transform: translateX(-100%); }
+              100% { transform: translateX(100%); }
+            }
+          `}</style>
+        </div>
+      )}
       <main className="admin-content">
         {!isOnline && (
           <div style={{
