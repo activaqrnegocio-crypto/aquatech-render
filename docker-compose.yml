@@ -15,8 +15,8 @@ services:
       - NEXTAUTH_URL=https://178.238.238.158.sslip.io/
       - AUTH_TRUST_HOST=true
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:3000/api/auth/session"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      start_period: 30s
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s

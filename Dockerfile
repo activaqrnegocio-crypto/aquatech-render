@@ -30,6 +30,9 @@ RUN echo "importScripts('/custom-sw.js');" > public/sw.js
 # Stage 2: Run the application
 FROM node:20-alpine AS runner
 
+# Instalar curl para healthcheck (wget de busybox tiene bugs con IPv6)
+RUN apk add --no-cache curl
+
 WORKDIR /app
 
 ENV NODE_ENV=production

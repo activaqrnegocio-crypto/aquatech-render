@@ -86,15 +86,10 @@ export default function GlobalSyncWorker() {
   // Automatic Trigger: Start sync when session is available and we are online
   useEffect(() => {
     if (session?.user?.id && navigator.onLine && !isBulkSyncing) {
-      // v273: Significantly increased delay (5s) to allow navigation to be smooth first
+      // v373: Reduced to 1s for dev mode — Fast Refresh resets longer timers
       const timer = setTimeout(() => {
-        // Use requestIdleCallback if available for ultra-smooth background start
-        if ('requestIdleCallback' in window) {
-          (window as any).requestIdleCallback(() => startBulkSync());
-        } else {
-          startBulkSync();
-        }
-      }, 5000);
+        startBulkSync();
+      }, 1000);
       return () => clearTimeout(timer);
     }
   }, [session?.user?.id, isOnline]);
@@ -1232,10 +1227,10 @@ export default function GlobalSyncWorker() {
         refreshCaches()
       }, 20000);
 
-      // v274: Delayed start for bulk sync to avoid LCP/Hydration contention
+      // v374: Reduced to 2s for dev mode — 25s was too long for Fast Refresh
       setTimeout(() => {
         if (!syncLock.current) startBulkSync()
-      }, 25000) // Increased to 25s for the heavy bulk sync
+      }, 2000)
     }
     
     // Fase 8: MASTER SYNC LOOP

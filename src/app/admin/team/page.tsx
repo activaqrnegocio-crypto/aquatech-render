@@ -2,9 +2,10 @@
 
 export const dynamic = 'force-dynamic'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
+import { compressImage as optimizedCompress, isCompressibleImage } from '@/lib/image-optimization'
 
 export default function TeamPage() {
   const { data: session, status } = useSession()
@@ -36,6 +37,10 @@ export default function TeamPage() {
     branch: '',
     permissions: [] as string[]
   })
+  
+  // v373: Store File object separately (NOT as base64) for BunnyCDN upload
+  const avatarFileRef = useRef<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState<string | null>(null)
 
   // Security check - Use router for cleaner redirect
   useEffect(() => {
@@ -104,11 +109,14 @@ export default function TeamPage() {
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (file) {
-      const reader = new FileReader()
-      reader.onloadend = () => {
-        setFormData(prev => ({ ...prev, image: reader.result as string }))
-      }
-      reader.readAsDataURL(file)
+      // v373: Store File for Bunny upload, use Object URL for preview (no base64 in state)
+      // Revoke previous Object URL to avoid memory leaks
+      if (avatarPreview) URL.revokeObjectURL(avatarPreview)
+      avatarFileRef.current = file
+      const previewUrl = URL.createObjectURL(file)
+      setAvatarPreview(previewUrl)
+      // Keep a placeholder in formData so the UI shows preview
+      setFormData(prev => ({ ...prev, image: previewUrl }))
     }
   }
 
@@ -124,6 +132,8 @@ export default function TeamPage() {
       branch: '', 
       permissions: ['proyectos', 'cotizaciones', 'inventario', 'recursos'] 
     })
+    avatarFileRef.current = null
+    setAvatarPreview(null)
     setError('')
   }
 
@@ -132,11 +142,35 @@ export default function TeamPage() {
     setError('')
     
     try {
+      // v373: Upload avatar to BunnyCDN instead of storing base64 in DB
+      let imageUrl: string | null = null
+      
+      if (avatarFileRef.current) {
+        setError('Comprimiendo imagen...')
+        let file: File | Blob = avatarFileRef.current
+        
+        // Compress if it's a compressible image
+        if (isCompressibleImage(avatarFileRef.current)) {
+          try {
+            file = await optimizedCompress(avatarFileRef.current)
+          } catch (err) {
+            console.warn('Image compression failed, using original:', err)
+          }
+        }
+        
+        setError('Subiendo imagen...')
+        const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
+        const result = await uploadToBunnyClientSide(file, avatarFileRef.current.name, 'avatars')
+        imageUrl = result.url
+      }
+      
+      setError('')
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           ...formData,
+          image: imageUrl,  // v373: BunnyCDN URL instead of base64
           permissions: JSON.stringify(formData.permissions)
         })
       })
