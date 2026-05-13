@@ -244,53 +244,58 @@ export default function OperatorDashboardClient({
   })
 
   useEffect(() => {
-    // v293: Reducido a 400ms para una respuesta instantánea al navegar.
+    // v400: Added AbortController to prevent multiple concurrent emergency fetches
+    // from racing each other when projectsFromCache updates multiple times on mount.
+    let isMounted = true;
+    const controller = new AbortController();
+
     const timer = setTimeout(async () => {
-      // v356: Only skip emergency loader if we have a healthy number of real projects.
-      // If we only have 1 or 2 (likely just-created ones), or if ALL are pending, 
-      // we should still load the snapshot to avoid the "disappearing projects" issue.
       const realProjects = projectsFromCache?.filter(p => !p.isPending && !String(p.id).startsWith('pending')) || []
       if (realProjects.length > 5) return 
-      
-      console.log(`[Dashboard] Emergency loader triggered. Real projects: ${realProjects.length}, Cache total: ${projectsFromCache?.length || 0}`);
       
       try {
         const uId = user?.id || localUser?.id
         if (!uId) return
-        const userId = Number(uId)
         
-        // v339: Si la caché está vacía y estamos online, fetch inmediato de la API
         const isOnline = typeof navigator !== 'undefined' && navigator.onLine
         if (isOnline) {
           try {
-            const res = await fetch('/api/operator/projects?userId=' + userId, { priority: 'high' })
+            // v400: No userId param needed — server reads it from session
+            const res = await fetch('/api/operator/projects', { 
+              signal: controller.signal,
+              priority: 'high' as any
+            })
+            if (!isMounted) return;
             if (res.ok) {
               const apiProjects = await res.json()
               if (Array.isArray(apiProjects) && apiProjects.length > 0) {
-                // v370: Solo sobrescribir si la API devuelve >= proyectos que el snapshot actual
+                // Only overwrite if API has >= projects than our local snapshot
                 const currentSaved = localStorage.getItem('last_op_projects_snapshot');
                 if (currentSaved) {
                   try {
                     const parsed = JSON.parse(currentSaved);
                     if (Array.isArray(parsed) && parsed.length > apiProjects.length) {
-                      setEmergencyProjects(parsed); // Mantener el snapshot más grande
+                      if (isMounted) setEmergencyProjects(parsed);
                       return;
                     }
                   } catch(e) {}
                 }
-                setEmergencyProjects(apiProjects)
+                if (isMounted) setEmergencyProjects(apiProjects)
                 try { localStorage.setItem('last_op_projects_snapshot', JSON.stringify(apiProjects)) } catch(e) {}
-                return // Ya tenemos datos, no necesitamos seguir con Dexie
+                return
               }
             }
-          } catch (e) {
+          } catch (e: any) {
+            if (e?.name === 'AbortError') return; // Intentionally cancelled
             console.warn('[OperatorDashboard] API fetch fallback failed:', e)
           }
         }
         
         const allProjects = await db.projectsCache
           .orderBy('lastAccessedAt').reverse().limit(500).toArray()
-        
+
+        if (!isMounted) return;
+        const userId = Number(user?.id || localUser?.id)
         const myProjects = allProjects.filter(p => {
           const isInTeam = p.team?.some((m: any) => Number(m.userId) === userId)
           const isCreator = Number(p.createdBy || p.createdById) === userId
@@ -298,20 +303,17 @@ export default function OperatorDashboardClient({
         })
         
         if (myProjects.length > 0) {
-          // v370: NO sobrescribir localStorage si el snapshot actual tiene MÁS proyectos
           const currentSaved = localStorage.getItem('last_op_projects_snapshot');
           if (currentSaved) {
             try {
               const parsed = JSON.parse(currentSaved);
               if (Array.isArray(parsed) && parsed.length > myProjects.length) {
-                // console.log(`[EmergencyLoad] Skipping overwrite: snapshot has ${parsed.length} > ${myProjects.length}`);
-                setEmergencyProjects(parsed); // Mantener el snapshot más grande
+                if (isMounted) setEmergencyProjects(parsed);
                 return;
               }
             } catch(e) {}
           }
-          // console.log(`[EmergencyLoad] Loaded ${myProjects.length} projects directly from Dexie`)
-          setEmergencyProjects(myProjects)
+          if (isMounted) setEmergencyProjects(myProjects)
           try { localStorage.setItem('last_op_projects_snapshot', JSON.stringify(myProjects)) } catch(e) {}
         }
       } catch (e) {
@@ -319,7 +321,11 @@ export default function OperatorDashboardClient({
       }
     }, 400)
     
-    return () => clearTimeout(timer)
+    return () => {
+      isMounted = false;
+      controller.abort();
+      clearTimeout(timer);
+    }
   }, [projectsFromCache, user?.id, localUser?.id])
 
   // v293/v359: Siempre mantener el snapshot fresco, pero NO sobrescribir con una lista vacía o incompleta

@@ -1812,25 +1812,12 @@ export default function ProjectExecutionClient({
               </div>
             )}
 
-            {/* 2. REGISTROS (Galería, Planos, Equipo) */}
+            {/* 2. REGISTROS (Planos, Finales, Equipo) */}
             {activeTab === 'records' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '40px', paddingBottom: '40px' }}>
-                <OperatorGalleryGrid 
-                  title="Galería del Proyecto"
-                  count={(project?.gallery || []).length}
-                  items={project?.gallery || []}
-                  filter={galleryFilter}
-                  setFilter={setGalleryFilter}
-                  onAddFile={handleUploadMedia}
-                  onPreview={setSelectedPreviewImage}
-                  onDelete={handleDeleteGalleryItem}
-                  onDownload={handleDownload}
-                  uploaderTitle="🔼 SUBIR A GALERÍA"
-                  defaultCategory="GALLERY"
-                  galleryLabel="Galería"
-                />
-
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                
+                {/* PLANOS PRIMERO */}
+                <div style={{ borderTop: 'none', paddingTop: '0' }}>
                   <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.03)', borderRadius: '15px', marginBottom: '20px' }}>
                     Planos y registros fotográficos maestros.
                   </div>
@@ -1847,6 +1834,27 @@ export default function ProjectExecutionClient({
                     uploaderTitle="🔼 SUBIR ARCHIVOS A: PLANOS"
                     defaultCategory="MASTER"
                     galleryLabel="Planos y Registros"
+                  />
+                </div>
+
+                {/* FINALES SEGUNDO */}
+                <div style={{ borderTop: '1px solid rgba(255,255,255,0.1)', paddingTop: '20px' }}>
+                  <div style={{ padding: '20px', textAlign: 'center', color: 'var(--text-muted)', background: 'rgba(255,255,255,0.03)', borderRadius: '15px', marginBottom: '20px' }}>
+                    Archivos finales de entrega y evidencias de obra.
+                  </div>
+                  <OperatorGalleryGrid 
+                    title="Archivos Finales"
+                    count={evidenceGallery.length}
+                    items={evidenceGallery}
+                    filter={evidenceFilter}
+                    setFilter={setEvidenceFilter}
+                    onAddFile={handleUploadMedia}
+                    onPreview={setSelectedPreviewImage}
+                    onDelete={handleDeleteGalleryItem}
+                    onDownload={handleDownload}
+                    uploaderTitle="🔼 SUBIR A: FINALES"
+                    defaultCategory="EVIDENCE"
+                    galleryLabel="Finales"
                   />
                 </div>
 

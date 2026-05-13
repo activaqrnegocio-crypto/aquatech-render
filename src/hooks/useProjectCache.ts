@@ -151,10 +151,17 @@ export function useProjectCache({
           // Normalize: IndexedDB may store older structures without 'user' object
           const normalizedProject = {
             ...cached,
-            team: (cached.team || []).map((m: any) => ({
-              ...m,
-              user: m.user || { name: 'Operador', id: m.id || 0, phone: '' }
-            }))
+            team: (cached.team || []).map((m: any) => {
+              const u = m.user || {};
+              return {
+                ...m,
+                user: {
+                  id: u.id || m.userId || m.id || 0,
+                  name: u.name || m.name || 'Operador',
+                  phone: u.phone || m.phone || ''
+                }
+              };
+            })
           }
           setLocalProject(normalizedProject)
 

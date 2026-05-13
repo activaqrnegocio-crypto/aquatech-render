@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname, useRouter } from 'next/navigation'
+import { usePathname } from 'next/navigation'
 import Sidebar from '@/components/Sidebar'
 import ServiceWorkerRegistration from '@/components/ServiceWorkerRegistration'
 import { Suspense } from 'react'
@@ -19,7 +19,6 @@ import { useState, useEffect } from 'react'
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
   const { data: session } = useSession()
   const pathname = usePathname()
-  const router = useRouter()
   const isLoginPage = pathname === '/admin/login'
   const isDashboard = 
     pathname === '/admin' || pathname === '/admin/' || 
@@ -95,23 +94,31 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
             <div style={{ padding: '10px 20px 0 20px', marginBottom: '-10px' }}>
               <button 
                 onClick={() => {
-                  // v291: Robust role-aware navigation for Offline/Shell environments
+                  // v400: Use hard navigation (window.location.href) to prevent
+                  // soft-navigation freeze caused by Service Worker shell + Dexie listeners
+                  // staying active and blocking Next.js router transitions.
                   if (pathname.includes('/operador/proyecto')) {
-                    router.push('/admin/operador');
+                    window.location.href = '/admin/operador';
                   } else if (pathname.includes('/subcontratista/proyecto')) {
-                    router.push('/admin/subcontratista');
+                    window.location.href = '/admin/subcontratista';
                   } else if (pathname.includes('/admin/proyectos/')) {
-                    router.push('/admin/proyectos');
+                    window.location.href = '/admin/proyectos';
                   } else if (pathname.includes('/admin/cotizaciones/')) {
-                    router.push('/admin/cotizaciones');
+                    window.location.href = '/admin/cotizaciones';
                   } else if (pathname.includes('/offline-shell')) {
                     const isOp = pathname.includes('/operador') || pathname.includes('/subcontratista');
-                    router.push(isOp ? (pathname.includes('/subcontratista') ? '/admin/subcontratista' : '/admin/operador') : '/admin/proyectos');
+                    window.location.href = isOp 
+                      ? (pathname.includes('/subcontratista') ? '/admin/subcontratista' : '/admin/operador') 
+                      : '/admin/proyectos';
                   } else {
-                    // Fallback to back but prioritize explicit routes if available
-                    if (pathname.startsWith('/admin/operador')) router.push('/admin/operador');
-                    else if (pathname.startsWith('/admin/proyectos')) router.push('/admin/proyectos');
-                    else router.back();
+                    // Fallback: explicit hard navigation based on current path
+                    if (pathname.startsWith('/admin/operador')) window.location.href = '/admin/operador';
+                    else if (pathname.startsWith('/admin/subcontratista')) window.location.href = '/admin/subcontratista';
+                    else if (pathname.startsWith('/admin/proyectos')) window.location.href = '/admin/proyectos';
+                    else if (pathname.startsWith('/admin/cotizaciones')) window.location.href = '/admin/cotizaciones';
+                    else if (pathname.startsWith('/admin/calendario')) window.location.href = '/admin/calendario';
+                    else if (pathname.startsWith('/admin/inventario')) window.location.href = '/admin/inventario';
+                    else window.location.href = '/admin';
                   }
                 }}
                 className="btn btn-ghost btn-sm"

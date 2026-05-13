@@ -24,7 +24,7 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
       include: {
         client: { select: { name: true, phone: true, address: true, city: true } },
         phases: { orderBy: { displayOrder: 'asc' } },
-        team: { include: { user: { select: { name: true, role: true } } } },
+        team: { include: { user: { select: { name: true, role: true, phone: true } } } },
         chatMessages: { take: 1 },
         // v280: gallery was UNBOUNDED before — that alone caused 10s loads on big projects
         gallery: { orderBy: { createdAt: 'desc' }, take: 20 },
@@ -104,7 +104,14 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
     team: project.team.map(t => ({
       id: t.userId,
       name: t.user.name,
-      role: t.user.role
+      role: t.user.role,
+      phone: t.user.phone,
+      user: {
+        id: t.userId,
+        name: t.user.name,
+        phone: t.user.phone,
+        role: t.user.role
+      }
     })),
     budgetItems: project.budgetItems.map(bi => ({
       id: bi.id,

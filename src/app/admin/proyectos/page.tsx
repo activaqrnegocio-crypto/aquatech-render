@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect, useMemo, useRef } from 'react'
+import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import Link from 'next/link'
 import { useSession } from 'next-auth/react'
 import { useRouter } from 'next/navigation'
@@ -32,11 +32,15 @@ export default function ProyectosPage() {
   
   // v291: Deduplicate warm-cache calls per session
   const warmedProjectIdsRef = useRef<Set<number>>(new Set());
+  // v400: AbortController ref to cancel stale in-flight requests
+  const fetchAbortRef = useRef<AbortController | null>(null);
+  // v400: Stable router ref — avoids router being a useEffect dependency
+  const routerRef = useRef(router);
+  useEffect(() => { routerRef.current = router }, [router]);
 
   useEffect(() => {
     async function checkAuth() {
       // 1. If offline, ALWAYS check cached session immediately, ignoring NextAuth state
-      // because NextAuth session drops custom properties (like role) if the background fetch fails.
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
         const cached = await db.auth.get('last_session')
         const authorized = cached && (
@@ -46,8 +50,8 @@ export default function ProyectosPage() {
           (cached.permissions && cached.permissions.includes('proyectos_admin'))
         )
         setIsAuthorized(!!authorized)
-        if (!authorized) router.push('/admin/login')
-        return; // Stop here, don't execute online logic
+        if (!authorized) routerRef.current.push('/admin/login')
+        return;
       }
 
       // 2. Online logic via NextAuth session
@@ -61,15 +65,18 @@ export default function ProyectosPage() {
           (permissions && permissions.includes('proyectos_admin'))
         )
         setIsAuthorized(!!authorized)
-        if (!authorized) router.push('/admin')
+        if (!authorized) routerRef.current.push('/admin')
       } 
       // 3. If unauthenticated and online
       else if (status === 'unauthenticated' && navigator.onLine) {
-        router.push('/admin/login')
+        routerRef.current.push('/admin/login')
       }
     }
     checkAuth()
-  }, [status, session, router])
+  // v400: Removed router from deps — it's not stable in App Router and caused re-runs on every navigation.
+  // routerRef.current is used instead for imperative navigation.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [status, session])
 
   useEffect(() => {
     if (isAuthorized === true) {
@@ -123,43 +130,46 @@ export default function ProyectosPage() {
     return () => navigator.serviceWorker?.removeEventListener('message', handleSwMessage);
   }, []);
 
-  const fetchProjects = async () => {
-    if (typeof navigator !== 'undefined' && !navigator.onLine) return; // Don't fetch if explicitly offline
+  const fetchProjects = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return;
+
+    // v400: Cancel any in-flight previous request before starting a new one
+    if (fetchAbortRef.current) fetchAbortRef.current.abort();
+    const controller = new AbortController();
+    fetchAbortRef.current = controller;
 
     try {
-      const res = await fetch('/api/projects')
+      const res = await fetch('/api/projects', { signal: controller.signal })
       if (!res.ok) throw new Error('API fetch failed')
       const data = await res.json()
       
       if (Array.isArray(data)) {
         setProjects(data)
         
-        // v289: Warm cache for the first batch of projects
-        if (data.length > 0) {
-          warmCache(data.slice(0, 15));
+        if (data.length > 0) warmCache(data.slice(0, 15));
+
+        // v400: Defer the heavy Dexie merge to idle time so it NEVER blocks the main thread
+        const runMerge = () => {
+          db.projectsCache.toArray().then(existingCache => {
+            const existingMap = new Map(existingCache.map(p => [p.id, p]))
+            const bulkUpdates = data.map((item: any) => {
+              const existing = existingMap.get(item.id)
+              // Merge: keep heavy offline data (chat, gallery), update list fields
+              return existing ? { ...existing, ...item } : item
+            })
+            db.projectsCache.bulkPut(bulkUpdates).catch(err => console.error('Error caching projects:', err))
+          })
         }
 
-        // Cache to Dexie when online (passive cache for list fields only)
-        if (typeof navigator !== 'undefined' && navigator.onLine) {
-          // Only update items that already exist in cache to not overwrite full offline data with partial list data
-          const existingCache = await db.projectsCache.toArray()
-          const existingIds = new Set(existingCache.map(p => p.id))
-          
-          const bulkUpdates = data.map(item => {
-            if (existingIds.has(item.id)) {
-              const existingItem = existingCache.find(p => p.id === item.id)
-              // Merge, keeping heavy data like chat/gallery
-              return { ...existingItem, ...item }
-            }
-            return item
-          })
-          
-          db.projectsCache.bulkPut(bulkUpdates).catch(err => console.error('Error caching projects:', err))
+        if ('requestIdleCallback' in window) {
+          (window as any).requestIdleCallback(runMerge, { timeout: 3000 })
+        } else {
+          setTimeout(runMerge, 1000)
         }
       }
-    } catch (e) {
+    } catch (e: any) {
+      if (e?.name === 'AbortError') return; // Intentionally cancelled, ignore
       console.error('fetchProjects fallback:', e)
-      // Already loaded from cache initially, but try again just in case
       const cached = await db.projectsCache.toArray()
       if (cached.length > 0) {
         const sorted = cached.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
@@ -168,7 +178,8 @@ export default function ProyectosPage() {
     } finally {
       setLoading(false)
     }
-  }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   // v289/v302: Incremental warm-cache for projects with 30min throttling
   const warmCache = async (projectList: any[], force = false) => {

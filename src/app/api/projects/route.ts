@@ -46,7 +46,13 @@ export async function GET(request: Request) {
         estimatedBudget: true,
         client: { select: { name: true } },
         phases: { select: { status: true, estimatedDays: true } },
-        team: { select: { id: true, userId: true } }
+        team: { 
+          select: { 
+            id: true, 
+            userId: true,
+            user: { select: { id: true, name: true, phone: true } }
+          } 
+        }
       },
       orderBy: { createdAt: 'desc' }
     })
