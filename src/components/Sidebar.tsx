@@ -167,6 +167,28 @@ export default memo(function Sidebar() {
     setMounted(true)
   }, [])
 
+  // v400: Robust Navigation — Force hard navigation when switching between major modules
+  // to prevent soft-navigation freezes caused by active Dexie listeners/SW Shell.
+  const handleNav = (href: string, e: React.MouseEvent) => {
+    // If we are in a project detail or any complex path, soft navigation is risky
+    const isComplexPath = pathname.includes('/proyecto/') || pathname.includes('/nuevo') || pathname.includes('/shell');
+    
+    // Always force hard nav for these top-level modules to ensure clean state
+    const isTopLevelModule = href.startsWith('/admin/calendario') || 
+                             href.startsWith('/admin/inventario') || 
+                             href.startsWith('/admin/cotizaciones') ||
+                             href.startsWith('/admin/recursos');
+
+    if (isComplexPath || isTopLevelModule) {
+      e.preventDefault();
+      setMobileOpen(false);
+      window.location.href = href;
+    } else {
+      // Fallback to soft navigation for same-module items, handled by Link default
+      setMobileOpen(false);
+    }
+  }
+
   const [offlineUser, setOfflineUser] = useState<any>(null)
   const [notifications, setNotifications] = useState<any>({ totalUnread: 0, byProject: {} })
 
@@ -560,7 +582,7 @@ export default memo(function Sidebar() {
                               href={subItem.href}
                               prefetch={false}
                               className={`sidebar-link ${isActive(subItem.href) ? 'active' : ''}`}
-                              onClick={() => setMobileOpen(false)}
+                              onClick={(e) => handleNav(subItem.href, e)}
                               style={{ padding: '8px 12px', fontSize: '0.85rem' }}
                             >
                               {subItem.label}
@@ -574,7 +596,7 @@ export default memo(function Sidebar() {
                       href={item.href}
                       prefetch={false}
                       className={`sidebar-link ${isActive(item.href) ? 'active' : ''}`}
-                      onClick={() => setMobileOpen(false)}
+                      onClick={(e) => handleNav(item.href, e)}
                     >
                       {item.icon}
                       {item.label}
@@ -705,6 +727,7 @@ export default memo(function Sidebar() {
                 href={item.href}
                 prefetch={true}
                 className={`mobile-nav-item ${isActive(item.href) ? 'active' : ''}`}
+                onClick={(e) => handleNav(item.href, e)}
               >
                 {item.icon}
                 {item.label}
@@ -724,6 +747,7 @@ export default memo(function Sidebar() {
                 href={item.href}
                 prefetch={true}
                 className={`mobile-nav-item ${isActive(item.href) ? 'active' : ''}`}
+                onClick={(e) => handleNav(item.href, e)}
               >
                 {item.icon}
                 {item.label}
@@ -731,6 +755,8 @@ export default memo(function Sidebar() {
             ))}
           </>
         )}
+
+
         <button className="mobile-nav-item" onClick={handleLogout} style={{ background: 'none', border: 'none' }}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg>
           Salir
