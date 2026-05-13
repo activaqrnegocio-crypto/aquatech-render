@@ -700,15 +700,15 @@ export default memo(function Sidebar() {
               { label: 'Inventario', href: '/admin/inventario', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> },
               { label: 'Cotizaciones', href: '/admin/cotizaciones', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg> },
             ].map((item) => (
-              <Link
+              <div
                 key={item.href}
-                href={item.href}
-                prefetch={true}
+                onClick={() => window.location.href = item.href}
                 className={`mobile-nav-item ${isActive(item.href) ? 'active' : ''}`}
+                style={{ cursor: 'pointer' }}
               >
                 {item.icon}
                 {item.label}
-              </Link>
+              </div>
             ))}
           </>
         ) : (
@@ -719,15 +719,15 @@ export default memo(function Sidebar() {
               { label: 'Inventario', href: '/admin/inventario', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M20 7H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2Z"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg> },
               { label: 'Cotizaciones', href: '/admin/cotizaciones', icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/></svg> },
             ].map((item) => (
-              <Link
+              <div
                 key={item.href}
-                href={item.href}
-                prefetch={true}
+                onClick={() => window.location.href = item.href}
                 className={`mobile-nav-item ${isActive(item.href) ? 'active' : ''}`}
+                style={{ cursor: 'pointer' }}
               >
                 {item.icon}
                 {item.label}
-              </Link>
+              </div>
             ))}
           </>
         )}

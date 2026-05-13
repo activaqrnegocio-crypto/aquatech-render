@@ -80,7 +80,7 @@ export default function ProjectExecutionClient({
   // 2. UI State
   const [mounted, setMounted] = useState(false)
   const [isSmallScreen, setIsSmallScreen] = useState(false)
-  const [activeTab, setActiveTab] = useState<'records' | 'chat'>('chat')
+  const [activeTab, setActiveTab] = useState<'records' | 'chat'>('records')
   const [isFichaOpen, setIsFichaOpen] = useState(false)
   const [isEditingProject, setIsEditingProject] = useState(false)
   const [isEditingTeam, setIsEditingTeam] = useState(false)
@@ -1780,7 +1780,7 @@ export default function ProjectExecutionClient({
                 left: 0,
                 right: 0,
                 bottom: 0,
-                zIndex: 9999,
+                zIndex: 1000,
                 backgroundColor: 'var(--bg-deep)',
                 display: 'flex',
                 flexDirection: 'column'
