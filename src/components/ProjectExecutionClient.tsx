@@ -483,12 +483,12 @@ export default function ProjectExecutionClient({
       }
     })
     
-    // v400: Include recently synced items that might not be in project.gallery yet
-    const syncedGallery = recentlySyncedItems.filter(i => {
-       const cat = (i.category || 'MASTER').toUpperCase();
-       return (cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO') && 
-              !(project?.gallery || []).some((g: any) => g.filename === i.filename);
-    }).map(i => ({ ...i, isRecentlySynced: true }));
+     // v400: Include recently synced items that might not be in project.gallery yet
+     const syncedGallery = recentlySyncedItems.filter(i => {
+        const cat = (i.category || 'MASTER').toUpperCase();
+        return (cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO') && 
+               !(project?.gallery || []).some((g: any) => g.filename === i.filename);
+     }).map(i => ({ ...i, isRecentlySynced: !i.isSyncing }));
 
     const list = [...baseFiles, ...expenseFiles, ...pendingGallery, ...syncedGallery]
     return list.filter((item: any) => {
@@ -624,7 +624,7 @@ export default function ProjectExecutionClient({
        const cat = (i.category || 'EVIDENCE').toUpperCase();
        return (cat === 'EVIDENCE' || cat === 'FINALES' || cat === 'ENTREGA' || cat === 'ENTREGA_FINAL' || cat === 'ADJUNTO' || cat === 'MASTER_FINAL') &&
               !(project?.gallery || []).some((g: any) => g.filename === i.filename);
-    }).map(i => ({ ...i, isRecentlySynced: true }));
+    }).map(i => ({ ...i, isRecentlySynced: !i.isSyncing }));
 
     const combinedList = [...list, ...pendingEvidence, ...syncedEvidence]
     const seen = new Set()
@@ -1245,8 +1245,18 @@ export default function ProjectExecutionClient({
         return
       }
 
-      // Online path
-      galleryPayload.url = file.url;
+      // Online path: Add optimistic item to bridge immediately
+      const tempId = `opt-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      const optimisticItem = {
+        id: tempId,
+        url: file.url,
+        filename: file.filename,
+        mimeType: file.mimeType,
+        category: galleryPayload.category,
+        isSyncing: true, // Shows blue syncing badge
+        createdAt: new Date().toISOString()
+      };
+      setRecentlySyncedItems(prev => [...prev, optimisticItem]);
 
       try {
         const res = await fetch(`/api/projects/${project.id}/gallery`, {
@@ -1262,8 +1272,19 @@ export default function ProjectExecutionClient({
           })
         })
         if (!res.ok) throw new Error('Refetch')
-        // v373: Removed revalidateRoute — gallery state already updated locally
+        
+        const newItem = await res.json();
+        // Replace optimistic with real item, mark as recently synced
+        setRecentlySyncedItems(prev => prev.map(i => i.id === tempId ? { ...newItem, isRecentlySynced: true } : i));
+        
+        // v400: Cleanup optimistic item after 30s if not replaced (safety)
+        setTimeout(() => {
+          setRecentlySyncedItems(prev => prev.filter(i => i.id !== tempId && i.id !== newItem.id));
+        }, 30000);
+
       } catch (err) {
+        // Remove optimistic if failed
+        setRecentlySyncedItems(prev => prev.filter(i => i.id !== tempId));
         await db.transaction('rw', db.outbox, async () => {
           await db.outbox.add({
             type: 'GALLERY_UPLOAD',
