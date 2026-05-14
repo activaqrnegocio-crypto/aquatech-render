@@ -179,7 +179,13 @@ export default memo(function Sidebar() {
                              href.startsWith('/admin/cotizaciones') ||
                              href.startsWith('/admin/recursos');
 
-    if (isComplexPath || isTopLevelModule) {
+    // v411: Force hard nav to operator dashboard when offline — SSR will be intercepted
+    // by Service Worker which serves the cached shell, and Dexie hydrates immediately.
+    // Soft nav in offline fails silently (SSR fetch 504) leaving a blank page.
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    const isOperatorDashboard = href === '/admin/operador' || href === '/admin/subcontratista';
+
+    if (isComplexPath || isTopLevelModule || (isOffline && isOperatorDashboard)) {
       e.preventDefault();
       setMobileOpen(false);
       window.location.href = href;

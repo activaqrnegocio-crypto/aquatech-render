@@ -1306,14 +1306,38 @@ export default function ProjectExecutionClient({
         // v402: Remove from optimistic, bridge as normal item (no green overlay), then refresh from server
         setOptimisticUploads(prev => prev.filter(i => i.id !== optimisticId));
         const serverData = await res.json().catch(() => null);
-        setRecentlySyncedItems(prev => [...prev, {
+        const bridgeItem = {
           id: serverData?.id || optimisticItem.id,
           url: serverData?.url || optimisticItem.url,
           filename: serverData?.filename || optimisticItem.filename,
           mimeType: serverData?.mimeType || optimisticItem.mimeType,
           category: optimisticItem.category,
           isPending: false
-        }]);
+        };
+        setRecentlySyncedItems(prev => [...prev, bridgeItem]);
+
+        // v410: Persist to Dexie cache so the item survives navigation without full reload
+        try {
+          const numericId = Number(project.id);
+          if (!isNaN(numericId)) {
+            const cached = await db.projectsCache.get(numericId);
+            if (cached) {
+              const existingGallery: any[] = cached.gallery || [];
+              // Only add if not already present (idempotent)
+              const alreadyIn = existingGallery.some((g: any) =>
+                (serverData?.id && g.id === serverData.id) ||
+                g.url === bridgeItem.url
+              );
+              if (!alreadyIn) {
+                const newGallery = [bridgeItem, ...existingGallery];
+                await db.projectsCache.update(numericId, { gallery: newGallery });
+              }
+            }
+          }
+        } catch (cacheErr) {
+          console.warn('[Gallery] Failed to update local cache:', cacheErr);
+        }
+
         // Immediately refresh gallery so server item replaces bridge item
         refreshGallery();
       } catch (err) {

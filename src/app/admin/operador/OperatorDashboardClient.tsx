@@ -55,15 +55,13 @@ export default function OperatorDashboardClient({
   const searchParams = useSearchParams()
   const tabParam = searchParams?.get('tab')
 
-  const [activeTab, setActiveTab] = useState<null | 'PROYECTOS' | 'TAREAS' | 'CALENDARIO'>(() => {
+  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS' | 'CALENDARIO'>(() => {
     if (tabParam === 'calendario') return 'CALENDARIO'
     if (typeof window !== 'undefined') {
       const saved = sessionStorage.getItem('operator_active_tab')
-      // v282: Si no hay nada guardado, no seleccionar ninguna pestaña (carga rápida)
-      if (saved && saved !== 'null' && saved !== 'INICIO') return saved as any
-      return null
+      if (saved && ['PROYECTOS', 'TAREAS', 'CALENDARIO'].includes(saved)) return saved as any
     }
-    return null
+    return 'PROYECTOS'
   })
   const [syncNotification, setSyncNotification] = useState<{ id: string, title: string } | null>(null)
 
@@ -74,7 +72,7 @@ export default function OperatorDashboardClient({
   }, [tabParam])
 
   useEffect(() => {
-    sessionStorage.setItem('operator_active_tab', activeTab ?? 'null')
+    sessionStorage.setItem('operator_active_tab', activeTab)
   }, [activeTab])
 
   // v287: Robust User recovery for offline sessions
@@ -94,7 +92,6 @@ export default function OperatorDashboardClient({
     }
     return initialAppointments || []
   })
-  const [isLoadingData, setIsLoadingData] = useState(true)
   const [activeDayRecord, setActiveDayRecord] = useState(initialActiveDayRecord)
   const [userViews, setUserViews] = useState(initialUserViews)
 

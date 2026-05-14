@@ -201,9 +201,14 @@ export default function GlobalSyncWorker() {
           const p = projectsToProcess[i];
           const existing = await db.projectsCache.get(p.id);
           
+          // v410: Intelligent merge — Preserve local optimistic changes if they are pending sync
           const mergedProject = {
             ...(existing || {}),
             ...p,
+            // If the local project has a pending team sync, don't let the server's bulk data (which might be stale) overwrite our local team
+            team: (existing?._pendingTeamSync && existing.team) ? existing.team : p.team,
+            // Also preserve local gallery if a gallery upload is pending sync (though handled elsewhere, extra safety)
+            gallery: (existing?._pendingGallerySync && existing.gallery) ? existing.gallery : p.gallery,
             isSkeleton: false,
             lastAccessedAt: Date.now()
           };
@@ -1029,7 +1034,7 @@ export default function GlobalSyncWorker() {
                   }
                 }
 
-                // v400: Immediately cache synced PROJECT in IndexedDB so it appears
+                // v410: Immediately cache synced PROJECT in IndexedDB so it appears
                 // in the operator's list without waiting for the next bulk-sync (15 min)
                 if (item.type === 'PROJECT' && resData.id) {
                   try {
@@ -1049,6 +1054,15 @@ export default function GlobalSyncWorker() {
                           mimeType: f.mimeType || 'image/jpeg'
                         }));
                     
+                    // v411: IMPORTANT — Before putting the new real record, delete the temporary one
+                    // to avoid having duplicate projects in cache (one with timestamp, one with real ID)
+                    // which causes the 'infinite syncing' loop in the UI.
+                    const tempId = item.id; // item.id is the timestamp for offline projects
+                    if (tempId && tempId !== resData.id) {
+                      await db.projectsCache.delete(Number(tempId)).catch(() => {});
+                      await db.chatCache.delete(Number(tempId)).catch(() => {});
+                    }
+
                     await db.projectsCache.put({
                       ...resData,
                       id: resData.id,
@@ -1077,18 +1091,34 @@ export default function GlobalSyncWorker() {
                   }
                 }
 
-                // v407: Clear pending sync flags for team/project updates
+                // v412: CRITICAL — After successful team update, clear flag and fetch FRESH data
                 if (item.type === 'TEAM_UPDATE' && item.projectId) {
                   try {
                     let numericId = Number(item.projectId);
-                    // For projects created offline, item.projectId might be e.g. "pending-123"
                     if (isNaN(numericId) && String(item.projectId).startsWith('pending-')) {
                       numericId = Number(String(item.projectId).replace('pending-', ''));
                     }
+                    
                     if (!isNaN(numericId)) {
+                      // 1. CLEAR FLAG IMMEDIATELY so UI stops spinning
                       await db.projectsCache.update(numericId, { _pendingTeamSync: false });
+
+                      // 2. Try to hydrate with fresh server data (names, IDs, etc.)
+                      const freshProjRes = await fetch(`/api/projects/${numericId}`, { cache: 'no-store' });
+                      if (freshProjRes.ok) {
+                        const freshData = await freshProjRes.json();
+                        if (freshData && freshData.id) {
+                          await db.projectsCache.update(numericId, { 
+                            ...freshData,
+                            _pendingTeamSync: false 
+                          });
+                        }
+                      }
                     }
-                  } catch (cacheErr) {}
+                  } catch (cacheErr) {
+                    console.error('[Sync] Team hydration error:', cacheErr);
+                    // Flag is already cleared in step 1, so UI is safe
+                  }
                 }
 
                 // v409: Update projectsCache gallery for media uploads so they persist before reload
