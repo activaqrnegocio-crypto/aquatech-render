@@ -103,8 +103,6 @@ export function useProjectActions({
       const payload = { operatorIds }
 
       // Optimistic Update UI (Normalized format matching server structure)
-      // v402: Include `user` sub-object so ProjectTeamSection reads names/phones correctly
-      //       Include both `id` and `userId` so both admin and operator ID resolution works
       const newTeam = availableOperators
         .filter((op: any) => operatorIds.includes(op.id))
         .map((op: any) => ({ 
@@ -121,15 +119,16 @@ export function useProjectActions({
           }
         }))
       
-      // Optimistic Update UI + Cache
+      // Optimistic Update UI + Cache (INSTANT)
       const idStr = String(project.id)
       const isPending = idStr.startsWith('pending-')
       const numericId = Number(project.id)
 
       if (!isPending && !isNaN(numericId) && numericId > 0) {
-        db.projectsCache.update(numericId, { 
+        // v404: Sync update to Dexie so it's guaranteed before UI closes
+        await db.projectsCache.update(numericId, { 
           team: newTeam, 
-          _pendingTeamSync: true, // v402: Mark as pending in DB so refresh honors it
+          _pendingTeamSync: true,
           lastAccessedAt: Date.now() 
         }).catch(() => {})
       }
@@ -139,30 +138,32 @@ export function useProjectActions({
         return { ...base, team: newTeam, _pendingTeamSync: true };
       })
 
-      if (isPending) {
-        // v400: Update existing outbox item for pending project
-        const outboxId = Number(idStr.replace('pending-', ''))
-        const item = await db.outbox.get(outboxId)
-        if (item) {
-          await db.outbox.update(outboxId, {
-            payload: { ...item.payload, team: operatorIds }
-          })
-        }
-      } else if (typeof navigator !== 'undefined' && navigator.onLine) {
-        // Regular project - Online
-        try {
-          const res = await fetch(`/api/projects/${project.id}/team`, {
-            method: 'PUT',
-            headers: { 
-              'Content-Type': 'application/json',
-              'x-sync-id': `team-update-${project.id}-${Date.now()}`
-            },
-            body: JSON.stringify(payload)
-          })
-          
-          if (res.ok) {
-            // v403: Re-fetch fresh project data from server to guarantee consistency
-            try {
+      // v405: UI is now CONSIDERED DONE. Reset loading state immediately.
+      setIsSavingTeam(false)
+      if (onSuccess) onSuccess('TEAM_UPDATE')
+
+      // FIRE AND FORGET SERVER SYNC (Background)
+      const performServerSync = async () => {
+        if (isPending) {
+          const outboxId = Number(idStr.replace('pending-', ''))
+          const item = await db.outbox.get(outboxId)
+          if (item) {
+            await db.outbox.update(outboxId, {
+              payload: { ...item.payload, team: operatorIds }
+            })
+          }
+        } else if (typeof navigator !== 'undefined' && navigator.onLine) {
+          try {
+            const res = await fetch(`/api/projects/${project.id}/team`, {
+              method: 'PUT',
+              headers: { 
+                'Content-Type': 'application/json',
+                'x-sync-id': `team-update-${project.id}-${Date.now()}`
+              },
+              body: JSON.stringify(payload)
+            })
+            
+            if (res.ok) {
               const freshRes = await fetch(`/api/projects/${project.id}`, { cache: 'no-store' })
               if (freshRes.ok) {
                 const freshProject = await freshRes.json()
@@ -172,9 +173,8 @@ export function useProjectActions({
                     ...freshProject, 
                     _pendingTeamSync: false 
                   }))
-                  // Also update Dexie cache with the confirmed server data
                   if (!isNaN(numericId) && numericId > 0) {
-                    db.projectsCache.put({ 
+                    db.projectsCache.update(numericId, { 
                       ...freshProject, 
                       _pendingTeamSync: false, 
                       lastAccessedAt: Date.now() 
@@ -182,17 +182,22 @@ export function useProjectActions({
                   }
                 }
               }
-            } catch (fetchErr) {
-              // If re-fetch fails, at least clear the pending flag
-              setLocalProject((prev: any) => ({ ...prev, _pendingTeamSync: false }))
+              // Quiet refresh in background to update RSC state
+              router.refresh();
+            } else {
+              throw new Error('Sync failed')
             }
-            // Force Next.js router to discard its client-side cache
-            router.refresh();
-          } else {
-            throw new Error('Failed to update team')
+          } catch (err) {
+            await db.outbox.add({
+              type: 'TEAM_UPDATE',
+              projectId: project.id,
+              payload: { operatorIds },
+              timestamp: Date.now(),
+              status: 'pending'
+            });
+            triggerBackgroundSync();
           }
-        } catch (err) {
-          // Online failed, queue in outbox
+        } else {
           await db.outbox.add({
             type: 'TEAM_UPDATE',
             projectId: project.id,
@@ -202,26 +207,16 @@ export function useProjectActions({
           });
           triggerBackgroundSync();
         }
-      } else {
-        // Regular project - Offline
-        await db.outbox.add({
-          type: 'TEAM_UPDATE',
-          projectId: project.id,
-          payload: { operatorIds },
-          timestamp: Date.now(),
-          status: 'pending'
-        });
-        triggerBackgroundSync();
       }
 
-      if (onSuccess) onSuccess('TEAM_UPDATE')
+      // Start background sync without awaiting
+      performServerSync()
+
       return true
     } catch (e) {
       console.error('[Actions] Save Team Error:', e)
-      alert('Error al actualizar el equipo')
-      return false
-    } finally {
       setIsSavingTeam(false)
+      return false
     }
   }
 

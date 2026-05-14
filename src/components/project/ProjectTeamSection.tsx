@@ -1,29 +1,140 @@
 'use client'
 
-// v373: Sección de Equipo Asignado — compartido entre Admin y Operador (ambos pueden editar)
+import { useState, useEffect } from 'react'
+import { db } from '@/lib/db'
+import { useRouter } from 'next/navigation'
+
+// v406: Sección de Equipo Asignado Autónoma — Máxima velocidad y persistencia garantizada
 interface ProjectTeamSectionProps {
   project: any
   operators: any[]
-  selectedTeam: number[]
-  isEditingTeam: boolean
-  isSavingTeam: boolean
-  onEdit: () => void
-  onCancel: () => void
-  onSave: () => void
-  onToggleMember: (id: number) => void
+  setLocalProject?: (val: any) => void
 }
 
 export default function ProjectTeamSection({
   project,
   operators,
-  selectedTeam,
-  isEditingTeam,
-  isSavingTeam,
-  onEdit,
-  onCancel,
-  onSave,
-  onToggleMember,
+  setLocalProject
 }: ProjectTeamSectionProps) {
+  const router = useRouter()
+  const [isEditing, setIsEditing] = useState(false)
+  const [isSaving, setIsSaving] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<number[]>([])
+  
+  // Sync local selection with project team when not editing
+  useEffect(() => {
+    if (!isEditing && project?.team) {
+      setSelectedIds(project.team.map((t: any) => t.id || t.userId || t.user?.id))
+    }
+  }, [project?.team, isEditing])
+
+  const handleToggleMember = (id: number) => {
+    setSelectedIds(prev => prev.includes(id) ? prev.filter(mid => mid !== id) : [...prev, id])
+  }
+
+  const handleInternalSave = async () => {
+    if (!project?.id || isSaving) return
+    setIsSaving(true)
+
+    try {
+      // 1. CONSTRUIR EQUIPO OPTIMISTA
+      const newTeam = operators
+        .filter((op: any) => selectedIds.includes(op.id))
+        .map((op: any) => ({
+          id: op.id,
+          userId: op.id,
+          name: op.name || 'Operador',
+          phone: op.phone,
+          user: { id: op.id, name: op.name || 'Operador', phone: op.phone, role: op.role || 'OPERATOR' }
+        }));
+
+      // 2. ACTUALIZAR CACHÉ DEXIE AL INSTANTE (Para que al recargar siga ahí)
+      const numericId = Number(project.id)
+      if (!isNaN(numericId) && numericId > 0) {
+        await db.projectsCache.update(numericId, { 
+          team: newTeam, 
+          _pendingTeamSync: true,
+          lastAccessedAt: Date.now() 
+        }).catch(() => {})
+      }
+
+      // 2.5 ACTUALIZAR ESTADO DEL PADRE (Para que se vea en vivo)
+      if (setLocalProject) {
+        setLocalProject((prev: any) => ({
+          ...prev,
+          team: newTeam,
+          _pendingTeamSync: true
+        }))
+      }
+
+      // 3. CERRAR EDICIÓN Y SOLTAR UI (VELOCIDAD RAYO)
+      setIsEditing(false)
+      setIsSaving(false)
+
+      // 4. SINCRONIZACIÓN EN SEGUNDO PLANO (SILENCIOSA)
+      const performSync = async () => {
+        const isOnline = typeof navigator !== 'undefined' && navigator.onLine
+        const payload = { operatorIds: selectedIds }
+
+        if (!isOnline) {
+          await db.outbox.add({
+            projectId: numericId,
+            type: 'TEAM_UPDATE',
+            payload,
+            status: 'pending',
+            timestamp: Date.now()
+          })
+          return;
+        }
+
+        try {
+          const res = await fetch(`/api/projects/${project.id}/team`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+          })
+
+          if (res.ok) {
+            // Refrescar caché con datos reales del servidor
+            const freshRes = await fetch(`/api/projects/${project.id}`, { cache: 'no-store' })
+            if (freshRes.ok) {
+              const fresh = await freshRes.json()
+              if (fresh?.id && !isNaN(numericId)) {
+                const updatedProject = { 
+                  ...fresh, 
+                  _pendingTeamSync: false 
+                };
+                await db.projectsCache.update(numericId, updatedProject).catch(() => {})
+                
+                // v408: Update parent state to clear 'Sincronizando' label immediately
+                if (setLocalProject) {
+                  setLocalProject(updatedProject);
+                }
+              }
+            }
+            router.refresh()
+          } else {
+            throw new Error('Sync failed')
+          }
+        } catch (e) {
+          // Fallback a outbox si falla la red
+          await db.outbox.add({
+            projectId: numericId,
+            type: 'TEAM_UPDATE',
+            payload,
+            status: 'pending',
+            timestamp: Date.now()
+          })
+        }
+      }
+
+      performSync() // Sin await para no bloquear
+    } catch (e) {
+      console.error('[TeamSection] Save Error:', e)
+      setIsSaving(false)
+    }
+  }
+
   return (
     <div className="card" style={{ height: '100%', display: 'flex', flexDirection: 'column', margin: 0 }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px' }}>
@@ -36,18 +147,18 @@ export default function ProjectTeamSection({
             </span>
           )}
         </h3>
-        {!isEditingTeam ? (
-          <button onClick={onEdit} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }}>Editar</button>
+        {!isEditing ? (
+          <button onClick={() => setIsEditing(true)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px' }}>Editar</button>
         ) : (
           <div style={{ display: 'flex', gap: '5px' }}>
-            <button onClick={onCancel} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', color: 'var(--text-muted)' }} disabled={isSavingTeam}>Cancelar</button>
-            <button onClick={onSave} className="btn btn-primary btn-sm" style={{ padding: '4px 8px' }} disabled={isSavingTeam}>{isSavingTeam ? '...' : 'Guardar'}</button>
+            <button onClick={() => setIsEditing(false)} className="btn btn-ghost btn-sm" style={{ padding: '4px 8px', color: 'var(--text-muted)' }} disabled={isSaving}>Cancelar</button>
+            <button onClick={handleInternalSave} className="btn btn-primary btn-sm" style={{ padding: '4px 8px' }} disabled={isSaving}>{isSaving ? '...' : 'Guardar'}</button>
           </div>
         )}
       </div>
 
       <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', flex: 1 }}>
-        {!isEditingTeam ? (
+        {!isEditing ? (
           <>
             {(project?.team || []).map((member: any) => {
               const name = member.user?.name || member.name || 'Operador';
@@ -76,8 +187,8 @@ export default function ProjectTeamSection({
               <label key={op.id} style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '10px', backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: '8px', cursor: 'pointer' }}>
                 <input 
                   type="checkbox" 
-                  checked={selectedTeam.includes(op.id)}
-                  onChange={() => onToggleMember(op.id)}
+                  checked={selectedIds.includes(op.id)}
+                  onChange={() => handleToggleMember(op.id)}
                   style={{ width: '18px', height: '18px', accentColor: 'var(--primary)' }}
                 />
                 <div>

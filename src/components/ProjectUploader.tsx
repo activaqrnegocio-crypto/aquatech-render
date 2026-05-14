@@ -18,6 +18,7 @@ const Filter = ({ size = 24 }: any) => <svg {...svgProps(size)}><polygon points=
 const Trash2 = ({ size = 24 }: any) => <svg {...svgProps(size)}><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
 
 export interface ProjectFile {
+  id?: string
   url: string
   filename: string
   mimeType: string
@@ -112,11 +113,11 @@ export default function ProjectUploader({
             // v354: Large file support for offline mode
             // Files > 10MB must NOT be converted to base64 (a 500MB video → 667MB string = CRASH)
             // Instead, pass the raw File object — IndexedDB structured clone preserves it.
-            const OFFLINE_BASE64_LIMIT = 10 * 1024 * 1024; // 10MB
-            const OFFLINE_MAX_SIZE = 300 * 1024 * 1024; // 300MB
+            const OFFLINE_BASE64_LIMIT = 20 * 1024 * 1024; // 20MB
+            const OFFLINE_MAX_SIZE = 1024 * 1024 * 1024; // 1GB (v410: Eliminando límites estúpidos)
             
             if (file.size > OFFLINE_MAX_SIZE) {
-              alert(`El archivo "${file.name}" (${(file.size / (1024*1024)).toFixed(0)} MB) es demasiado grande para guardar offline. \n\nLímite Offline: 300MB (Aprox. 5 min de video). \n\nPor favor conéctate a internet para subir archivos más pesados.`);
+              alert(`El archivo "${file.name}" (${(file.size / (1024*1024)).toFixed(0)} MB) es demasiado grande para guardar offline. \n\nLímite Offline: 1GB. \n\nPor favor conéctate a internet para subir archivos más pesados.`);
               continue;
             }
 

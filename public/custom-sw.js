@@ -1,4 +1,4 @@
-const SW_VERSION = 'v371-crash-fix';
+const SW_VERSION = 'v373-nav-sync-fix';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
@@ -604,23 +604,38 @@ async function navigationHandler(request) {
 
     // v340: ROBUST STRATEGY — Cache-first for offline, network-first for online
     
-    // ── STEP 2: CACHE FIRST (instant for offline, background update for online) ──
-    // For admin/operator routes, prefer serving the cached shell immediately
-    const isOpNav = url.pathname.includes('/operador/') || url.pathname === '/admin/operador' || url.pathname === '/admin/operador/';
-    const isAdminNav = url.pathname.includes('/admin/proyectos') || url.pathname.includes('/admin/calendario') || url.pathname === '/admin';
+    // v372: Specific detection for project details vs lists
+    const isOpDetail = url.pathname.match(/\/admin\/operador\/proyecto\/\d+/) || 
+                       url.pathname.match(/\/operador\/proyecto\/\d+/) ||
+                       url.pathname.includes('/operador/proyecto/');
+    const isAdminDetail = url.pathname.match(/\/admin\/proyectos\/\d+/) && !url.pathname.endsWith('/nuevo');
+    
+    // ── STEP 2: NETWORK FIRST for navigation when online ──
+    const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
+    if (isOnline) {
+      try {
+        const networkResponse = await fetch(request);
+        if (isValidHTMLResponse(networkResponse)) {
+          const cache = await caches.open(PAGES_CACHE);
+          cache.put(request, networkResponse.clone());
+          return cleanResponse(networkResponse);
+        }
+      } catch (e) {
+        // Fallback to cache if network fails
+      }
+    }
 
-    // 2a. Try exact URL cache
+    // ── STEP 3: CACHE FALLBACK ──
     let cached = await caches.match(request.url, { ignoreVary: true, ignoreSearch: true });
     if (isValidHTMLResponse(cached)) {
-      // Serve immediately, update in background if online
-      updatePageInBackground(request.clone(), url.pathname);
+      if (isOnline) updatePageInBackground(request.clone(), url.pathname);
       return cleanResponse(cached);
     }
 
-    // 2b. Try shell for admin/operator routes (except /nuevo — son formularios, no detalles de proyecto)
+    // 2b. Try shell for admin/operator routes (ONLY for details, not for roots/lists)
     const isNuevoPage = url.pathname.endsWith('/nuevo') || url.pathname.endsWith('/nuevo/');
-    if (!isNuevoPage && (isOpNav || isAdminNav)) {
-      const shellUrl = isOpNav
+    if (!isNuevoPage && (isOpDetail || isAdminDetail)) {
+      const shellUrl = isOpDetail
         ? '/admin/operador/proyecto/offline-shell'
         : '/admin/proyectos/offline-shell';
       const shell = await caches.match(shellUrl, { ignoreVary: true, ignoreSearch: true });

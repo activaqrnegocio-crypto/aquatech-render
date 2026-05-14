@@ -28,13 +28,15 @@ export function useDexieDraft<T>(key: string, initialValue: T) {
   }, [key])
 
   const setValue = useCallback((value: T | ((val: T) => T)) => {
-    const valueToStore = value instanceof Function ? value(storedValue) : value
-    setStoredValue(valueToStore)
-    // Persist to IndexedDB (supports File objects via structured clone)
-    db.drafts.put({ key, value: valueToStore }).catch((err) => {
-      console.warn(`[useDexieDraft] Failed to persist "${key}":`, err)
+    setStoredValue((prev) => {
+      const nextValue = value instanceof Function ? value(prev) : value
+      // Persist to IndexedDB (supports File objects via structured clone)
+      db.drafts.put({ key, value: nextValue }).catch((err) => {
+        console.warn(`[useDexieDraft] Failed to persist "${key}":`, err)
+      })
+      return nextValue
     })
-  }, [key, storedValue])
+  }, [key])
 
   const removeValue = useCallback(() => {
     setStoredValue(initialValue)

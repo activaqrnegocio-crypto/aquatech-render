@@ -139,13 +139,6 @@ export function useProjectCache({
 
     async function tryRecover(): Promise<boolean> {
       try {
-        // v375: If we are Online and have real server data, don't overwrite with cache
-        const isOnline = typeof navigator !== 'undefined' && navigator.onLine
-        if (isOnline && initialProject && !initialProject.isSkeleton && Number(initialProject.id) === numericId) {
-          hasRecoveredRef.current = true
-          return true
-        }
-
         let cached = null
         if (isPending) {
           // v400: Recover from outbox for newly created offline projects
@@ -163,6 +156,18 @@ export function useProjectCache({
         } else {
           cached = await db.projectsCache.get(idFromUrl) ||
                    (!isNaN(numericId) ? await db.projectsCache.get(numericId) : null)
+        }
+
+        // v405: Hybrid Consistency. 
+        // If we are Online and have server data, but Dexie has NO pending syncs AND server data is valid,
+        // we can stick to server data to ensure we have the most authoritative version.
+        const isOnline = typeof navigator !== 'undefined' && navigator.onLine
+        const serverIsFresh = isOnline && initialProject && !initialProject.isSkeleton && Number(initialProject.id) === numericId
+        
+        if (serverIsFresh && cached && !cached._pendingTeamSync && !cached._pendingProjectSync) {
+          // No pending local changes, server is authoritative.
+          hasRecoveredRef.current = true
+          return true
         }
 
         if (cached && !cancelled) {
@@ -259,6 +264,31 @@ export function useProjectCache({
     // String comparison to avoid type mismatch (Number vs String)
     return all.filter(item => String(item.projectId) === String(idFromUrl))
   }, [idFromUrl]) || []
+
+  // --- v408: Reactive Cache Watcher ---
+  // Listen for changes in IndexedDB to automatically clear 'Syncing' flags
+  // when the GlobalSyncWorker finishes its job in the background.
+  const liveProject = useLiveQuery(
+    () => {
+      const numericId = Number(idFromUrl);
+      if (isNaN(numericId) || numericId <= 0) return null;
+      return db.projectsCache.get(numericId);
+    },
+    [idFromUrl]
+  );
+
+  useEffect(() => {
+    if (liveProject && !isIdentityMismatch) {
+      // Update local state ONLY if sync flags have changed to avoid unnecessary re-renders
+      const hasSyncFlagChange = 
+        liveProject._pendingTeamSync !== localProject?._pendingTeamSync ||
+        liveProject._pendingProjectSync !== localProject?._pendingProjectSync;
+
+      if (hasSyncFlagChange) {
+        setLocalProject((prev: any) => ({ ...prev, ...liveProject }));
+      }
+    }
+  }, [liveProject, isIdentityMismatch, localProject?._pendingTeamSync, localProject?._pendingProjectSync]);
 
   // ─── Message Deduplication ───
   const deduplicateMessages = useCallback((messages: any[]) => {

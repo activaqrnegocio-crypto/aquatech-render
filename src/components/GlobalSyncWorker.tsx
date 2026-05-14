@@ -1034,8 +1034,6 @@ export default function GlobalSyncWorker() {
                 if (item.type === 'PROJECT' && resData.id) {
                   try {
                     const wizardPayload = item.payload || {};
-                    // v400: Prioritize data from server (resData) but fallback to processed payload
-                    // resData now includes gallery, phases, team due to API update.
                     const finalTeam = (resData.team && resData.team.length > 0) ? resData.team : (wizardPayload.team || []).map((tid: any) => ({
                       id: 0,
                       userId: Number(tid),
@@ -1068,7 +1066,6 @@ export default function GlobalSyncWorker() {
                       unreadCount: 0
                     });
                     
-                    // Invalidate cache metadata so the list refreshes
                     const u = session?.user as any;
                     const cacheKey = `projects_bulk_${u?.id || 'default'}`;
                     const meta = await db.cacheMetadata.get(cacheKey);
@@ -1076,9 +1073,18 @@ export default function GlobalSyncWorker() {
                       await db.cacheMetadata.update(cacheKey, { lastSync: 0, count: (meta.count || 0) + 1 });
                     }
                   } catch (cacheErr) {
-                    // Non-blocking — don't break sync if cache write fails
                     console.warn('[Sync] Failed to cache synced project:', cacheErr);
                   }
+                }
+
+                // v407: Clear pending sync flags for team/project updates
+                if (item.type === 'TEAM_UPDATE' && item.projectId) {
+                  try {
+                    const numericId = Number(item.projectId);
+                    if (!isNaN(numericId)) {
+                      await db.projectsCache.update(numericId, { _pendingTeamSync: false });
+                    }
+                  } catch (cacheErr) {}
                 }
                 if (typeof window !== 'undefined') {
                   const syncLabel = item.type === 'GALLERY_UPLOAD' ? 'Archivo subido a galería' :

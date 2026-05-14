@@ -339,8 +339,8 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
         // v370 FIX: Check TOTAL file size BEFORE processing to prevent "Aw, Snap!" crashes
         // Each arrayBuffer() loads the ENTIRE file into RAM. On mobile with limited memory,
         // multiple large files (photos + videos) can easily crash the browser tab.
-        const SMALL_FILE_LIMIT = 10 * 1024 * 1024; // 10MB - files under this get arrayBuffer
-        const TOTAL_OFFLINE_LIMIT = 200 * 1024 * 1024; // 200MB total cap
+        const SMALL_FILE_LIMIT = 20 * 1024 * 1024; // 20MB - files under this get arrayBuffer
+        const TOTAL_OFFLINE_LIMIT = 1024 * 1024 * 1024; // 1GB total cap (v410: No más "límites estúpidos")
         
         let totalSize = 0;
         for (const f of payload.files) {
@@ -1177,6 +1177,69 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                     </div>
                     <textarea className="form-input mb-6" rows={3} placeholder="Describe el alcance técnico o usa los botones de voz/video..." value={projectData.technicalSpecs.description || ''} onChange={e => updateSpec('description', e.target.value)} />
                     
+                    {/* v410: Real-time file preview list */}
+                    {uploadedFiles.length > 0 && (
+                      <div className="mb-6 animate-fade-in" style={{ padding: '15px', backgroundColor: 'rgba(255, 255, 255, 0.03)', borderRadius: '16px', border: '1px solid var(--border)' }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+                          <p style={{ margin: 0, fontSize: '0.85rem', fontWeight: 'bold', color: 'var(--primary)' }}>
+                             Archivos en cola ({uploadedFiles.length})
+                          </p>
+                          <button 
+                            type="button" 
+                            onClick={() => setShowGallery(true)}
+                            style={{ fontSize: '0.75rem', color: 'var(--text-muted)', background: 'none', border: 'none', cursor: 'pointer', textDecoration: 'underline' }}
+                          >
+                             Ver Galería Completa
+                          </button>
+                        </div>
+                        <div className="scrollbar-hide" style={{ display: 'flex', gap: '12px', overflowX: 'auto', paddingBottom: '5px' }}>
+                          {uploadedFiles.map((f, idx) => (
+                            <div 
+                              key={f.id || idx} 
+                              style={{ 
+                                flexShrink: 0, width: '80px', height: '80px', borderRadius: '12px', 
+                                overflow: 'hidden', position: 'relative', border: '2px solid var(--border)',
+                                backgroundColor: 'var(--bg-deep)'
+                              }}
+                            >
+                              {f.type === 'IMAGE' ? (
+                                <img src={f.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Preview" />
+                              ) : f.type === 'VIDEO' ? (
+                                <div style={{ width: '100%', height: '100%', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <span style={{ fontSize: '1.5rem' }}>🎥</span>
+                                </div>
+                              ) : f.type === 'AUDIO' ? (
+                                <div style={{ width: '100%', height: '100%', background: 'var(--primary-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <span style={{ fontSize: '1.5rem' }}>🎙️</span>
+                                </div>
+                              ) : (
+                                <div style={{ width: '100%', height: '100%', background: 'var(--bg-deep)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                                  <span style={{ fontSize: '1.5rem' }}>📄</span>
+                                </div>
+                              )}
+                              <button 
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setUploadedFiles(prev => prev.filter((_, i) => i !== idx));
+                                }}
+                                style={{ 
+                                  position: 'absolute', top: '4px', right: '4px', 
+                                  background: 'rgba(239, 68, 68, 0.8)', color: 'white', 
+                                  border: 'none', borderRadius: '50%', width: '20px', height: '20px', 
+                                  fontSize: '10px', cursor: 'pointer', display: 'flex', 
+                                  alignItems: 'center', justifyContent: 'center', fontWeight: 'bold'
+                                }}
+                                title="Eliminar"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {showCameraCapture && (
                       <div className="animate-slide-down" style={{ marginBottom: '25px', padding: '20px', backgroundColor: 'var(--bg-deep)', borderRadius: '16px', border: '1px solid var(--border)' }}>
                          <h3 style={{ marginTop: 0, marginBottom: '15px', fontSize: '1.1rem', textAlign: 'center' }}>Cámara Integrada</h3>

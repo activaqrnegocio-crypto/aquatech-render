@@ -63,17 +63,14 @@ export default function ProjectExecutionClient({
 
   const {
     handleSaveProject,
-    handleSaveTeam,
     handleDeleteGalleryItem,
     isSavingProject,
-    isSavingTeam
   } = useProjectActions({ 
     project, 
     setLocalProject, 
     triggerBackgroundSync,
     onSuccess: (type) => {
       if (type === 'PROJECT_UPDATE') setIsEditingProject(false)
-      if (type === 'TEAM_UPDATE') setIsEditingTeam(false)
     }
   })
 
@@ -83,8 +80,6 @@ export default function ProjectExecutionClient({
   const [activeTab, setActiveTab] = useState<'records' | 'chat'>('records')
   const [isFichaOpen, setIsFichaOpen] = useState(false)
   const [isEditingProject, setIsEditingProject] = useState(false)
-  const [isEditingTeam, setIsEditingTeam] = useState(false)
-  const [selectedTeamIds, setSelectedTeamIds] = useState<number[]>(project?.team?.map((t: any) => t.id) || [])
   const [localExpenses, setLocalExpenses] = useState<any[]>(expenses || [])
   const [selectedPreviewImage, setSelectedPreviewImage] = useState<any>(null)
   const [handleDownloadLoading, setHandleDownloadLoading] = useState<string | null>(null)
@@ -178,13 +173,6 @@ export default function ProjectExecutionClient({
       window.removeEventListener('offline', handleOffline)
     }
   }, [])
-
-  // 4. Sync Team State when project updates
-  useEffect(() => {
-    if (project?.team) {
-      setSelectedTeamIds(project.team.map((t: any) => t.id || t.userId))
-    }
-  }, [project?.team])
 
   // 4. Lifecycle Effects
   useEffect(() => {
@@ -809,25 +797,8 @@ export default function ProjectExecutionClient({
   const handleDayRecord = async () => {
     setLoading(true)
     try {
-      // get location
-      let location = null
-      if ('geolocation' in navigator) {
-        try {
-          location = await new Promise<any>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(
-              pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-              err => reject(err),
-              { timeout: 25000, enableHighAccuracy: true }
-            )
-          }).catch(() => null)
-        } catch(e) {}
-      }
-
-      if (!location) {
-        alert("⚠️ UBICACIÓN OBLIGATORIA: Por favor activa el GPS y permite el acceso para continuar. Es necesario para la auditoría de campo.")
-        setLoading(false)
-        return
-      }
+      // v408: Geolocation removed as per user request to make the page lighter
+      let location: any = null;
 
       const isEnding = activeRecord && Number(activeRecord.projectId) === Number(project.id)
       
@@ -845,8 +816,8 @@ export default function ProjectExecutionClient({
           projectId: project.id,
           payload,
           timestamp: Date.now(),
-          lat: location?.lat,
-          lng: location?.lng,
+          lat: undefined,
+          lng: undefined,
           status: 'pending'
         })
         triggerBackgroundSync()
@@ -933,17 +904,10 @@ export default function ProjectExecutionClient({
     // --- ASYNC BACKGROUND PROCESSING ---
     const processMessage = async () => {
       try {
+        // v408: Geolocation removed to avoid browser prompts on every message
         let location: any = null
         if (extraData?.lat && extraData?.lng) {
           location = { lat: extraData.lat, lng: extraData.lng }
-        } else if ('geolocation' in navigator) {
-          location = await new Promise((resolve) => {
-            navigator.geolocation.getCurrentPosition(
-              pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-              () => resolve(null),
-              { enableHighAccuracy: false, timeout: 5000 }
-            )
-          })
         }
 
       let mediaData: any = null
@@ -1170,16 +1134,8 @@ export default function ProjectExecutionClient({
     setLoading(true)
 
     try {
-      let location: any = null
-      if ('geolocation' in navigator) {
-        location = await new Promise((resolve) => {
-          navigator.geolocation.getCurrentPosition(
-            pos => resolve({ lat: pos.coords.latitude, lng: pos.coords.longitude }),
-            () => resolve(null),
-            { timeout: 5000 }
-          )
-        })
-      }
+      // v408: Geolocation removed for faster uploads
+      let location: any = null;
       
       const isOffline = !navigator.onLine
       const syncId = `gallery-${project.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -2003,19 +1959,7 @@ export default function ProjectExecutionClient({
                   <ProjectTeamSection 
                     project={project}
                     operators={resolvedOperators}
-                    selectedTeam={selectedTeamIds}
-                    isEditingTeam={isEditingTeam}
-                    isSavingTeam={isSavingTeam}
-                    onEdit={() => {
-                      // v402: Reset selection from current project team state
-                      setSelectedTeamIds((project?.team || []).map((t: any) => t.id || t.userId || t.user?.id))
-                      setIsEditingTeam(true)
-                    }}
-                    onCancel={() => setIsEditingTeam(false)}
-                    onSave={() => handleSaveTeam(selectedTeamIds, resolvedOperators)}
-                    onToggleMember={(id: number) => {
-                      setSelectedTeamIds(prev => prev.includes(id) ? prev.filter(mid => mid !== id) : [...prev, id])
-                    }}
+                    setLocalProject={setLocalProject}
                   />
                 </div>
               </div>

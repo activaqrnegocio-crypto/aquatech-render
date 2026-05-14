@@ -173,7 +173,6 @@ export default function ProjectDetailBase({
   const [isPending, startTransition] = useTransition()
   const [isGenerating, setIsGenerating] = useState(false)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
-  const [isEditingTeam, setIsEditingTeam] = useState(false)
   
   // v272: Reactive team state and operator caching
   const cachedOperators = useLiveQuery(() => db.usersCache.toArray()) || [];
@@ -193,17 +192,6 @@ export default function ProjectDetailBase({
     }
   }, [availableOperators]);
 
-  const [selectedTeam, setSelectedTeam] = useState<number[]>(() => (project?.team || []).map((t: any) => t.user?.id))
-  
-  // v272: Keep selectedTeam in sync with project.team changes (especially after recovery)
-  useEffect(() => {
-    if (project?.team && project.team.length > 0) {
-      setSelectedTeam(project.team.map((t: any) => t.user?.id));
-    }
-  }, [project?.team]);
-
-  const [isSavingTeam, setIsSavingTeam] = useState(false)
-  
   const initialGallery = (project?.gallery || []).sort((a: any, b: any) => 
     new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()
   )
@@ -1266,96 +1254,6 @@ export default function ProjectDetailBase({
     } finally {
       setIsSavingPhases(false)
       triggerBackgroundSync() // v261: Always trigger sync attempt after phase update
-    }
-  }
-
-  const handleSaveTeam = async () => {
-    // v262: Bloqueo síncrono instantáneo
-    if (saveLockRef.current) return;
-    saveLockRef.current = true;
-    
-    setIsSavingTeam(true)
-    try {
-      if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        // v262: Transacción atómica para evitar duplicados en outbox
-        await db.transaction('rw', db.outbox, async () => {
-          await db.outbox.add({
-            projectId: project.id,
-            type: 'TEAM_UPDATE',
-            payload: { operatorIds: selectedTeam },
-            status: 'pending',
-            timestamp: Date.now()
-          })
-        });
-        
-        // --- LOCAL FEEDBACK ---
-        // v402: Include `user` sub-object for consistent format
-        const newTeam = operators
-          .filter((op: any) => selectedTeam.includes(op.id))
-          .map((op: any) => ({
-            id: op.id,
-            userId: op.id,
-            name: op.name || 'Operador',
-            phone: op.phone,
-            user: { id: op.id, name: op.name || 'Operador', phone: op.phone, role: op.role || 'OPERATOR' }
-          }));
-
-        setLocalProject((prev: any) => ({
-          ...prev,
-          team: newTeam,
-          _pendingTeamSync: true
-        }));
-
-        setIsEditingTeam(false)
-        triggerBackgroundSync()
-        return
-      }
-
-      const res = await fetch(`/api/projects/${project.id}/team`, {
-        method: 'PUT',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-sync-id': `team-update-${project.id}-${Date.now()}` // v262: Idempotency Key
-        },
-        body: JSON.stringify({ operatorIds: selectedTeam })
-      })
-
-      if (!res.ok) throw new Error('Failed to update team')
-
-      // v403: Re-fetch fresh data from server to guarantee consistency
-      try {
-        const freshRes = await fetch(`/api/projects/${project.id}`, { cache: 'no-store' })
-        if (freshRes.ok) {
-          const freshProject = await freshRes.json()
-          if (freshProject?.id) {
-            setLocalProject((prev: any) => ({ ...(prev || project), ...freshProject, _pendingTeamSync: false }))
-            const numericId = Number(project.id)
-            if (!isNaN(numericId) && numericId > 0) {
-              db.projectsCache.put({ ...freshProject, _pendingTeamSync: false, lastAccessedAt: Date.now() }).catch(() => {})
-            }
-          }
-        }
-      } catch (_) {
-        // Fallback: use locally constructed team
-        const newTeam = operators
-          .filter((op: any) => selectedTeam.includes(op.id))
-          .map((op: any) => ({
-            id: op.id, userId: op.id, name: op.name || 'Operador', phone: op.phone,
-            user: { id: op.id, name: op.name || 'Operador', phone: op.phone, role: op.role || 'OPERATOR' }
-          }));
-        setLocalProject((prev: any) => ({ ...prev, team: newTeam, _pendingTeamSync: false }))
-      }
-
-      // v403: Kill Next.js client router cache so navigating back shows fresh data
-      router.refresh()
-      setIsEditingTeam(false)
-    } catch (e) {
-      console.error('Error guardando equipo:', e);
-      alert('Error guardando equipo')
-    } finally {
-      setIsSavingTeam(false)
-      // Liberar el bloqueo con un pequeño retraso para evitar rebotes
-      setTimeout(() => { saveLockRef.current = false; }, 500);
     }
   }
 
@@ -3193,20 +3091,7 @@ export default function ProjectDetailBase({
           <ProjectTeamSection
             project={project}
             operators={operators}
-            selectedTeam={selectedTeam}
-            isEditingTeam={isEditingTeam}
-            isSavingTeam={isSavingTeam}
-            onEdit={() => {
-              // v402: Reset selection from current project state
-              setSelectedTeam((project?.team || []).map((t: any) => t.user?.id || t.id || t.userId))
-              setIsEditingTeam(true)
-            }}
-            onCancel={() => setIsEditingTeam(false)}
-            onSave={handleSaveTeam}
-            onToggleMember={(id: number) => {
-              if (selectedTeam.includes(id)) setSelectedTeam(selectedTeam.filter(tid => tid !== id))
-              else setSelectedTeam([...selectedTeam, id])
-            }}
+            setLocalProject={setLocalProject}
           />
 
           {/* CLIENTE RAPID VIEW */}
