@@ -91,6 +91,7 @@ export default function ProjectExecutionClient({
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
   const [recentlySyncedItems, setRecentlySyncedItems] = useState<any[]>([]) // v400: Bridge for disappearing items
+  const [optimisticUploads, setOptimisticUploads] = useState<any[]>([]) // v401: Optimistic UI for online uploads
 
   const router = useRouter()
   const pathname = usePathname()
@@ -483,14 +484,19 @@ export default function ProjectExecutionClient({
       }
     })
     
-     // v400: Include recently synced items that might not be in project.gallery yet
-     const syncedGallery = recentlySyncedItems.filter(i => {
-        const cat = (i.category || 'MASTER').toUpperCase();
-        return (cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO') && 
-               !(project?.gallery || []).some((g: any) => g.filename === i.filename);
-     }).map(i => ({ ...i, isRecentlySynced: !i.isSyncing }));
+    // v400: Include recently synced items that might not be in project.gallery yet
+    const syncedGallery = recentlySyncedItems.filter(i => {
+       const cat = (i.category || 'MASTER').toUpperCase();
+       return (cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO') && 
+              !(project?.gallery || []).some((g: any) => g.filename === i.filename);
+    }).map(i => ({ ...i, isRecentlySynced: true }));
 
-    const list = [...baseFiles, ...expenseFiles, ...pendingGallery, ...syncedGallery]
+    const optimisticMaster = optimisticUploads.filter((item: any) => {
+      const cat = (item.category || '').toUpperCase()
+      return cat === 'MASTER' || cat === 'PLANOS' || cat === 'LEVANTAMIENTO'
+    });
+
+    const list = [...baseFiles, ...expenseFiles, ...pendingGallery, ...syncedGallery, ...optimisticMaster]
     return list.filter((item: any) => {
       const url = (item.url || '').toLowerCase();
       const mime = (item.mimeType || '').toLowerCase();
@@ -503,7 +509,7 @@ export default function ProjectExecutionClient({
       if (galleryFilter === 'DOCS') return !isImage && !isVideo && !isAudio;
       return true;
     })
-  }, [project?.gallery, galleryFilter, localExpenses, pendingItems])
+  }, [project?.gallery, galleryFilter, localExpenses, pendingItems, optimisticUploads])
 
   const chatGallery = useMemo(() => {
     const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
@@ -624,9 +630,14 @@ export default function ProjectExecutionClient({
        const cat = (i.category || 'EVIDENCE').toUpperCase();
        return (cat === 'EVIDENCE' || cat === 'FINALES' || cat === 'ENTREGA' || cat === 'ENTREGA_FINAL' || cat === 'ADJUNTO' || cat === 'MASTER_FINAL') &&
               !(project?.gallery || []).some((g: any) => g.filename === i.filename);
-    }).map(i => ({ ...i, isRecentlySynced: !i.isSyncing }));
+    }).map(i => ({ ...i, isRecentlySynced: true }));
 
-    const combinedList = [...list, ...pendingEvidence, ...syncedEvidence]
+    const optimisticEvidence = optimisticUploads.filter((item: any) => {
+      const cat = (item.category || '').toUpperCase()
+      return cat === 'EVIDENCE' || cat === 'FINALES' || cat === 'ENTREGA' || cat === 'ENTREGA_FINAL' || cat === 'ADJUNTO' || cat === 'MASTER_FINAL'
+    });
+
+    const combinedList = [...list, ...pendingEvidence, ...syncedEvidence, ...optimisticEvidence]
     const seen = new Set()
     const uniqueList = combinedList.filter(item => {
       const uid = item.id
@@ -648,7 +659,7 @@ export default function ProjectExecutionClient({
       if (evidenceFilter === 'DOCS') return !isImage && !isVideo && !isAudio;
       return true;
     })
-  }, [project?.gallery, evidenceFilter, pendingItems])
+  }, [project?.gallery, evidenceFilter, pendingItems, optimisticUploads])
 
   const costoExcedido = useMemo(() => {
     const tBudget = project?.estimatedBudget || 0
@@ -1245,18 +1256,21 @@ export default function ProjectExecutionClient({
         return
       }
 
-      // Online path: Add optimistic item to bridge immediately
-      const tempId = `opt-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+      // Online path
+      galleryPayload.url = file.url;
+
+      // --- OPTIMISTIC UI UPDATE ---
+      const optimisticId = `temp-${syncId}`;
       const optimisticItem = {
-        id: tempId,
+        id: optimisticId,
         url: file.url,
-        filename: file.filename,
-        mimeType: file.mimeType,
+        filename: galleryPayload.filename || file.filename || 'Archivo Multimedia',
+        mimeType: galleryPayload.mimeType || file.mimeType,
         category: galleryPayload.category,
-        isSyncing: true, // Shows blue syncing badge
-        createdAt: new Date().toISOString()
+        isPending: true // For visual indicator "Subiendo..."
       };
-      setRecentlySyncedItems(prev => [...prev, optimisticItem]);
+      
+      setOptimisticUploads(prev => [...prev, optimisticItem]);
 
       try {
         const res = await fetch(`/api/projects/${project.id}/gallery`, {
@@ -1272,19 +1286,11 @@ export default function ProjectExecutionClient({
           })
         })
         if (!res.ok) throw new Error('Refetch')
-        
-        const newItem = await res.json();
-        // Replace optimistic with real item, mark as recently synced
-        setRecentlySyncedItems(prev => prev.map(i => i.id === tempId ? { ...newItem, isRecentlySynced: true } : i));
-        
-        // v400: Cleanup optimistic item after 30s if not replaced (safety)
-        setTimeout(() => {
-          setRecentlySyncedItems(prev => prev.filter(i => i.id !== tempId && i.id !== newItem.id));
-        }, 30000);
-
+        // Remove from optimistic as it's now synced (but might not appear in cache until revalidate, so we bridge it)
+        setOptimisticUploads(prev => prev.filter(i => i.id !== optimisticId));
+        setRecentlySyncedItems(prev => [...prev, { ...optimisticItem, isPending: false }]);
       } catch (err) {
-        // Remove optimistic if failed
-        setRecentlySyncedItems(prev => prev.filter(i => i.id !== tempId));
+        setOptimisticUploads(prev => prev.filter(i => i.id !== optimisticId));
         await db.transaction('rw', db.outbox, async () => {
           await db.outbox.add({
             type: 'GALLERY_UPLOAD',

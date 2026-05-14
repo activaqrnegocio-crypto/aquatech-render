@@ -786,9 +786,6 @@ export default function ProjectDetailBase({
       }
     }
 
-    // Optimistic Update: Ficha
-    setLocalProject((prev: any) => ({ ...prev, ...fichaPayload, client: fichaPayload.client }))
-
     try {
       const syncId = `project-update-${project.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
       const resp = await fetch(`/api/projects/${project.id}`, {
@@ -802,9 +799,9 @@ export default function ProjectDetailBase({
 
       if (resp.ok) {
         setIsEditingFicha(false)
+        // v373: Removed revalidateRoute — setLocalProject already updated state above
       } else {
-        // No rollback needed as we want to stay edited, but maybe alert
-        alert('Error al guardar los cambios en el servidor')
+        alert('Error al guardar los cambios')
       }
     } catch (e) {
       console.error(e)
@@ -997,23 +994,15 @@ export default function ProjectDetailBase({
         return
       }
 
-      // Optimistic Update: Budget
-      const oldBudget = project.estimatedBudget;
-      setLocalProject((prev: any) => ({ ...prev, estimatedBudget: Number(editBudget) }))
-      setIsEditingBudget(false)
-
-      try {
-        const resp = await fetch(`/api/projects/${project.id}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ estimatedBudget: Number(editBudget) })
-        })
-        if (!resp.ok) {
-          alert('Error al actualizar el presupuesto en el servidor')
-          setLocalProject((prev: any) => ({ ...prev, estimatedBudget: oldBudget }))
-        }
-      } catch (e) {
-        setLocalProject((prev: any) => ({ ...prev, estimatedBudget: oldBudget }))
+      const resp = await fetch(`/api/projects/${project.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ estimatedBudget: Number(editBudget) })
+      })
+      if (resp.ok) {
+        setIsEditingBudget(false)
+        setLocalProject((prev: any) => ({ ...prev, estimatedBudget: Number(editBudget) }))
+      } else {
         alert('Error al actualizar el presupuesto')
       }
      } catch (e) {
@@ -1105,18 +1094,21 @@ export default function ProjectDetailBase({
        }
     }
 
-    // Online path: Add optimistic item to bridge immediately
-    const tempId = `opt-admin-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+    // --- OPTIMISTIC UI UPDATE (Igual que en el chat) ---
+    const optimisticId = `temp-${syncId}`;
+    const tempMediaUrl = typeof file.url === 'string' && file.url.startsWith('blob:') ? file.url : (file.base64 || file.url);
+    
     const optimisticItem = {
-      id: tempId,
-      url: file.url,
-      filename: file.filename,
+      id: optimisticId,
+      url: tempMediaUrl,
+      filename: file.filename || 'Archivo Multimedia',
       mimeType: file.mimeType,
       category: category,
-      isSyncing: true, // Shows blue syncing badge
-      createdAt: new Date().toISOString()
+      type: category, // Para que el filtro lo agarre
+      isPending: true // El UI ya usa esto para mostrar "Subiendo..."
     };
-    setGallery(prev => [optimisticItem, ...prev]);
+
+    setGallery((prev: any) => [optimisticItem, ...prev]);
 
     try {
       const resp = await fetch(`/api/projects/${project.id}/gallery`, {
@@ -1130,19 +1122,16 @@ export default function ProjectDetailBase({
 
       if (resp.ok) {
         const newItem = await resp.json()
-        setGallery(prev => prev.map(i => i.id === tempId ? { ...newItem, isRecentlySynced: true } : i))
-        
-        // Cleanup after 30s
-        setTimeout(() => {
-          setGallery(prev => prev.filter(i => i.id !== tempId && i.id !== newItem.id));
-        }, 30000);
+        setGallery((prev: any) => [newItem, ...prev.filter((i: any) => i.id !== optimisticId)])
       } else {
-        setGallery(prev => prev.filter(i => i.id !== tempId));
-        alert('Error al subir archivo al servidor');
+        throw new Error("Respuesta no OK de la API");
       }
     } catch (e) {
-      setGallery(prev => prev.filter(i => i.id !== tempId));
       console.error('Error uploading to gallery:', e)
+      
+      // Remove optimistic item because the outbox will provide it via pendingItems
+      setGallery((prev: any) => prev.filter((i: any) => i.id !== optimisticId));
+
       // Fallback to outbox on error
       await db.transaction('rw', db.outbox, async () => {
         let base64 = null;
@@ -1151,7 +1140,7 @@ export default function ProjectDetailBase({
             const res = await fetch(file.url);
             const blob = await res.blob();
             base64 = await blobToBase64(blob);
-          } catch(err) {}
+          } catch(e) {}
         }
         await db.outbox.add({
            type: 'GALLERY_UPLOAD',
@@ -1315,8 +1304,15 @@ export default function ProjectDetailBase({
         return
       }
 
-      // --- INSTANT OPTIMISTIC FEEDBACK ---
-      const oldTeam = project.team;
+      await fetch(`/api/projects/${project.id}/team`, {
+        method: 'PUT',
+        headers: { 
+          'Content-Type': 'application/json',
+          'x-sync-id': `team-update-${project.id}-${Date.now()}` // v262: Idempotency Key
+        },
+        body: JSON.stringify({ operatorIds: selectedTeam })
+      })
+      
       const newTeam = availableOperators
         .filter((op: any) => selectedTeam.includes(op.id))
         .map((op: any) => ({ user: op }));
@@ -1326,27 +1322,11 @@ export default function ProjectDetailBase({
         team: newTeam,
         _pendingTeamSync: false
       }));
+      
       setIsEditingTeam(false)
-
-      try {
-        const res = await fetch(`/api/projects/${project.id}/team`, {
-          method: 'PUT',
-          headers: { 
-            'Content-Type': 'application/json',
-            'x-sync-id': `team-update-${project.id}-${Date.now()}`
-          },
-          body: JSON.stringify({ operatorIds: selectedTeam })
-        })
-        
-        if (!res.ok) {
-          alert('Error guardando equipo en el servidor');
-          setLocalProject((prev: any) => ({ ...prev, team: oldTeam }));
-        }
-      } catch (e) {
-        console.error('Error guardando equipo:', e);
-        alert('Error guardando equipo')
-        setLocalProject((prev: any) => ({ ...prev, team: oldTeam }));
-      }
+    } catch (e) {
+      console.error('Error guardando equipo:', e);
+      alert('Error guardando equipo')
     } finally {
       setIsSavingTeam(false)
       // Liberar el bloqueo con un pequeño retraso para evitar rebotes

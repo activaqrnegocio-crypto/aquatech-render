@@ -24,6 +24,8 @@ export interface ProjectFile {
   type: 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO'
   category?: string
   size?: number
+  base64?: string | null
+  fileData?: any
 }
 
 interface ProjectUploaderProps {
