@@ -111,7 +111,7 @@ export default function ProjectExecutionClient({
   const searchParams = useSearchParams()
   const { data: session } = useSession()
   const [isPending, startTransition] = useTransition()
-  const { pending: globalPending, failed: globalFailed, syncing: isSyncingGlobal } = useOutboxStatus()
+  const { pending: globalPending, failed: globalFailed, syncing: isSyncingGlobal, lastError: globalLastError } = useOutboxStatus()
 
   // 3. Refs & Helpers
   const localChatInitialized = useRef(false)
@@ -1977,6 +1977,7 @@ export default function ProjectExecutionClient({
                 globalFailed={globalFailed} 
                 isSyncingGlobal={isSyncingGlobal} 
                 isSmallScreen={isSmallScreen}
+                lastError={globalLastError}
                 onSync={() => {
                   triggerBackgroundSync();
                   // Visual feedback

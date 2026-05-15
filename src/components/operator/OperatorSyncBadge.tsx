@@ -7,10 +7,11 @@ interface OperatorSyncBadgeProps {
   isSyncingGlobal: boolean
   globalFailed: number
   isSmallScreen: boolean
+  lastError?: string
   onSync?: () => void
 }
 
-export default function OperatorSyncBadge({ globalPending, isSyncingGlobal, globalFailed, isSmallScreen, onSync }: OperatorSyncBadgeProps) {
+export default function OperatorSyncBadge({ globalPending, isSyncingGlobal, globalFailed, isSmallScreen, lastError, onSync }: OperatorSyncBadgeProps) {
   // v400: Always show badge if there are failed items or pending ones, allowing manual retry
   if (globalPending <= 0 && !isSyncingGlobal && globalFailed <= 0) return null
 
@@ -42,7 +43,23 @@ export default function OperatorSyncBadge({ globalPending, isSyncingGlobal, glob
           gap: '2px'
         }}>
           {globalPending > 0 && <span>{globalPending} archivos pendientes</span>}
-          {globalFailed > 0 && <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{globalFailed} fallidos</span>}
+          {globalFailed > 0 && (
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end' }}>
+              <span style={{ color: '#ef4444', fontWeight: 'bold' }}>{globalFailed} fallidos</span>
+              {lastError && (
+                <span style={{ 
+                  color: '#fca5a5', 
+                  fontSize: '0.6rem', 
+                  maxWidth: '150px', 
+                  textAlign: 'right',
+                  marginTop: '2px',
+                  lineHeight: '1.2'
+                }}>
+                  {lastError}
+                </span>
+              )}
+            </div>
+          )}
           {isSyncingGlobal && <span style={{ color: 'var(--primary)', fontSize: '0.65rem' }}>Subiendo ahora...</span>}
         </div>
       )}

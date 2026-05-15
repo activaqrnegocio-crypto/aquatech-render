@@ -8,6 +8,7 @@ export function useOutboxStatus() {
   const [pending, setPending] = useState(0);
   const [failed, setFailed] = useState(0);
   const [syncing, setSyncing] = useState(false);
+  const [lastError, setLastError] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const check = async () => {
@@ -16,6 +17,16 @@ export function useOutboxStatus() {
         setPending(all.filter(i => i.status === 'pending').length);
         setFailed(all.filter(i => i.status === 'failed').length);
         setSyncing(all.filter(i => i.status === 'syncing').length > 0);
+        
+        // v444: Get the reason from the most recently failed item
+        const failedItems = all.filter(i => i.status === 'failed' || (i.attempts && i.attempts > 0 && i.status === 'pending'));
+        if (failedItems.length > 0) {
+          // Sort by lastAttemptAt descending
+          const last = failedItems.sort((a, b) => (b.lastAttemptAt || 0) - (a.lastAttemptAt || 0))[0];
+          setLastError(last.failReason);
+        } else {
+          setLastError(undefined);
+        }
       } catch (err) {
         console.warn('[useOutboxStatus] Error checking outbox:', err);
       }
@@ -47,5 +58,5 @@ export function useOutboxStatus() {
     };
   }, []);
 
-  return { pending, failed, syncing, total: pending + failed };
+  return { pending, failed, syncing, lastError, total: pending + failed };
 }

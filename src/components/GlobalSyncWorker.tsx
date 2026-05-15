@@ -691,6 +691,22 @@ export default function GlobalSyncWorker() {
           // --- NEW: UNIFIED MEDIA SYNC LOGIC ---
           const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
           
+          // v444: DIAGNOSTIC — log what data each GALLERY_UPLOAD item has
+          if (item.type === 'GALLERY_UPLOAD') {
+            console.log(`[Sync] GALLERY item #${item.id} diagnosis:`, {
+              hasCacheKey: !!finalPayload.cacheKey,
+              cacheKey: finalPayload.cacheKey || 'NONE',
+              hasFileData: !!finalPayload.fileData,
+              hasFile: !!finalPayload.file,
+              fileSize: finalPayload.file?.size || 0,
+              url: (finalPayload.url || '').substring(0, 50) || 'EMPTY',
+              filename: finalPayload.filename || 'NONE',
+              mimeType: finalPayload.mimeType || 'NONE',
+              storageType: finalPayload.storageType || 'NONE',
+              attempts: item.attempts || 0
+            });
+          }
+          
           // 1. Handle single media (MESSAGE, MEDIA_UPLOAD, EXPENSE, GALLERY_UPLOAD)
           // v444: Detection priority:
           //   0. cacheKey → Cache API (large files saved to disk, ZERO RAM)
@@ -834,20 +850,20 @@ export default function GlobalSyncWorker() {
 
               delete finalPayload.file;
             } catch (err) {
-              console.error(`[Sync] Failed media upload for ${item.type} #${item.id}:`, err instanceof Error ? err.message : err);
+              const errMsg = err instanceof Error ? err.message : String(err);
+              console.error(`[Sync] UPLOAD ERROR ${item.type} #${item.id}:`, errMsg);
               const currentAttempts = (item.attempts || 0) + 1;
-              // v442: 10 attempts before giving up. With 20s/MB timeout,
-              // each attempt gives plenty of time. Failures here mean real network issues.
               await db.outbox.update(item.id!, { 
                 status: currentAttempts >= 10 ? 'failed' : 'pending',
                 attempts: currentAttempts,
                 lastAttemptAt: Date.now(),
-                failReason: currentAttempts >= 10 ? 'UPLOAD_FAILED' : undefined
+                // v444: Store the ACTUAL error message so we can debug
+                failReason: `attempt_${currentAttempts}: ${errMsg.substring(0, 200)}`
               });
               if (ctx && item.type !== 'GALLERY_UPLOAD' && item.type !== 'MEDIA_UPLOAD') {
                 failedContexts.add(ctx);
               }
-              await logSync('warn', `⚠ Media upload falló: ${item.type} #${item.id} (intento ${currentAttempts}/10)`, item.type);
+              await logSync('warn', `UPLOAD ERROR: ${errMsg.substring(0, 100)} (${currentAttempts}/10)`, item.type);
               continue;
             }
           }

@@ -86,6 +86,26 @@ export function useProjectCache({
 
   // ─── Background Sync Helper ───
   const triggerBackgroundSync = useCallback(async () => {
+    // v444: When manually triggered, reset all 'failed' items to 'pending'
+    // so they get picked up by the worker loop again.
+    try {
+      await db.transaction('rw', db.outbox, async () => {
+        const failedItems = await db.outbox.where('status').equals('failed').toArray();
+        if (failedItems.length > 0) {
+          console.log(`[Sync] Manual trigger: Resetting ${failedItems.length} failed items to pending...`);
+          for (const item of failedItems) {
+            await db.outbox.update(item.id!, { 
+              status: 'pending', 
+              attempts: 0, // Reset attempts so it starts clean
+              lastAttemptAt: undefined 
+            });
+          }
+        }
+      });
+    } catch (err) {
+      console.warn('[Sync] Failed to reset failed items:', err);
+    }
+
     if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return
     try {
       const reg = await navigator.serviceWorker.ready
