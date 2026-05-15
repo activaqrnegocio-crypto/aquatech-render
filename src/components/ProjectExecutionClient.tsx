@@ -1119,14 +1119,14 @@ export default function ProjectExecutionClient({
     }
   }
 
-  // v372: Cola de archivos para batch upload — procesa uno por uno
-  const uploadQueue = useRef<ProjectFile[]>([]);
+  // v430: File queue with category support — prevents mixing MASTER and EVIDENCE items
+  const uploadQueue = useRef<{file: ProjectFile, category?: string}[]>([]);
   const processNextInQueue = useCallback(async () => {
     if (uploadQueue.current.length === 0 || saveLockRef.current) return;
     saveLockRef.current = true;
-    const nextFile = uploadQueue.current.shift()!;
+    const { file: nextFile, category } = uploadQueue.current.shift()!;
     try {
-      await processSingleUpload(nextFile);
+      await processSingleUpload(nextFile, category);
     } finally {
       saveLockRef.current = false;
       // Procesar siguiente si hay más en cola
@@ -1136,15 +1136,15 @@ export default function ProjectExecutionClient({
     }
   }, []);
 
-  const handleUploadMedia = (file: ProjectFile) => {
-    // Poner en cola en lugar de dropear
-    uploadQueue.current.push(file);
+  const handleUploadMedia = (file: ProjectFile, category?: string) => {
+    // v430: Queue the file with its specific category (MASTER/EVIDENCE)
+    uploadQueue.current.push({ file, category });
     if (!saveLockRef.current) {
       processNextInQueue();
     }
   }
 
-  const processSingleUpload = async (file: ProjectFile) => {
+  const processSingleUpload = async (file: ProjectFile, category?: string) => {
     setLoading(true)
 
     try {
@@ -1157,7 +1157,8 @@ export default function ProjectExecutionClient({
       let galleryPayload: any = {
         filename: file.filename,
         mimeType: file.mimeType,
-        category: file.category || 'EVIDENCE',
+        // v430: Priority: Param category > File category > Default EVIDENCE
+        category: category || file.category || 'EVIDENCE',
         phaseId: undefined,
         url: ''
       };
