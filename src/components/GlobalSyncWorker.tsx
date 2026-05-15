@@ -774,51 +774,23 @@ export default function GlobalSyncWorker() {
 
               const folder = item.projectId ? `projects/${item.projectId}` : 'general';
 
-              // v441: ALWAYS use resumable chunked upload for files > 10MB from the sync worker.
-              // This is the offline→online path — reliability matters more than speed.
-              // For files ≤ 10MB, direct PUT is fine (photos, small docs).
-              const isLargeFile = uploadFile.size > 10 * 1024 * 1024; // 10MB threshold
+              // v442: DIRECT PUT — same method that works perfectly online.
+              // NO chunks, NO server intermediary, NO re-streaming.
+              // The browser sends the File directly to BunnyCDN in 1 request.
+              // Timeout scales with file size: max(120s, 4s per MB).
+              // Each file uploads one-by-one (sync loop is sequential).
+              console.log(`[Sync] Direct PUT upload: ${finalFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB) → ${folder}`);
               
-              // Read persisted resume state from previous attempt (if any)
-              let resumeState = (finalPayload.resumeUpload?.uploadId)
-                ? {
-                    uploadId: finalPayload.resumeUpload.uploadId as string,
-                    completedChunks: (finalPayload.resumeUpload.completedChunks as number[]) || []
-                  }
-                : undefined;
-
-              // v441: For large files on FIRST attempt, create a fresh resumeState
-              // so that uploadToBunnyClientSide routes to chunked upload
-              if (isLargeFile && !resumeState) {
-                resumeState = {
-                  uploadId: crypto.randomUUID(),
-                  completedChunks: []
-                };
-                console.log(`[Sync] Large file detected (${(uploadFile.size/1024/1024).toFixed(1)}MB), using chunked upload. uploadId=${resumeState.uploadId.slice(0,8)}`);
-              }
-
-              // Callback: save chunk progress back into the outbox item after each chunk
-              const onChunkSuccess = async (chunkIndex: number, uploadId: string, completedChunks: number[]) => {
-                try {
-                  await db.outbox.update(item.id!, {
-                    payload: {
-                      ...finalPayload,
-                      resumeUpload: { uploadId, completedChunks }
-                    }
-                  });
-                } catch { /* non-critical — worst case next retry starts slightly earlier */ }
-              };
-
-              const uploadResult = await uploadToBunnyClientSide(uploadFile, finalFilename, folder, resumeState, onChunkSuccess);
+              const uploadResult = await uploadToBunnyClientSide(uploadFile, finalFilename, folder);
               
               if (item.type === 'EXPENSE') {
                 finalPayload.receiptPhoto = uploadResult.url;
                 if (finalPayload.receiptFileData) finalPayload.receiptFileData = null; 
               } else if (item.type === 'GALLERY_UPLOAD') {
                 finalPayload.url = uploadResult.url;
-                finalPayload.mimeType = uploadResult.mimeType; // v430: Preserve compressed mimeType
+                finalPayload.mimeType = uploadResult.mimeType;
                 if (finalPayload.fileData) finalPayload.fileData = null;
-                if (finalPayload.file) finalPayload.file = null; // v430: Memory release for File objects
+                if (finalPayload.file) finalPayload.file = null;
               } else {
                 finalPayload.media = { 
                   ...finalPayload.media,
@@ -827,31 +799,31 @@ export default function GlobalSyncWorker() {
                   mimeType: uploadResult.mimeType,
                   type: uploadResult.type,
                   base64: undefined,
-                  fileData: null // v355: Memory release
+                  fileData: null
                 };
               }
               
-              // v355: Allow GC to kick in
-              await new Promise(resolve => setTimeout(resolve, 100));
+              // v442: 500ms pause between uploads to let the network breathe
+              await new Promise(resolve => setTimeout(resolve, 500));
 
               delete finalPayload.file;
             } catch (err) {
               console.error(`[Sync] Failed media upload for ${item.type} #${item.id}:`, err instanceof Error ? err.message : err);
-              // v373: Increment attempts on media failure so cooldown logic works.
               const currentAttempts = (item.attempts || 0) + 1;
+              // v442: More generous retry — 5 attempts before marking as failed (was 8)
+              // Each retry has exponential backoff via lastAttemptAt cooldown in the main loop
               await db.outbox.update(item.id!, { 
-                status: currentAttempts >= 8 ? 'failed' : 'pending',
+                status: currentAttempts >= 5 ? 'failed' : 'pending',
                 attempts: currentAttempts,
                 lastAttemptAt: Date.now(),
-                failReason: currentAttempts >= 8 ? 'UPLOAD_FAILED' : undefined
+                failReason: currentAttempts >= 5 ? 'UPLOAD_FAILED' : undefined
               });
               // v440: GALLERY_UPLOAD and MEDIA_UPLOAD are INDEPENDENT items.
               // A failed photo/video must NOT block other photos/videos of the same project.
-              // Only block if it's an ordered dependency type (PROJECT, DAY_START, etc.)
               if (ctx && item.type !== 'GALLERY_UPLOAD' && item.type !== 'MEDIA_UPLOAD') {
                 failedContexts.add(ctx);
               }
-              await logSync('warn', `⚠ Media upload falló: ${item.type} #${item.id} (intento ${currentAttempts}/8)`, item.type);
+              await logSync('warn', `⚠ Media upload falló: ${item.type} #${item.id} (intento ${currentAttempts}/5)`, item.type);
               continue;
             }
           }
