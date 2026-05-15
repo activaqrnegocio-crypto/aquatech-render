@@ -246,9 +246,22 @@ export default function ProjectDetailBase({
       .map((item: any) => {
         const p = item.payload || {};
         let objUrl = '';
-        if (p.url && !p.url.startsWith('blob:')) {
+        // v441: Priority order for preview URL:
+        // 1. Raw File object (stored via structured clone — most reliable)
+        // 2. data: URL (base64)
+        // 3. Legacy fileData (ArrayBuffer — deprecated)
+        const rawFile = p.file;
+        const hasRawFile = !!(rawFile && typeof rawFile === 'object' && 
+          typeof rawFile.size === 'number' && rawFile.size > 0 &&
+          typeof rawFile.slice === 'function');
+
+        if (hasRawFile) {
+          try {
+            objUrl = URL.createObjectURL(rawFile as Blob);
+          } catch(e) { console.warn('[UI] Failed to create objectURL from File:', e); }
+        } else if (p.url && !p.url.startsWith('blob:')) {
           objUrl = p.url;
-        } else if (p.base64) {
+        } else if (p.base64 && p.base64.startsWith('data:')) {
           objUrl = p.base64;
         } else if (p.fileData) {
           try {
@@ -265,6 +278,10 @@ export default function ProjectDetailBase({
           mimeType: p.mimeType || 'image/jpeg',
           category: 'MASTER',
           isPending: true,
+          outboxId: item.id,
+          isFailed: item.status === 'failed',
+          failReason: item.failReason,
+          isSyncing: item.status === 'syncing',
           createdAt: new Date(item.timestamp || Date.now()).toISOString()
         }
       })
@@ -309,13 +326,22 @@ export default function ProjectDetailBase({
       .map((item: any) => {
         const p = item.payload || {};
         let objUrl = '';
-        if (p.url && !p.url.startsWith('blob:')) {
+        // v441: Same priority as MASTER gallery
+        const rawFile = p.file;
+        const hasRawFile = !!(rawFile && typeof rawFile === 'object' && 
+          typeof rawFile.size === 'number' && rawFile.size > 0 &&
+          typeof rawFile.slice === 'function');
+
+        if (hasRawFile) {
+          try {
+            objUrl = URL.createObjectURL(rawFile as Blob);
+          } catch(e) { console.warn('[UI] Failed to create objectURL from File:', e); }
+        } else if (p.url && !p.url.startsWith('blob:')) {
           objUrl = p.url;
-        } else if (p.base64) {
+        } else if (p.base64 && p.base64.startsWith('data:')) {
           objUrl = p.base64;
         } else if (p.fileData) {
           try {
-            // v320: Handle multiple data formats (ArrayBuffer, Uint8Array, or Blob-like)
             const rawData = p.fileData.buffer || p.fileData;
             const blob = new Blob([rawData], { type: p.mimeType || 'image/jpeg' });
             objUrl = URL.createObjectURL(blob);
@@ -324,7 +350,6 @@ export default function ProjectDetailBase({
           }
         }
 
-
         return {
           id: `pending-ev-${item.id}`,
           url: objUrl || '/placeholder-image.png',
@@ -332,6 +357,10 @@ export default function ProjectDetailBase({
           mimeType: p.mimeType || 'image/jpeg',
           category: 'EVIDENCE',
           isPending: true,
+          outboxId: item.id,
+          isFailed: item.status === 'failed',
+          failReason: item.failReason,
+          isSyncing: item.status === 'syncing',
           createdAt: new Date(item.timestamp || Date.now()).toISOString()
         }
       })
@@ -1020,44 +1049,63 @@ export default function ProjectDetailBase({
     // Offline support
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
        try {
-          // v354: Large file support — DON'T convert to base64 for files > 10MB
+          // v441: CRITICAL FIX — Don't use arrayBuffer() for large videos!
+          // An 80MB video → 80MB ArrayBuffer in RAM → crashes mobile browsers.
+          // Instead, store the raw File object via IndexedDB structured clone (zero RAM overhead).
           const OFFLINE_BASE64_LIMIT = 10 * 1024 * 1024; // 10MB
-          const OFFLINE_MAX_SIZE = 300 * 1024 * 1024; // 300MB
+          const OFFLINE_MAX_SIZE = 600 * 1024 * 1024; // 600MB (v440)
           
-          const fileSize = (file as any).size || 0;
+          const fileSize = (file as any).size || (file as any).file?.size || 0;
           
           if (fileSize > OFFLINE_MAX_SIZE) {
-            alert(`El archivo "${file.filename}" (${(fileSize / (1024*1024)).toFixed(0)} MB) es demasiado grande para guardar offline. \n\nLímite Offline: 300MB (Aprox. 5 min de video). \n\nConéctate a internet para subir archivos más pesados.`);
+            alert(`El archivo "${file.filename}" (${(fileSize / (1024*1024)).toFixed(0)} MB) es demasiado grande para guardar offline. \n\nLímite Offline: 600MB. \n\nConéctate a internet para subir archivos más pesados.`);
             setIsUploading(false);
             saveLockRef.current = false;
             return;
           }
 
           let processedUrl = file.url;
-          let fileData: any = null;
+          let rawFileObject: File | Blob | null = null;
           
-          if (typeof file.url === 'string' && file.url.startsWith('blob:')) {
-             try {
-               const res = await fetch(file.url);
-               const blob = await res.blob();
-               
-               if (blob.size <= OFFLINE_BASE64_LIMIT) {
-                 // Small files: base64 is fine
-                 processedUrl = await blobToBase64(blob);
-               } else {
-                 // v353: Large files: store as File object in outbox (structured clone)
-                 // DON'T use base64 — it would crash the browser
-                 const rawFile = new File([blob], file.filename, { type: file.mimeType });
-                 fileData = { 
-                   buffer: await blob.arrayBuffer(), 
-                   type: file.mimeType, 
-                   name: file.filename 
-                 };
-                 processedUrl = ''; // Will be replaced by Bunny URL during sync
-               }
-             } catch (e) {
-               console.warn("Could not process blob for offline storage", e);
-             }
+          // v441: Check if the ProjectUploader already passed a raw File object
+          const incomingFile = (file as any).file;
+          const hasIncomingFile = !!(incomingFile && typeof incomingFile === 'object' && 
+            typeof incomingFile.size === 'number' && incomingFile.size > 0);
+
+          if (hasIncomingFile) {
+            // v441: USE THE FILE OBJECT DIRECTLY — no arrayBuffer, no base64!
+            // IndexedDB structured clone preserves File/Blob objects perfectly.
+            if (incomingFile.size <= OFFLINE_BASE64_LIMIT) {
+              // Small files (< 10MB): base64 for preview is fine
+              try {
+                const blob = (incomingFile instanceof Blob) ? incomingFile : new Blob([incomingFile]);
+                processedUrl = await blobToBase64(blob);
+              } catch {
+                processedUrl = '';
+              }
+            } else {
+              // Large files: empty URL, the raw File will be used for both preview and upload
+              processedUrl = '';
+            }
+            rawFileObject = incomingFile;
+          } else if (typeof file.url === 'string' && file.url.startsWith('blob:')) {
+            try {
+              const res = await fetch(file.url);
+              const blob = await res.blob();
+              
+              if (blob.size <= OFFLINE_BASE64_LIMIT) {
+                // Small files: base64 is fine
+                processedUrl = await blobToBase64(blob);
+              } else {
+                // v441: Convert blob to File object for structured clone storage
+                rawFileObject = new File([blob], file.filename, { type: file.mimeType });
+                processedUrl = ''; // Will be replaced by Bunny URL during sync
+              }
+            } catch (e) {
+              console.warn("Could not process blob for offline storage", e);
+            }
+          } else if (typeof file.url === 'string' && file.url.startsWith('data:')) {
+            processedUrl = file.url;
           }
 
           await db.transaction('rw', db.outbox, async () => {
@@ -1068,7 +1116,10 @@ export default function ProjectDetailBase({
                  ...file, 
                  url: processedUrl, 
                  base64: processedUrl || null, 
-                 fileData: fileData,
+                 // v441: Store raw File object — NOT arrayBuffer!
+                 // IndexedDB structured clone handles File/Blob natively.
+                 file: rawFileObject,
+                 fileData: null, // Legacy — no longer used
                  category 
                },
                timestamp: Date.now(),
