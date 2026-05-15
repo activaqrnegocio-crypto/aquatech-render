@@ -696,7 +696,8 @@ export default function GlobalSyncWorker() {
                                  finalPayload.fileData || 
                                  finalPayload.receiptFileData);
 
-          const hasRawFile = !!finalPayload.file;
+          // v430: Detect raw File/Blob objects (from IndexedDB structured clone)
+          const hasRawFile = !!(finalPayload.file && (finalPayload.file instanceof File || finalPayload.file instanceof Blob || finalPayload.file.size > 0));
 
           if (hasBase64 || hasBlobUrl || hasBinaryData || hasRawFile) {
             try {
@@ -736,8 +737,9 @@ export default function GlobalSyncWorker() {
                                   `sync_${Date.now()}.jpg`;
                 }
               } else {
+                // v430: File object from IndexedDB (structured clone preserves File/Blob)
                 uploadFile = finalPayload.file;
-                finalFilename = finalPayload.file.name || `sync_legacy_${Date.now()}`;
+                finalFilename = finalPayload.file.name || finalPayload.filename || `sync_${Date.now()}`;
               }
 
               const folder = item.projectId ? `projects/${item.projectId}` : 'general';
@@ -748,7 +750,9 @@ export default function GlobalSyncWorker() {
                 if (finalPayload.receiptFileData) finalPayload.receiptFileData = null; 
               } else if (item.type === 'GALLERY_UPLOAD') {
                 finalPayload.url = uploadResult.url;
-                if (finalPayload.fileData) finalPayload.fileData = null; 
+                finalPayload.mimeType = uploadResult.mimeType; // v430: Preserve compressed mimeType
+                if (finalPayload.fileData) finalPayload.fileData = null;
+                if (finalPayload.file) finalPayload.file = null; // v430: Memory release for File objects
               } else {
                 finalPayload.media = { 
                   ...finalPayload.media,
@@ -985,9 +989,12 @@ export default function GlobalSyncWorker() {
                continue;
              }
 
-             // v365: AbortController with 60s timeout to prevent hanging requests
+             // v430: Dynamic timeout — 120s for gallery/media uploads, 30s for text-only items
+             // A 50MB video on 4G (5Mbps) takes ~80s. 30s timeout was causing false 'failed' status.
+             const isMediaItem = item.type === 'GALLERY_UPLOAD' || item.type === 'MEDIA_UPLOAD';
              const controller = new AbortController();
-             const timeoutId = setTimeout(() => controller.abort(), 30000);
+             const timeoutMs = isMediaItem ? 120000 : 30000;
+             const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
              const res = await fetch(endpoint, {
                  method,
                  headers: { 

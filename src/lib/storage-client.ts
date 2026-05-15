@@ -1,6 +1,9 @@
 /**
  * Client-side helper to upload files directly to Bunny.net Storage.
  * This bypasses Vercel's 4.5MB limit.
+ * 
+ * v430: Added config caching (5 min TTL) to avoid redundant /api/storage/config calls.
+ * v430: Added image compression before upload to reduce bandwidth by ~80%.
  */
 
 export interface UploadResult {
@@ -10,46 +13,97 @@ export interface UploadResult {
   type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT';
 }
 
+// v430: Cache storage config to avoid N+1 requests when uploading multiple files
+let _cachedConfig: { storageZone: string; accessKey: string; storageHost: string; pullZoneUrl: string } | null = null;
+let _configCachedAt = 0;
+const CONFIG_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function getStorageConfig() {
+  const now = Date.now();
+  if (_cachedConfig && (now - _configCachedAt) < CONFIG_TTL) {
+    return _cachedConfig;
+  }
+
+  const configResp = await fetch('/api/storage/config');
+  if (!configResp.ok) throw new Error('Failed to get storage configuration');
+  
+  const config = await configResp.json();
+  
+  if (!config.storageZone || !config.accessKey || !config.storageHost) {
+    throw new Error('Storage configuration is incomplete');
+  }
+
+  _cachedConfig = config;
+  _configCachedAt = now;
+  return config;
+}
+
+/**
+ * v430: Compress image before upload if applicable.
+ * Returns the original file unchanged if it's not a compressible image.
+ */
+async function maybeCompressImage(file: File | Blob, originalName: string): Promise<{ file: File | Blob; name: string; mimeType: string }> {
+  const ext = originalName.split('.').pop()?.toLowerCase() || '';
+  const isImage = file.type?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif'].includes(ext);
+  const isSmallEnough = file.size < 500 * 1024; // Skip compression for files < 500KB
+  const isAlreadyWebP = ext === 'webp';
+  const isGif = ext === 'gif' || file.type === 'image/gif';
+  const isSvg = ext === 'svg' || file.type?.includes('svg');
+  
+  if (!isImage || isSmallEnough || isAlreadyWebP || isGif || isSvg) {
+    return { file, name: originalName, mimeType: file.type || 'application/octet-stream' };
+  }
+
+  try {
+    const { compressImage } = await import('@/lib/image-optimization');
+    const compressed = await compressImage(file, 1920, 1920, 0.82);
+    
+    // Only use compressed version if it's actually smaller
+    if (compressed.size < file.size * 0.9) {
+      const newName = originalName.replace(/\.[^.]+$/, '.webp');
+      console.log(`[Storage] Compressed ${originalName}: ${(file.size/1024).toFixed(0)}KB → ${(compressed.size/1024).toFixed(0)}KB (${((1 - compressed.size/file.size) * 100).toFixed(0)}% smaller)`);
+      return { file: compressed, name: newName, mimeType: 'image/webp' };
+    }
+  } catch (err) {
+    console.warn('[Storage] Image compression failed, using original:', err);
+  }
+  
+  return { file, name: originalName, mimeType: file.type || 'application/octet-stream' };
+}
+
 export async function uploadToBunnyClientSide(
   file: File | Blob, 
   originalName: string,
   folder: string = 'aquatech-crm'
 ): Promise<UploadResult> {
-  // 1. Get secure config from our backend
-  const configResp = await fetch('/api/storage/config');
-  if (!configResp.ok) throw new Error('Failed to get storage configuration');
+  // v430: Compress images before upload
+  const { file: processedFile, name: processedName, mimeType: processedMime } = await maybeCompressImage(file, originalName);
   
-  const { storageZone, accessKey, storageHost, pullZoneUrl } = await configResp.json();
-  
-  if (!storageZone || !accessKey || !storageHost) {
-    throw new Error('Storage configuration is incomplete');
-  }
+  const { storageZone, accessKey, storageHost, pullZoneUrl } = await getStorageConfig();
 
   // 2. Prepare path
   const timestamp = Date.now();
   const randomSuffix = Math.random().toString(36).substring(2, 8);
-  const safeName = originalName.replace(/[^a-zA-Z0-9.-]/g, '_');
+  const safeName = processedName.replace(/[^a-zA-Z0-9.-]/g, '_');
   const path = `/${storageZone}/${folder}/${timestamp}-${randomSuffix}-${safeName}`;
   const uploadUrl = `https://${storageHost}${path}`;
 
   // 3. Direct PUT to Bunny.net (or Chunked if > 50MB)
-  if (file.size > 50 * 1024 * 1024) {
+  if (processedFile.size > 50 * 1024 * 1024) {
      console.log('[Storage] File > 50MB, using chunked upload...');
-     const chunkedResult = await uploadInChunks(file, originalName, file.type || 'application/octet-stream');
-     // The chunked upload already returns the final URL
+     const chunkedResult = await uploadInChunks(processedFile, processedName, processedMime);
      return {
        url: chunkedResult.url,
-       filename: originalName,
-       mimeType: file.type || 'application/octet-stream',
-       type: originalName.match(/\.(mp4|mov|webm)$/i) ? 'VIDEO' : (originalName.match(/\.(mp3|wav|m4a)$/i) ? 'AUDIO' : 'IMAGE')
+       filename: processedName,
+       mimeType: processedMime,
+       type: getMediaType(processedName, processedMime)
      };
   }
 
   // v353fix: Send the REAL Content-Type to Bunny.net so the CDN serves files
   // with correct headers. Without this, videos were served as application/octet-stream
   // which prevents browsers from doing Range requests (needed for streaming/seeking).
-  // This was the root cause of videos "not playing completely" in online mode.
-  const uploadContentType = file.type || 'application/octet-stream';
+  const uploadContentType = processedMime || processedFile.type || 'application/octet-stream';
   
   const response = await fetch(uploadUrl, {
     method: 'PUT',
@@ -57,7 +111,7 @@ export async function uploadToBunnyClientSide(
       'AccessKey': accessKey,
       'Content-Type': uploadContentType,
     },
-    body: file,
+    body: processedFile,
   });
 
   if (!response.ok) {
@@ -66,31 +120,27 @@ export async function uploadToBunnyClientSide(
     throw new Error(`Upload to Bunny failed: ${response.statusText}`);
   }
 
-  // 4. Determine type for the frontend
-  let type: 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' = 'DOCUMENT';
-  let mimeType = file.type;
-  
-  // Fallback check by extension if mime type is missing
-  const ext = originalName.split('.').pop()?.toLowerCase() || '';
-  if (mimeType.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) {
-    type = 'IMAGE';
-    if (!mimeType) mimeType = ext === 'webp' ? 'image/webp' : `image/${ext}`;
-  }
-  else if (mimeType.startsWith('video/') || ['mp4', 'mov', 'webm', '3gp', 'm4v', 'avi'].includes(ext)) {
-    type = 'VIDEO';
-    if (!mimeType) mimeType = `video/${ext}`;
-  }
-  else if (mimeType.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].includes(ext)) {
-    type = 'AUDIO';
-    if (!mimeType) mimeType = `audio/${ext}`;
-  }
+  const type = getMediaType(processedName, processedMime);
 
   return {
     url: `${pullZoneUrl}/${folder}/${timestamp}-${randomSuffix}-${safeName}`,
-    filename: originalName,
-    mimeType: mimeType || 'application/octet-stream',
+    filename: processedName,
+    mimeType: processedMime || 'application/octet-stream',
     type
   };
+}
+
+/**
+ * Determine media type from filename and mime type
+ */
+function getMediaType(name: string, mimeType: string): 'IMAGE' | 'VIDEO' | 'AUDIO' | 'DOCUMENT' {
+  const ext = name.split('.').pop()?.toLowerCase() || '';
+  
+  if (mimeType?.startsWith('image/') || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'heic', 'heif'].includes(ext)) return 'IMAGE';
+  if (mimeType?.startsWith('video/') || ['mp4', 'mov', 'webm', '3gp', 'm4v', 'avi'].includes(ext)) return 'VIDEO';
+  if (mimeType?.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac'].includes(ext)) return 'AUDIO';
+  
+  return 'DOCUMENT';
 }
 
 /**
@@ -114,7 +164,6 @@ export async function uploadInChunks(
     // v355: Retry logic for each chunk (up to 3 times)
     let success = false;
     let attempts = 0;
-    let lastData: any = null;
 
     while (!success && attempts < 3) {
       attempts++;
@@ -136,7 +185,6 @@ export async function uploadInChunks(
         if (!res.ok) throw new Error(`Status ${res.status}`);
 
         const data = await res.json();
-        lastData = data;
         success = true;
         
         console.log(`[Storage] Chunk ${i + 1}/${totalChunks} uploaded successfully.`);

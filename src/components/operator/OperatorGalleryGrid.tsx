@@ -6,8 +6,8 @@ interface OperatorGalleryGridProps {
   title: string
   count: number
   items: any[]
-  filter: 'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'
-  setFilter: Dispatch<SetStateAction<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>>
+  filter: 'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS' | 'EXPENSES'
+  setFilter: Dispatch<SetStateAction<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS' | 'EXPENSES'>>
   onAddFile: (file: any, category?: string) => void
   onPreview: (item: any) => void
   onDelete: (id: number | string) => void
@@ -67,7 +67,71 @@ export default function OperatorGalleryGrid({
         showGrid={false}
       />
 
-      {/* Filtros eliminados por ser redundantes */}
+      {/* v430: Interactive Gallery Filters */}
+      <div className="scrollbar-hide" style={{ 
+        display: 'flex', 
+        alignItems: 'center', 
+        gap: '8px', 
+        overflowX: 'auto', 
+        paddingBottom: '12px', 
+        marginTop: '15px',
+        maxWidth: '100%',
+        msOverflowStyle: 'none',
+        scrollbarWidth: 'none'
+      }}>
+        <div style={{ 
+          display: 'flex', 
+          alignItems: 'center', 
+          gap: '6px', 
+          padding: '6px 12px', 
+          borderRadius: '8px', 
+          background: 'rgba(255, 255, 255, 0.03)', 
+          border: '1px solid rgba(255, 255, 255, 0.08)', 
+          color: 'var(--text-muted)', 
+          fontSize: '0.75rem', 
+          fontWeight: '600', 
+          flexShrink: 0 
+        }}>
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ display: 'inline-block', verticalAlign: 'middle' }}>
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"></polygon>
+          </svg>
+          <span>Filtrar</span>
+        </div>
+
+        {[
+          { id: 'ALL', label: 'Todos' },
+          { id: 'IMAGES', label: 'Fotos' },
+          { id: 'VIDEOS', label: 'Videos' },
+          { id: 'AUDIOS', label: 'Audio' },
+          { id: 'DOCS', label: 'Docs' },
+          { id: 'EXPENSES', label: 'Gastos' }
+        ].map((f) => {
+          const isActive = filter === f.id;
+          return (
+            <button
+              key={f.id}
+              onClick={() => setFilter(f.id as any)}
+              style={{
+                padding: '6px 14px',
+                borderRadius: '20px',
+                fontSize: '0.75rem',
+                fontWeight: '600',
+                transition: '0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                border: isActive ? '1px solid var(--primary)' : '1px solid rgba(255, 255, 255, 0.1)',
+                cursor: 'pointer',
+                backgroundColor: isActive ? 'var(--primary)' : 'rgba(255, 255, 255, 0.05)',
+                color: isActive ? 'white' : 'var(--text-muted)',
+                boxShadow: isActive ? '0 4px 12px rgba(54, 162, 235, 0.3)' : 'none',
+                flexShrink: 0,
+                whiteSpace: 'nowrap',
+                transform: isActive ? 'scale(1.05)' : 'scale(1)'
+              }}
+            >
+              {f.label}
+            </button>
+          );
+        })}
+      </div>
 
       {items.length === 0 ? (
         <div style={{ padding: '20px', textAlign: 'center', border: '2px dashed rgba(255,255,255,0.05)', borderRadius: '12px', opacity: 0.6 }}>

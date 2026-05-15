@@ -425,7 +425,7 @@ export default function ProjectExecutionClient({
     amount: '', description: '', isNote: false, date: new Date().toISOString().split('T')[0]
   })
   const [isSavingExpense, setIsSavingExpense] = useState(false)
-  const [galleryFilter, setGalleryFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
+  const [galleryFilter, setGalleryFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS' | 'EXPENSES'>('ALL')
 
   const masterGallery = useMemo(() => {
     const pendingDeletions = (pendingItems || []).filter((i: any) => i.type === 'GALLERY_DELETE').map((i: any) => i.payload.galleryId);
@@ -515,7 +515,8 @@ export default function ProjectExecutionClient({
       if (galleryFilter === 'IMAGES') return isImage;
       if (galleryFilter === 'VIDEOS') return isVideo;
       if (galleryFilter === 'AUDIOS') return isAudio;
-      if (galleryFilter === 'DOCS') return !isImage && !isVideo && !isAudio;
+      if (galleryFilter === 'DOCS') return !isImage && !isVideo && !isAudio && !item.isExpense;
+      if (galleryFilter === 'EXPENSES') return !!item.isExpense;
       return true;
     }).sort((a: any, b: any) => {
       const dateA = new Date(a.createdAt || a.date || a.timestamp || 0).getTime()
@@ -570,7 +571,7 @@ export default function ProjectExecutionClient({
     }).sort((a: any, b: any) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
   }, [localChat, pendingItems])
 
-  const [evidenceFilter, setEvidenceFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS'>('ALL')
+  const [evidenceFilter, setEvidenceFilter] = useState<'ALL' | 'IMAGES' | 'VIDEOS' | 'AUDIOS' | 'DOCS' | 'EXPENSES'>('ALL')
   const evidenceGallery = useMemo(() => {
     // v372: Don't return [] immediately if gallery is undefined — pending items should still show
     const existingGallery = project?.gallery || [];
@@ -678,7 +679,8 @@ export default function ProjectExecutionClient({
       if (evidenceFilter === 'IMAGES') return isImage;
       if (evidenceFilter === 'VIDEOS') return isVideo;
       if (evidenceFilter === 'AUDIOS') return isAudio;
-      if (evidenceFilter === 'DOCS') return !isImage && !isVideo && !isAudio;
+      if (evidenceFilter === 'DOCS') return !isImage && !isVideo && !isAudio && !item.isExpense;
+      if (evidenceFilter === 'EXPENSES') return !!item.isExpense;
       return true;
     })
   }, [project?.gallery, evidenceFilter, pendingItems, optimisticUploads, recentlySyncedItems])
@@ -1203,16 +1205,14 @@ export default function ProjectExecutionClient({
           galleryPayload.mimeType = prep.mimeType;
           galleryPayload.storageType = prep.storageType;
           
-          // v353: Handle each storage type correctly
+          // v430: Handle each storage type correctly
           if (prep.storageType === 'file') {
-            // Large files: store as File object via structured clone (no base64 conversion!)
-            // The GlobalSyncWorker will read the File when it's time to upload to Bunny.
+            // v430: Store the raw File object directly via IndexedDB structured clone.
+            // CRITICAL FIX: Previously used arrayBuffer() which loaded the ENTIRE file into RAM,
+            // causing crashes on mobile with large videos. File objects are cloned by reference.
             galleryPayload.url = ''; // Will be replaced by Bunny URL during sync
-            galleryPayload.fileData = { 
-              buffer: await fileToPrepare.arrayBuffer(), 
-              type: prep.mimeType, 
-              name: prep.filename 
-            };
+            galleryPayload.file = fileToPrepare; // Stored via structured clone — zero RAM overhead
+            galleryPayload.fileData = null; // Legacy field, not used anymore
           } else {
             // Small files (< 10MB): base64 is fine
             galleryPayload.url = prep.data;
@@ -1246,50 +1246,66 @@ export default function ProjectExecutionClient({
         return
       }
 
-      // Online path — resolve blob: or raw File → base64 so the gallery API can upload to Bunny
-      let resolvedUrl = file.url;
+      // v430: Online path — upload DIRECTLY to BunnyCDN (no base64 conversion!)
+      // CRITICAL FIX: Previously converted File→base64→JSON body which used 3x RAM.
+      // Now we stream the binary directly to Bunny, then just POST the URL to the gallery API.
       const anyFileRef = file as any;
-      if (anyFileRef.file instanceof File || anyFileRef.file instanceof Blob) {
-        // Camera capture / file picker — raw File object available
-        resolvedUrl = await new Promise<string>((resolve) => {
-          const reader = new FileReader();
-          reader.onload = (e) => resolve(e.target?.result as string);
-          reader.onerror = () => resolve(file.url); // fallback to original
-          reader.readAsDataURL(anyFileRef.file);
-        });
+      let uploadFile: File | Blob | null = null;
+      let alreadyUploaded = false;
+      
+      // v430: Check if ProjectUploader already uploaded to Bunny (online mode)
+      // In that case file.url is already an https:// CDN URL — no need to re-upload!
+      if (file.url && file.url.startsWith('http')) {
+        galleryPayload.url = file.url;
+        galleryPayload.mimeType = file.mimeType;
+        alreadyUploaded = true;
+      } else if (anyFileRef.file instanceof File || anyFileRef.file instanceof Blob) {
+        uploadFile = anyFileRef.file;
       } else if (file.url && file.url.startsWith('blob:')) {
-        // Blob URL — fetch and convert
         try {
           const blobResp = await fetch(file.url);
-          const blob = await blobResp.blob();
-          resolvedUrl = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = (e) => resolve(e.target?.result as string);
-            reader.onerror = () => resolve(file.url);
-            reader.readAsDataURL(blob);
-          });
-        } catch { /* keep original url, API may handle it */ }
+          uploadFile = await blobResp.blob();
+        } catch { /* fallback below */ }
+      } else if (file.url && file.url.startsWith('data:')) {
+        try {
+          const dataResp = await fetch(file.url);
+          uploadFile = await dataResp.blob();
+        } catch { /* fallback below */ }
       }
-      galleryPayload.url = resolvedUrl;
 
       // --- OPTIMISTIC UI UPDATE ---
       const optimisticId = `temp-${syncId}`;
-      // For the preview thumbnail we still use the original local blob/file URL (fast)
-      const previewUrl = anyFileRef.file instanceof File
+      const previewUrl = (anyFileRef.file instanceof File)
         ? URL.createObjectURL(anyFileRef.file)
-        : (file.url || resolvedUrl);
+        : (file.url || '');
       const optimisticItem = {
         id: optimisticId,
         url: previewUrl,
         filename: galleryPayload.filename || file.filename || 'Archivo Multimedia',
         mimeType: galleryPayload.mimeType || file.mimeType,
         category: galleryPayload.category,
-        isPending: true // For visual indicator "Subiendo..."
+        isPending: true
       };
-      
       setOptimisticUploads(prev => [...prev, optimisticItem]);
 
       try {
+        // v430: If already uploaded by ProjectUploader, skip Bunny upload
+        if (!alreadyUploaded) {
+          if (!uploadFile) throw new Error('No file data available');
+
+          // v430: Direct binary upload to Bunny CDN — zero base64, zero RAM explosion
+          const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
+          const folder = `projects/${project.id}/gallery`;
+          const uploadResult = await uploadToBunnyClientSide(uploadFile, file.filename || 'upload', folder);
+          
+          // Release file reference immediately
+          uploadFile = null;
+          
+          // Set the CDN URL for the gallery API
+          galleryPayload.url = uploadResult.url;
+          galleryPayload.mimeType = uploadResult.mimeType;
+        }
+        
         const res = await fetch(`/api/projects/${project.id}/gallery`, {
           method: 'POST',
           headers: { 
@@ -1301,16 +1317,16 @@ export default function ProjectExecutionClient({
             lat: location?.lat,
             lng: location?.lng
           })
-        })
-        if (!res.ok) throw new Error('Refetch')
-        // v402: Remove from optimistic, bridge as normal item (no green overlay), then refresh from server
+        });
+        if (!res.ok) throw new Error('Gallery API failed');
+        
         setOptimisticUploads(prev => prev.filter(i => i.id !== optimisticId));
         const serverData = await res.json().catch(() => null);
         const bridgeItem = {
           id: serverData?.id || optimisticItem.id,
-          url: serverData?.url || optimisticItem.url,
+          url: serverData?.url || galleryPayload.url,
           filename: serverData?.filename || optimisticItem.filename,
-          mimeType: serverData?.mimeType || optimisticItem.mimeType,
+          mimeType: serverData?.mimeType || galleryPayload.mimeType,
           category: optimisticItem.category,
           isPending: false
         };
@@ -1323,7 +1339,6 @@ export default function ProjectExecutionClient({
             const cached = await db.projectsCache.get(numericId);
             if (cached) {
               const existingGallery: any[] = cached.gallery || [];
-              // Only add if not already present (idempotent)
               const alreadyIn = existingGallery.some((g: any) =>
                 (serverData?.id && g.id === serverData.id) ||
                 g.url === bridgeItem.url
@@ -1338,15 +1353,22 @@ export default function ProjectExecutionClient({
           console.warn('[Gallery] Failed to update local cache:', cacheErr);
         }
 
-        // Immediately refresh gallery so server item replaces bridge item
         refreshGallery();
       } catch (err) {
+        console.warn('[Gallery] Direct upload failed, queueing for offline sync:', err);
         setOptimisticUploads(prev => prev.filter(i => i.id !== optimisticId));
+        // v430: If direct upload fails, queue for offline sync (same as offline path)
+        // Re-prepare the file for outbox storage
+        let fallbackPayload = { ...galleryPayload };
+        if (anyFileRef.file instanceof File) {
+          fallbackPayload.file = anyFileRef.file;
+          fallbackPayload.url = '';
+        }
         await db.transaction('rw', db.outbox, async () => {
           await db.outbox.add({
             type: 'GALLERY_UPLOAD',
             projectId: project.id,
-            payload: galleryPayload,
+            payload: fallbackPayload,
             timestamp: Date.now(),
             lat: location?.lat,
             lng: location?.lng,
@@ -1354,7 +1376,7 @@ export default function ProjectExecutionClient({
             syncId
           })
         })
-        triggerBackgroundSync()
+        triggerBackgroundSync();
       }
     } catch (e) {
       console.error(e)
