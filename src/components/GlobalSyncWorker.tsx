@@ -810,20 +810,18 @@ export default function GlobalSyncWorker() {
             } catch (err) {
               console.error(`[Sync] Failed media upload for ${item.type} #${item.id}:`, err instanceof Error ? err.message : err);
               const currentAttempts = (item.attempts || 0) + 1;
-              // v442: More generous retry — 5 attempts before marking as failed (was 8)
-              // Each retry has exponential backoff via lastAttemptAt cooldown in the main loop
+              // v442: 10 attempts before giving up. With 20s/MB timeout,
+              // each attempt gives plenty of time. Failures here mean real network issues.
               await db.outbox.update(item.id!, { 
-                status: currentAttempts >= 5 ? 'failed' : 'pending',
+                status: currentAttempts >= 10 ? 'failed' : 'pending',
                 attempts: currentAttempts,
                 lastAttemptAt: Date.now(),
-                failReason: currentAttempts >= 5 ? 'UPLOAD_FAILED' : undefined
+                failReason: currentAttempts >= 10 ? 'UPLOAD_FAILED' : undefined
               });
-              // v440: GALLERY_UPLOAD and MEDIA_UPLOAD are INDEPENDENT items.
-              // A failed photo/video must NOT block other photos/videos of the same project.
               if (ctx && item.type !== 'GALLERY_UPLOAD' && item.type !== 'MEDIA_UPLOAD') {
                 failedContexts.add(ctx);
               }
-              await logSync('warn', `⚠ Media upload falló: ${item.type} #${item.id} (intento ${currentAttempts}/5)`, item.type);
+              await logSync('warn', `⚠ Media upload falló: ${item.type} #${item.id} (intento ${currentAttempts}/10)`, item.type);
               continue;
             }
           }

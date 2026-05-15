@@ -111,10 +111,12 @@ export async function uploadToBunnyClientSide(
   // which prevents browsers from doing Range requests (needed for streaming/seeking).
   const uploadContentType = processedMime || processedFile.type || 'application/octet-stream';
   
-  // v440: Dynamic timeout — prevents small/medium files from hanging indefinitely on bad connections.
-  // Formula: max(120s, 4s per MB). A 30MB video → 120s. A 45MB video → 180s.
+  // v442: Generous timeout for mobile connections.
+  // Old: max(120s, 4s/MB) → 50MB = 200s = 3.3min (TOO SHORT for 3G/4G!)
+  // New: max(180s, 20s/MB) → 50MB = 1000s = 16min (handles slow mobile)
+  // On WiFi/4G+ the upload finishes in 1-3min; the timeout is just a safety net.
   const fileSizeMB = Math.ceil(processedFile.size / (1024 * 1024));
-  const directUploadTimeoutMs = Math.max(120000, fileSizeMB * 4000);
+  const directUploadTimeoutMs = Math.max(180000, fileSizeMB * 20000);
   const directUploadController = new AbortController();
   const directUploadTimeoutId = setTimeout(() => directUploadController.abort(), directUploadTimeoutMs);
 
