@@ -658,7 +658,31 @@ export default function GlobalSyncWorker() {
             
             if (res.ok) {
               const resData = await res.json().catch(() => ({}));
-              await db.outbox.update(id, { status: 'synced' });
+              
+              // v451: Update projectsCache gallery so it's authoritative immediately
+              try {
+                let numericId = Number(gItem.projectId);
+                if (isNaN(numericId) && String(gItem.projectId).startsWith('pending-')) {
+                  numericId = Number(String(gItem.projectId).replace('pending-', ''));
+                }
+                if (!isNaN(numericId) && resData && resData.id) {
+                  const proj = await db.projectsCache.get(numericId);
+                  if (proj) {
+                    const newGallery = proj.gallery ? [...proj.gallery] : [];
+                    if (!newGallery.some((g: any) => g.id === resData.id)) {
+                      newGallery.push(resData);
+                      newGallery.sort((a, b) => new Date(b.createdAt || Date.now()).getTime() - new Date(a.createdAt || Date.now()).getTime());
+                      await db.projectsCache.update(numericId, { gallery: newGallery });
+                    }
+                  }
+                }
+              } catch (cacheErr) {
+                console.warn('[Sync] Cache update failed for gallery item:', cacheErr);
+              }
+
+              // v451: DELETE from outbox. Staying in outbox (even as 'synced') causes UI duplication.
+              await db.outbox.delete(id);
+              
               console.log(`[Sync] ✅ Gallery OK: ${uploadFilename}`);
               await logSync('success', `Galería: ${uploadFilename}`, 'GALLERY_UPLOAD');
               window.dispatchEvent(new CustomEvent('sync-success', { detail: {
