@@ -1199,8 +1199,8 @@ export default function ProjectDetailBase({
           filename: file.filename || fileName,
           mimeType: file.mimeType || fileType,
           sizeBytes: fileSize,
-          // v456: Use duck-typing for File/Blob check to avoid context-loss in some browsers
-          file: (rawFileObject && typeof (rawFileObject as any).size === 'number' && typeof (rawFileObject as any).slice === 'function') ? rawFileObject : null,
+          // v454: SAME as ProjectCreationWizard: raw File + fileData for small files
+          file: rawFileObject instanceof File ? rawFileObject : (rawFileObject instanceof Blob ? rawFileObject : null),
           fileData: storedFileData,
           category
         },

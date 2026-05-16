@@ -1258,25 +1258,47 @@ export default function ProjectExecutionClient({
           } else {
             fileToPrepare = new File([], file.filename, { type: file.mimeType });
           }
+
+          // vXXX: CARBON COPY of Admin's approach (ProjectDetailBase.tsx line 1165-1210)
+          // Store raw File/Blob + ArrayBuffer in IndexedDB via structured clone.
+          // NO Cache API dependency — Cache API is unreliable for large video files.
+          // This is the EXACT same pattern that works for Admin gallery uploads.
+          const SMALL_FILE_LIMIT = 20 * 1024 * 1024; // 20MB
+          const rawSize = fileToPrepare.size || 0;
+          const rawType = (fileToPrepare as any).type || file.mimeType || 'application/octet-stream';
+          const rawName = (fileToPrepare as any).name || file.filename || 'media';
           
-          const prep = await prepareFileForOutbox(fileToPrepare);
-          galleryPayload.filename = prep.filename;
-          galleryPayload.mimeType = prep.mimeType;
-          galleryPayload.storageType = prep.storageType;
-          
-          // v444: Handle each storage type
-          if (prep.storageType === 'cache') {
-            // Large files: data is in Cache API, only save the key in IndexedDB
-            galleryPayload.url = '';
-            galleryPayload.file = null;
-            galleryPayload.fileData = null;
-            galleryPayload.cacheKey = prep.cacheKey; // Key to retrieve from Cache API
-          } else {
-            // Small files (< 10MB): base64 is fine
-            galleryPayload.url = prep.data;
-            galleryPayload.file = null;
-            galleryPayload.fileData = null;
+          // For small files (≤20MB): store ArrayBuffer as backup
+          let fileData: { buffer: ArrayBuffer | null; type: string; name: string; size: number } | null = null;
+          if (rawSize > 0 && rawSize <= SMALL_FILE_LIMIT) {
+            fileData = { buffer: null, type: rawType, name: rawName, size: rawSize };
+            try {
+              fileData.buffer = await fileToPrepare.arrayBuffer();
+              console.log(`[Gallery] ✅ Small file ArrayBuffer saved: ${rawName} (${(rawSize/1024/1024).toFixed(1)}MB)`);
+            } catch (e) {
+              console.warn(`[Gallery] arrayBuffer() failed, keeping raw File only:`, e);
+            }
           }
+
+          if (rawSize > SMALL_FILE_LIMIT) {
+            console.log(`[Gallery] ✅ Large file (${(rawSize/1024/1024).toFixed(0)}MB): using raw File via structured clone (same as Admin)`);
+          }
+
+          // Build payload — SAME structure as Admin version (ProjectDetailBase.tsx line 1195)
+          galleryPayload.filename = rawName;
+          galleryPayload.mimeType = rawType;
+          galleryPayload.url = ''; // Will be set by sync worker after Bunny upload
+          // Structured clone: raw File/Blob goes into IndexedDB directly
+          // Duck-typing check (not instanceof) for mobile WebView compatibility
+          const isFileOrBlob = !!(fileToPrepare && typeof fileToPrepare === 'object' &&
+            typeof fileToPrepare.size === 'number' && fileToPrepare.size > 0);
+          galleryPayload.file = isFileOrBlob ? fileToPrepare : null;
+          galleryPayload.fileData = fileData;
+          // NO cacheKey — Cache API is unreliable for large video files
+          delete galleryPayload.cacheKey;
+          delete galleryPayload.storageType;
+
+          console.log(`[Gallery] Outbox ready: ${rawName} | file=${!!(galleryPayload.file)} | fileData=${!!(fileData?.buffer)} | size=${(rawSize/1024/1024).toFixed(1)}MB`);
         } catch (e: any) {
           console.warn('[Gallery] Offline preparation failed:', e);
           if (e?.message?.includes('ARCHIVO_MUY_GRANDE')) {
@@ -1284,24 +1306,12 @@ export default function ProjectExecutionClient({
             setLoading(false);
             return;
           }
-          // v444: Last resort — try to save via Cache API directly
-          try {
-            const anyFile = file as any;
-            const rawFile = anyFile.file;
-            if (rawFile && rawFile.size > 0) {
-              const { saveFileToCache } = await import('@/lib/offline-utils');
-              const cacheKey = `fallback-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-              await saveFileToCache(cacheKey, rawFile);
-              galleryPayload.url = '';
-              galleryPayload.cacheKey = cacheKey;
-              galleryPayload.filename = file.filename;
-              galleryPayload.mimeType = file.mimeType;
-            } else {
-              galleryPayload.url = file.url;
-            }
-          } catch {
-            galleryPayload.url = file.url;
-          }
+          // Last resort: save whatever URL we have (might be a blob URL that expires)
+          galleryPayload.url = (file as any).url || '';
+          galleryPayload.file = null;
+          galleryPayload.fileData = null;
+          delete galleryPayload.cacheKey;
+          delete galleryPayload.storageType;
         }
 
         await db.transaction('rw', db.outbox, async () => {
@@ -1433,12 +1443,35 @@ export default function ProjectExecutionClient({
       } catch (err) {
         console.warn('[Gallery] Direct upload failed, queueing for offline sync:', err);
         setOptimisticUploads(prev => prev.filter(i => i.id !== optimisticId));
-        // v430: If direct upload fails, queue for offline sync (same as offline path)
-        // Re-prepare the file for outbox storage
+        // vXXX: If direct upload fails, queue for offline sync — SAME PATTERN as Admin (ProjectDetailBase)
+        // Use duck-typing (not instanceof) for mobile WebView compat + ArrayBuffer for small files
         let fallbackPayload = { ...galleryPayload };
-        if (anyFileRef.file instanceof File) {
-          fallbackPayload.file = anyFileRef.file;
+        const rawFallback = anyFileRef.file;
+        const hasFallbackFile = !!(rawFallback && typeof rawFallback === 'object' &&
+          typeof rawFallback.size === 'number' && rawFallback.size > 0);
+        
+        if (hasFallbackFile) {
+          const SMALL_FILE_LIMIT = 20 * 1024 * 1024; // 20MB
+          const fbSize = rawFallback.size;
+          const fbType = rawFallback.type || file.mimeType || 'application/octet-stream';
+          const fbName = rawFallback.name || file.filename || 'media';
+          
+          fallbackPayload.file = rawFallback; // Structured clone
           fallbackPayload.url = '';
+          fallbackPayload.fileData = null;
+          delete fallbackPayload.cacheKey;
+          delete fallbackPayload.storageType;
+          
+          // ArrayBuffer backup for small files
+          if (fbSize > 0 && fbSize <= SMALL_FILE_LIMIT) {
+            try {
+              const buf = await rawFallback.arrayBuffer();
+              fallbackPayload.fileData = { buffer: buf, type: fbType, name: fbName, size: fbSize };
+              console.log(`[Gallery] Fallback: ArrayBuffer saved for ${fbName} (${(fbSize/1024/1024).toFixed(1)}MB)`);
+            } catch (e) {
+              console.warn('[Gallery] Fallback: arrayBuffer() failed, keeping raw File only:', e);
+            }
+          }
         }
         await db.transaction('rw', db.outbox, async () => {
           await db.outbox.add({

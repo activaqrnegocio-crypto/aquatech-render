@@ -621,22 +621,13 @@ export default function GlobalSyncWorker() {
             continue;
           }
           // v373: After 8+ attempts for media uploads, validate that file data still exists.
-          // v455: PRE-CHECK for media items to detect absolute data loss early.
-          // v456: Fix — base64 data: URLs are valid data. Also p.media is common in legacy outbox.
           const isMediaType = currentItem.type === 'GALLERY_UPLOAD' || currentItem.type === 'MEDIA_UPLOAD';
           if (isMediaType) {
             const p = currentItem.payload || {};
-            const hasValidData = !!(
-              p.fileData || 
-              p.file || 
-              p.cacheKey || 
-              p.media?.fileData || 
-              p.media?.base64 || 
-              (p.url && (p.url.startsWith('data:') || (p.url.startsWith('http') && !p.url.includes('blob:')))) ||
-              (p.media?.url && (p.media.url.startsWith('data:') || (p.media.url.startsWith('http') && !p.media.url.includes('blob:'))))
-            );
-            
-            if (!hasValidData && attempts >= 8) {
+            const hasValidData = !!(p.fileData || p.file || p.cacheKey || p.media?.fileData || p.media?.base64 || 
+              (p.url && !p.url.startsWith('blob:') && !p.url.startsWith('data:') && p.url.startsWith('http')) ||
+              (p.media?.url && !p.media.url.startsWith('blob:') && p.media.url.startsWith('http')));
+            if (!hasValidData) {
               console.warn(`[Sync] Permanently failing media item ${item.id} - file data lost after ${attempts} attempts`);
               await db.outbox.update(item.id!, { status: 'failed', failReason: 'FILE_DATA_LOST' });
               await logSync('error', `Descartado: ${item.type} #${item.id} - datos del archivo perdidos`, item.type);
@@ -736,77 +727,83 @@ export default function GlobalSyncWorker() {
           // v452: GALLERY_UPLOAD — USE EXACT SAME LOGIC AS PROJECT (lines 1038-1066)
           // The generic media handler below uses duck-typing that fails on some mobile browsers.
           // Projects work because they have their OWN simple handler. Gallery gets the same now.
-          let galleryUploadDone = false;
           if (item.type === 'GALLERY_UPLOAD') {
+            let galleryUploadDone = false;
             try {
               let uploadFile: File | Blob | null = null;
               let uploadFilename = finalPayload.filename || `gallery_${Date.now()}`;
 
-              // Standardized binary extraction (Priority: buffer -> raw -> base64)
+              // Same as PROJECT line 1038: fileData.buffer first
               if (finalPayload.fileData && finalPayload.fileData.buffer) {
                 uploadFile = new Blob([finalPayload.fileData.buffer], { 
                   type: finalPayload.fileData.type || finalPayload.mimeType || 'application/octet-stream' 
                 });
                 uploadFilename = finalPayload.fileData.name || uploadFilename;
+                console.log(`[Sync] GALLERY using ArrayBuffer: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
               }
-              else if (finalPayload.file && typeof finalPayload.file === 'object' && finalPayload.file.size > 0) {
+              // Same as PROJECT line 1053: raw File/Blob
+              else if (finalPayload.file && finalPayload.file.size > 0) {
                 uploadFile = finalPayload.file;
                 uploadFilename = finalPayload.file.name || uploadFilename;
+                console.log(`[Sync] GALLERY using raw File: ${uploadFilename} (${(uploadFile!.size/1024/1024).toFixed(1)}MB)`);
               }
+              // Extra: Cache API backup (projects don't have this — gallery bonus)
+              else if (finalPayload.cacheKey) {
+                const { getFileFromCache } = await import('@/lib/offline-utils');
+                const cached = await getFileFromCache(finalPayload.cacheKey);
+                if (cached && cached.size > 0) {
+                  uploadFile = cached;
+                  console.log(`[Sync] GALLERY using Cache API: ${uploadFilename} (${(cached.size/1024/1024).toFixed(1)}MB)`);
+                }
+              }
+              // Last resort: base64/data URL
               else if (finalPayload.url && finalPayload.url.startsWith('data:')) {
                 const res = await fetch(finalPayload.url);
                 uploadFile = await res.blob();
+                console.log(`[Sync] GALLERY using base64: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
               }
 
               if (uploadFile && uploadFile.size > 0) {
-                const folder = `projects/${item.projectId || 'gallery'}`;
-                
-                // v456: Use chunked resumable upload for files > 50MB
-                // Progress is saved in outbox.payload.resumeState after each chunk.
-                const uploadResult = await uploadToBunnyClientSide(
-                  uploadFile, 
-                  uploadFilename, 
-                  folder,
-                  finalPayload.resumeState,
-                  async (idx, uid, chunks) => {
-                    await db.outbox.update(item.id!, { 
-                      "payload.resumeState": { uploadId: uid, completedChunks: chunks }
-                    });
-                  }
-                );
+                const folder = `projects/${item.projectId}`;
+                setUploadProgress({ filename: uploadFilename, percent: 50, chunk: 1, totalChunks: 1 });
+                const uploadResult = await uploadToBunnyClientSide(uploadFile, uploadFilename, folder);
+                setUploadProgress({ filename: uploadFilename, percent: 100, chunk: 1, totalChunks: 1 });
+                setTimeout(() => setUploadProgress(null), 2000);
 
                 // Set the CDN URL and clean binary data
                 finalPayload.url = uploadResult.url;
                 finalPayload.mimeType = uploadResult.mimeType || (uploadFile as any).type;
                 delete finalPayload.file;
                 delete finalPayload.fileData;
-                delete finalPayload.resumeState; // Clean progress after success
-                
-                galleryUploadDone = true;
-                await db.outbox.update(item.id!, { payload: finalPayload });
-                console.log(`[Sync] GALLERY upload successful: ${finalPayload.url}`);
-              } else {
-                // Check if it already has a CDN URL (retry after API fail)
-                if (finalPayload.url && finalPayload.url.startsWith('http') && !finalPayload.url.includes('blob:')) {
-                  galleryUploadDone = true;
-                } else {
-                  console.error(`[Sync] GALLERY #${item.id}: NO valid file data found`);
-                  await db.outbox.update(item.id!, { status: 'failed', failReason: 'FILE_DATA_LOST' });
-                  continue;
+                delete finalPayload.base64;
+                if (finalPayload.cacheKey) {
+                  try {
+                    const { deleteFileFromCache } = await import('@/lib/offline-utils');
+                    await deleteFileFromCache(finalPayload.cacheKey);
+                  } catch {}
+                  delete finalPayload.cacheKey;
                 }
+                galleryUploadDone = true;
+                console.log(`[Sync] GALLERY upload OK: ${uploadResult.url}`);
+              } else {
+                console.error(`[Sync] GALLERY #${item.id}: NO valid file data found anywhere`);
+                await db.outbox.update(item.id!, { status: 'failed', failReason: 'FILE_DATA_LOST' });
+                await logSync('error', `Descartado: GALLERY #${item.id} - sin datos de archivo`, item.type);
+                continue;
               }
             } catch (err) {
               const errMsg = err instanceof Error ? err.message : String(err);
-              console.error(`[Sync] GALLERY #${item.id} error:`, errMsg);
+              console.error(`[Sync] GALLERY UPLOAD ERROR #${item.id}:`, errMsg);
               const currentAttempts = (item.attempts || 0) + 1;
               await db.outbox.update(item.id!, { 
                 status: currentAttempts >= 15 ? 'failed' : 'pending',
                 attempts: currentAttempts,
                 lastAttemptAt: Date.now(),
-                failReason: `err_${currentAttempts}: ${errMsg.substring(0, 100)}`
+                failReason: `upload_err_${currentAttempts}: ${errMsg.substring(0, 150)}`
               });
               continue;
             }
+            // Skip the generic media handler — gallery is already handled
           }
 
           // 1. Handle single media (MESSAGE, MEDIA_UPLOAD, EXPENSE — NOT GALLERY_UPLOAD anymore)
