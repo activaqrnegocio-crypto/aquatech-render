@@ -741,11 +741,11 @@ export default function GlobalSyncWorker() {
                 uploadFilename = finalPayload.fileData.name || uploadFilename;
                 console.log(`[Sync] GALLERY using ArrayBuffer: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
               }
-              // Same as PROJECT line 1053: raw File/Blob
-              else if (finalPayload.file && finalPayload.file.size > 0) {
-                uploadFile = finalPayload.file;
-                uploadFilename = finalPayload.file.name || uploadFilename;
-                console.log(`[Sync] GALLERY using raw File: ${uploadFilename} (${(uploadFile!.size/1024/1024).toFixed(1)}MB)`);
+              // vXXX: EXACT same check as PROJECT line 1092 (instanceof File || instanceof Blob)
+              else if (finalPayload.file instanceof File || finalPayload.file instanceof Blob) {
+                uploadFile = finalPayload.file as File | Blob;
+                uploadFilename = (finalPayload.file as File).name || uploadFilename;
+                console.log(`[Sync] GALLERY using raw File/Blob: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
               }
               // Extra: Cache API backup (projects don't have this — gallery bonus)
               else if (finalPayload.cacheKey) {
