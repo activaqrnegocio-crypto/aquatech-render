@@ -1103,18 +1103,31 @@ export default function ProjectDetailBase({
         let finalUrl = '';
         let finalMime = file.mimeType;
 
-        // v446: Upload to Bunny first if we have a raw file
+        // v452: Upload to Bunny — handle all file sources
         if (rawFileObject) {
+          // PRIMARY: raw File/Blob object (most reliable)
           const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
           const folder = `projects/${project.id}`;
           const uploadResult = await uploadToBunnyClientSide(rawFileObject, file.filename || 'media', folder);
           finalUrl = uploadResult.url;
           finalMime = uploadResult.mimeType || finalMime;
-        } else if (tempMediaUrl && !tempMediaUrl.startsWith('blob:')) {
-          // It's already a URL or base64
+        } else if (file.url && (file.url as string).startsWith('http')) {
+          // Already uploaded to CDN — just use the URL directly
+          finalUrl = file.url as string;
+        } else if (file.url && (file.url as string).startsWith('blob:')) {
+          // blob: URL — fetch the binary and upload to Bunny
+          const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
+          const res = await fetch(file.url as string);
+          const blob = await res.blob();
+          const folder = `projects/${project.id}`;
+          const uploadResult = await uploadToBunnyClientSide(blob, file.filename || 'media', folder);
+          finalUrl = uploadResult.url;
+          finalMime = uploadResult.mimeType || finalMime;
+        } else if (tempMediaUrl && !tempMediaUrl.startsWith('blob:') && !tempMediaUrl.startsWith('data:')) {
+          // Already a CDN URL somehow
           finalUrl = tempMediaUrl;
         } else {
-          throw new Error("No hay datos válidos para subir");
+          throw new Error("No hay datos válidos para subir al CDN");
         }
 
         const resp = await fetch(`/api/projects/${project.id}/gallery`, {
