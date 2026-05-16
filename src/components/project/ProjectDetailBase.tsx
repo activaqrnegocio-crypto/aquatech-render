@@ -1145,7 +1145,29 @@ export default function ProjectDetailBase({
     }
 
     // 4. Offline/Fallback Logic (IndexedDB Storage)
+    // v450: COPY EXACT PATTERN FROM ProjectCreationWizard
+    // Store BOTH the raw File AND the arrayBuffer. On mobile, File objects
+    // stored in IndexedDB lose their data when the app goes to background.
+    // The arrayBuffer survives because it's a plain binary copy.
     try {
+      let fileDataBackup: { buffer: ArrayBuffer; type: string; name: string; size: number } | null = null;
+      
+      if (rawFileObject && rawFileObject.size > 0) {
+        try {
+          // Read the full binary data into an ArrayBuffer — this survives IndexedDB persistence
+          const buffer = await rawFileObject.arrayBuffer();
+          fileDataBackup = {
+            buffer,
+            type: rawFileObject instanceof File ? rawFileObject.type : (file.mimeType || 'application/octet-stream'),
+            name: rawFileObject instanceof File ? rawFileObject.name : (file.filename || `media_${Date.now()}`),
+            size: rawFileObject.size
+          };
+          console.log(`[Gallery] Stored ${(rawFileObject.size/1024/1024).toFixed(1)}MB as ArrayBuffer for offline sync`);
+        } catch (abErr) {
+          console.warn('[Gallery] arrayBuffer() failed, falling back to File-only storage:', abErr);
+        }
+      }
+
       await db.outbox.add({
         type: 'GALLERY_UPLOAD',
         projectId: project.id,
@@ -1153,8 +1175,8 @@ export default function ProjectDetailBase({
           ...file, 
           url: processedUrl, 
           base64: processedUrl || null, 
-          file: rawFileObject, // v445: Native IDB storage
-          fileData: null,
+          file: rawFileObject, // Keep as first-choice (works if app stays open)
+          fileData: fileDataBackup, // v450: RELIABLE BACKUP — survives app close/background
           cacheKey: null,
           category 
         },
