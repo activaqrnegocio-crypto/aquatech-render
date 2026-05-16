@@ -1,4 +1,4 @@
-const SW_VERSION = 'v373-nav-sync-fix';
+const SW_VERSION = 'v374-gallery-sw-skip';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
@@ -1569,10 +1569,25 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
 
     const pendingItems = toSync;
 
+    // vXXX: GALLERY_UPLOAD items are ALWAYS handled by GlobalSyncWorker (main thread).
+    // The SW cannot handle raw File/Blob objects from IndexedDB structured clone.
+    // If the SW tries, it sends url='' to the API → 400 Bad Request → infinite loop.
+    // This caused years of video sync failures offline→online.
+    {
+      const alwaysSkipped = new Set(['GALLERY_UPLOAD']);
+      const filtered = pendingItems.filter(i => !alwaysSkipped.has(i.type));
+      const skipped = pendingItems.length - filtered.length;
+      if (skipped > 0) {
+        console.log(`[SW vXXX] Skipping ${skipped} GALLERY_UPLOAD items (GlobalSyncWorker handles them)`);
+      }
+      pendingItems.length = 0;
+      pendingItems.push(...filtered);
+    }
+
     // v372: When page is visible, skip heavy media items — GlobalSyncWorker handles them.
     // This prevents double Bunny uploads and race conditions.
     if (skipHeavyMediaItems) {
-      const heavyTypes = new Set(['GALLERY_UPLOAD', 'MEDIA_UPLOAD']);
+      const heavyTypes = new Set(['MEDIA_UPLOAD']);
       const filteredItems = pendingItems.filter(i => !heavyTypes.has(i.type));
       const skippedCount = pendingItems.length - filteredItems.length;
       if (skippedCount > 0) {
