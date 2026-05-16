@@ -1,10 +1,11 @@
 /**
  * utilidades para el sistema de sincronización offline de Aquatech
  * 
- * v444: CRITICAL REWRITE — Use Cache API for large files.
- * - File objects lose data after IndexedDB structured clone on Android
- * - ArrayBuffer crashes the browser tab (OOM) for 80MB+ files
- * - Cache API stores files to DISK without loading into RAM
+ * v445: REVISED STRATEGY — Native IndexedDB Structured Clone.
+ * - Modern browsers support structured cloning of File/Blob objects natively.
+ * - This is simpler and more reliable than Cache API for most cases.
+ * - Aligning with the robust logic used in Project Creation Wizard.
+ * - Cache API functions are kept for legacy compatibility and fallback.
  */
 
 const MAX_OFFLINE_FILE_SIZE = 600 * 1024 * 1024; // 600MB

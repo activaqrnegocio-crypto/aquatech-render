@@ -567,48 +567,45 @@ export default function GlobalSyncWorker() {
 
     outboxLock.current = true
     try {
-      // v369: Fetch ALL items to properly detect 'syncing' items and preserve chronolocical order.
-      // Otherwise, we wouldn't see the 'syncing' items blocking the queue!
-      const items = await db.outbox.toArray();
+      // v445: CRITICAL MEMORY OPTIMIZATION — Avoid .toArray() (OOM RISK).
+      // Large video files in the outbox can crash the browser if loaded all at once.
+      // We get IDs in order and process them one-by-one to keep memory usage low.
+      const allIds = await db.outbox.orderBy('timestamp').primaryKeys();
       
-      const pendingOrFailed = items.filter(i => i.status === 'pending' || i.status === 'failed');
-      if (pendingOrFailed.length === 0) {
+      if (allIds.length === 0) {
         localStorage.removeItem('global_sync_lock')
         return
       }
 
-      // v333: Log visible en /admin/debug/sync
-      const itemTypes = [...new Set(items.map(i => i.type))].join(', ');
-      await logSync('info', `Procesando ${items.length} ítems en cola [${itemTypes}]`, 'outbox', `Items: ${items.length}`);
+      let hasSyncedAnything = false;
+      const failedContexts = new Set<string>();
+      const syncingContexts = new Set<string>();
 
-      // v272: Sort chronologically (FIFO) — critical for dependency order
-      // DAY_START must sync before EXPENSE/MESSAGE, PROJECT before PHASE_CREATE, etc.
-      items.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
-
-      let hasSyncedAnything = false
-      const failedContexts = new Set<string>(); // v272: Track failed projects/contexts
-      const syncingContexts = new Set<string>(); // v369: Track currently syncing projects to preserve strictly chronological order
-
-      // First pass: identify any project/context that already has a 'syncing' item
-      for (const item of items) {
+      // Pass 1: Identify contexts that are currently syncing (to preserve FIFO order)
+      for (const id of allIds) {
+        const item = await db.outbox.get(id);
+        if (!item) continue;
         if (item.status === 'syncing') {
           const ctx = item.projectId ? `proj-${item.projectId}` : (item.type === 'DAY_START' || item.type === 'DAY_END' ? 'day-record' : null);
           if (ctx) syncingContexts.add(ctx);
         }
       }
 
-      for (const item of items) {
+      // Pass 2: Main processing loop
+      for (const id of allIds) {
+        const item = await db.outbox.get(id);
+        if (!item || item.status === 'synced' || item.status === 'syncing') continue;
+
         const ctx = item.projectId ? `proj-${item.projectId}` : (item.type === 'DAY_START' || item.type === 'DAY_END' ? 'day-record' : null);
         
-        // v369: If this project has ANY earlier item that failed OR is currently syncing, skip this item!
-        // This PREVENTS text messages from bypassing large image uploads!
-        if (ctx && (failedContexts.has(ctx) || (item.status !== 'syncing' && syncingContexts.has(ctx)))) {
+        // v369/v445: Preserves strictly chronological order per context (Project, DayRecord, etc.)
+        if (ctx && (failedContexts.has(ctx) || syncingContexts.has(ctx))) {
           continue;
         }
 
-        // Double check status hasn't changed by another process (sanity check)
-        const currentItem = await db.outbox.get(item.id!)
-        if (!currentItem || currentItem.status === 'syncing') continue
+        // We use the freshly fetched item as 'currentItem'
+        const currentItem = item;
+
 
         // v443: Cooldown logic - prevent infinite retries without blocking too long.
         // Attempts 1-7: retry every 10s (normal cooldown via lastAttemptAt check below)
@@ -708,26 +705,26 @@ export default function GlobalSyncWorker() {
           }
           
           // 1. Handle single media (MESSAGE, MEDIA_UPLOAD, EXPENSE, GALLERY_UPLOAD)
-          // v444: Detection priority:
-          //   0. cacheKey → Cache API (large files saved to disk, ZERO RAM)
+          // v445: REVISED PRIORITY — Prioritize native File objects (proven reliable for projects)
+          //   0. Raw File/Blob → DIRECT, NATIVE, DISK-BACKED (via IndexedDB)
           //   1. fileData.buffer → ArrayBuffer (legacy)
-          //   2. Raw File/Blob → legacy or direct input
+          //   2. cacheKey → Cache API (v444 legacy fallback)
           //   3. base64 data URLs → small files
           //   4. blob: URLs → session-only, unreliable
-          
-          const hasCacheKey = !!(finalPayload.cacheKey);
-          
-          const hasBinaryData = !!(
-            (finalPayload.fileData && finalPayload.fileData.buffer) ||
-            (finalPayload.media?.fileData && finalPayload.media.fileData.buffer) ||
-            finalPayload.receiptFileData
-          );
           
           const rawFileObj = finalPayload.file;
           const hasRawFile = !!(rawFileObj && typeof rawFileObj === 'object' && 
             typeof rawFileObj.size === 'number' && rawFileObj.size > 0 &&
             typeof rawFileObj.slice === 'function');
 
+          const hasBinaryData = !!(
+            (finalPayload.fileData && finalPayload.fileData.buffer) ||
+            (finalPayload.media?.fileData && finalPayload.media.fileData.buffer) ||
+            finalPayload.receiptFileData
+          );
+
+          const hasCacheKey = !!(finalPayload.cacheKey);
+          
           const hasBase64 = !!(finalPayload.media?.base64 || 
                             (item.type === 'GALLERY_UPLOAD' && finalPayload.url?.startsWith('data:')) ||
                             finalPayload.receiptPhoto?.startsWith('data:'));
@@ -736,26 +733,18 @@ export default function GlobalSyncWorker() {
                              (typeof finalPayload.url === 'string' && finalPayload.url.startsWith('blob:')) ||
                              (typeof finalPayload.receiptPhoto === 'string' && finalPayload.receiptPhoto.startsWith('blob:')));
 
-          if (hasCacheKey || hasBinaryData || hasRawFile || hasBase64 || hasBlobUrl) {
+          if (hasRawFile || hasBinaryData || hasCacheKey || hasBase64 || hasBlobUrl) {
             try {
               let uploadFile: File | Blob;
               let finalFilename: string = '';
 
-              // v444: PRIORITY 0 — Cache API (large files stored to disk)
-              if (hasCacheKey) {
-                const { getFileFromCache, deleteFileFromCache } = await import('@/lib/offline-utils');
-                const cached = await getFileFromCache(finalPayload.cacheKey);
-                if (!cached || cached.size === 0) {
-                  console.error(`[Sync] Cache API: file not found for key ${finalPayload.cacheKey}`);
-                  await db.outbox.update(item.id!, { status: 'failed', failReason: 'FILE_DATA_LOST' });
-                  await logSync('error', `Cache perdido: ${item.type} #${item.id}`, item.type);
-                  continue;
-                }
-                uploadFile = cached;
-                finalFilename = finalPayload.filename || `sync_${Date.now()}`;
-                console.log(`[Sync] Using Cache API: ${finalFilename} (${(cached.size/1024/1024).toFixed(1)}MB)`);
+              // v445: PRIORITY 0 — Native File/Blob (Most reliable, zero-copy retrieval from IndexedDB)
+              if (hasRawFile) {
+                uploadFile = rawFileObj as Blob;
+                finalFilename = rawFileObj.name || finalPayload.filename || `sync_${Date.now()}`;
+                console.log(`[Sync] Using native File: ${finalFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
               }
-              // PRIORITY 1 — ArrayBuffer in fileData (legacy)
+              // PRIORITY 1 — ArrayBuffer (legacy projects or small files)
               else if (hasBinaryData) {
                 const source = finalPayload.fileData || finalPayload.media?.fileData || finalPayload.receiptFileData;
                 if (source && source.buffer) {
@@ -769,11 +758,19 @@ export default function GlobalSyncWorker() {
                 }
                 console.log(`[Sync] Using ArrayBuffer: ${finalFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
               }
-              // PRIORITY 2 — Raw File/Blob
-              else if (hasRawFile) {
-                uploadFile = rawFileObj as Blob;
-                finalFilename = rawFileObj.name || finalPayload.filename || `sync_${Date.now()}`;
-                console.log(`[Sync] Using raw File: ${finalFilename} (${(rawFileObj.size/1024/1024).toFixed(1)}MB)`);
+              // PRIORITY 2 — Cache API (v444 items only)
+              else if (hasCacheKey) {
+                const { getFileFromCache } = await import('@/lib/offline-utils');
+                const cached = await getFileFromCache(finalPayload.cacheKey);
+                if (!cached || cached.size === 0) {
+                  console.error(`[Sync] Cache API: file not found for key ${finalPayload.cacheKey}`);
+                  await db.outbox.update(item.id!, { status: 'failed', failReason: 'FILE_DATA_LOST' });
+                  await logSync('error', `Cache perdido: ${item.type} #${item.id}`, item.type);
+                  continue;
+                }
+                uploadFile = cached;
+                finalFilename = finalPayload.filename || `sync_${Date.now()}`;
+                console.log(`[Sync] Using Cache API fallback: ${finalFilename} (${(cached.size/1024/1024).toFixed(1)}MB)`);
               }
               // PRIORITY 3 — base64 or blob URL
               else {

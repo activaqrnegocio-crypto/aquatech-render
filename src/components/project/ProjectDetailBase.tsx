@@ -1042,177 +1042,127 @@ export default function ProjectDetailBase({
   const handleUploadToGallery = async (file: ProjectFile, category: string = 'MASTER') => {
     if (saveLockRef.current) return;
     saveLockRef.current = true;
-    setIsUploading(true)
+    setIsUploading(true);
 
     const syncId = `gallery-upload-${project.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    const OFFLINE_BASE64_LIMIT = 10 * 1024 * 1024; // 10MB
+    const OFFLINE_MAX_SIZE = 600 * 1024 * 1024; // 600MB
 
-    // Offline support
-    if (typeof navigator !== 'undefined' && !navigator.onLine) {
-       try {
-          // v441: CRITICAL FIX — Don't use arrayBuffer() for large videos!
-          // An 80MB video → 80MB ArrayBuffer in RAM → crashes mobile browsers.
-          // Instead, store the raw File object via IndexedDB structured clone (zero RAM overhead).
-          const OFFLINE_BASE64_LIMIT = 10 * 1024 * 1024; // 10MB
-          const OFFLINE_MAX_SIZE = 600 * 1024 * 1024; // 600MB (v440)
-          
-          const fileSize = (file as any).size || (file as any).file?.size || 0;
-          
-          if (fileSize > OFFLINE_MAX_SIZE) {
-            alert(`El archivo "${file.filename}" (${(fileSize / (1024*1024)).toFixed(0)} MB) es demasiado grande para guardar offline. \n\nLímite Offline: 600MB. \n\nConéctate a internet para subir archivos más pesados.`);
-            setIsUploading(false);
-            saveLockRef.current = false;
-            return;
-          }
+    // 1. Preparation
+    let processedUrl = file.url;
+    let rawFileObject: File | Blob | null = null;
+    const incomingFile = (file as any).file;
+    const hasIncomingFile = !!(incomingFile && typeof incomingFile === 'object' && typeof incomingFile.size === 'number' && incomingFile.size > 0);
 
-          let processedUrl = file.url;
-          let rawFileObject: File | Blob | null = null;
-          
-          // v441: Check if the ProjectUploader already passed a raw File object
-          const incomingFile = (file as any).file;
-          const hasIncomingFile = !!(incomingFile && typeof incomingFile === 'object' && 
-            typeof incomingFile.size === 'number' && incomingFile.size > 0);
-
-          if (hasIncomingFile) {
-            // v441: USE THE FILE OBJECT DIRECTLY — no arrayBuffer, no base64!
-            // IndexedDB structured clone preserves File/Blob objects perfectly.
-            if (incomingFile.size <= OFFLINE_BASE64_LIMIT) {
-              // Small files (< 10MB): base64 for preview is fine
-              try {
-                const blob = (incomingFile instanceof Blob) ? incomingFile : new Blob([incomingFile]);
-                processedUrl = await blobToBase64(blob);
-              } catch {
-                processedUrl = '';
-              }
-            } else {
-              // Large files: empty URL, the raw File will be used for both preview and upload
-              processedUrl = '';
-            }
-            rawFileObject = incomingFile;
-          } else if (typeof file.url === 'string' && file.url.startsWith('blob:')) {
-            try {
-              const res = await fetch(file.url);
-              const blob = await res.blob();
-              
-              if (blob.size <= OFFLINE_BASE64_LIMIT) {
-                // Small files: base64 is fine
-                processedUrl = await blobToBase64(blob);
-              } else {
-                // v441: Convert blob to File object for structured clone storage
-                rawFileObject = new File([blob], file.filename, { type: file.mimeType });
-                processedUrl = ''; // Will be replaced by Bunny URL during sync
-              }
-            } catch (e) {
-              console.warn("Could not process blob for offline storage", e);
-            }
-          } else if (typeof file.url === 'string' && file.url.startsWith('data:')) {
-            processedUrl = file.url;
-          }
-
-          await db.transaction('rw', db.outbox, async () => {
-            // v444: Store large files in Cache API (zero RAM), only save key in IndexedDB
-            let cacheKey: string | null = null;
-            const fileObj = rawFileObject;
-            if (fileObj && fileObj.size > 0 && fileObj.size > 10 * 1024 * 1024) {
-              // Large file — use Cache API
-              const { saveFileToCache } = await import('@/lib/offline-utils');
-              cacheKey = `offline-media-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-              await saveFileToCache(cacheKey, fileObj);
-              console.log(`[Gallery] Saved ${file.filename} (${(fileObj.size/1024/1024).toFixed(1)}MB) to Cache API`);
-            }
-            
-            await db.outbox.add({
-               type: 'GALLERY_UPLOAD',
-               projectId: project.id,
-               payload: { 
-                 ...file, 
-                 url: processedUrl, 
-                 base64: processedUrl || null, 
-                 file: null,
-                 fileData: null,
-                 cacheKey: cacheKey, // Key to retrieve from Cache API (null for small files)
-                 category 
-               },
-               timestamp: Date.now(),
-               status: 'pending',
-               syncId
-            })
-          })
-          
-          setIsUploading(false)
-          triggerBackgroundSync()
-          saveLockRef.current = false;
-          return
-       } catch (e: any) {
-          console.error('Error saving offline gallery item:', e)
-          if (e?.message?.includes('ARCHIVO_MUY_GRANDE')) {
-            alert(e.message);
-            setIsUploading(false);
-            saveLockRef.current = false;
-            return;
-          }
-       }
+    if (hasIncomingFile) {
+      if (incomingFile.size > OFFLINE_MAX_SIZE) {
+        alert(`Archivo demasiado grande (${(incomingFile.size / (1024*1024)).toFixed(0)}MB). Límite: 600MB.`);
+        setIsUploading(false);
+        saveLockRef.current = false;
+        return;
+      }
+      if (incomingFile.size <= OFFLINE_BASE64_LIMIT) {
+        try {
+          const blob = (incomingFile instanceof Blob) ? incomingFile : new Blob([incomingFile]);
+          processedUrl = await blobToBase64(blob);
+        } catch { processedUrl = ''; }
+      } else {
+        processedUrl = '';
+      }
+      rawFileObject = incomingFile;
+    } else if (typeof file.url === 'string' && file.url.startsWith('blob:')) {
+      try {
+        const res = await fetch(file.url);
+        const blob = await res.blob();
+        if (blob.size <= OFFLINE_BASE64_LIMIT) {
+          processedUrl = await blobToBase64(blob);
+        } else {
+          rawFileObject = new File([blob], file.filename || 'media', { type: file.mimeType });
+          processedUrl = '';
+        }
+      } catch (e) { console.warn("Blob processing failed", e); }
     }
 
-    // --- OPTIMISTIC UI UPDATE (Igual que en el chat) ---
+    // 2. Optimistic UI Update
     const optimisticId = `temp-${syncId}`;
-    const tempMediaUrl = typeof file.url === 'string' && file.url.startsWith('blob:') ? file.url : ((file as any).base64 || file.url);
-    
+    const tempMediaUrl = processedUrl || (typeof file.url === 'string' ? file.url : '');
     const optimisticItem = {
       id: optimisticId,
       url: tempMediaUrl,
       filename: file.filename || 'Archivo Multimedia',
       mimeType: file.mimeType,
       category: category,
-      type: category, // Para que el filtro lo agarre
-      isPending: true // El UI ya usa esto para mostrar "Subiendo..."
+      type: category,
+      isPending: true
     };
-
     setGallery((prev: any) => [optimisticItem, ...prev]);
 
+    // 3. Offline Logic
+    if (typeof navigator !== 'undefined' && !navigator.onLine) {
+      try {
+        await db.outbox.add({
+          type: 'GALLERY_UPLOAD',
+          projectId: project.id,
+          payload: { 
+            ...file, 
+            url: processedUrl, 
+            base64: processedUrl || null, 
+            file: rawFileObject, // v445: Native IDB storage
+            fileData: null,
+            cacheKey: null,
+            category 
+          },
+          timestamp: Date.now(),
+          status: 'pending',
+          syncId
+        });
+        triggerBackgroundSync();
+      } catch (e) {
+        console.error('Offline save failed:', e);
+        setGallery((prev: any) => prev.filter((i: any) => i.id !== optimisticId));
+      } finally {
+        setIsUploading(false);
+        saveLockRef.current = false;
+        return;
+      }
+    }
+
+    // 4. Online Logic
     try {
       const resp = await fetch(`/api/projects/${project.id}/gallery`, {
         method: 'POST',
-        headers: { 
-          'Content-Type': 'application/json',
-          'x-sync-id': syncId
-        },
+        headers: { 'Content-Type': 'application/json', 'x-sync-id': syncId },
         body: JSON.stringify({ ...file, category })
-      })
+      });
 
       if (resp.ok) {
-        const newItem = await resp.json()
-        setGallery((prev: any) => [newItem, ...prev.filter((i: any) => i.id !== optimisticId)])
+        const newItem = await resp.json();
+        setGallery((prev: any) => [newItem, ...prev.filter((i: any) => i.id !== optimisticId)]);
       } else {
-        throw new Error("Respuesta no OK de la API");
+        throw new Error("Server response not OK");
       }
     } catch (e) {
-      console.error('Error uploading to gallery:', e)
-      
-      // Remove optimistic item because the outbox will provide it via pendingItems
-      setGallery((prev: any) => prev.filter((i: any) => i.id !== optimisticId));
-
-      // Fallback to outbox on error
-      await db.transaction('rw', db.outbox, async () => {
-        let base64 = null;
-        if (typeof file.url === 'string' && file.url.startsWith('blob:')) {
-          try {
-            const res = await fetch(file.url);
-            const blob = await res.blob();
-            base64 = await blobToBase64(blob);
-          } catch(e) {}
-        }
-        await db.outbox.add({
-           type: 'GALLERY_UPLOAD',
-           projectId: project.id,
-           payload: { ...file, url: base64 || file.url, base64: base64, category },
-           timestamp: Date.now(),
-           status: 'pending',
-           syncId
-        })
-      })
-      triggerBackgroundSync()
+      console.error('Online upload failed, falling back to outbox:', e);
+      // Fallback to outbox (using the same native storage logic)
+      await db.outbox.add({
+        type: 'GALLERY_UPLOAD',
+        projectId: project.id,
+        payload: { 
+          ...file, 
+          url: processedUrl, 
+          base64: processedUrl || null, 
+          file: rawFileObject,
+          fileData: null,
+          cacheKey: null,
+          category 
+        },
+        timestamp: Date.now(),
+        status: 'pending',
+        syncId
+      });
+      triggerBackgroundSync();
     } finally {
-      setIsUploading(false)
+      setIsUploading(false);
       saveLockRef.current = false;
     }
   }
