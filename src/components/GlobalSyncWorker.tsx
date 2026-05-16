@@ -597,12 +597,10 @@ export default function GlobalSyncWorker() {
       // Pass 1.5: BATCH GALLERY UPLOADS — upload files to Bunny in parallel batches of 3,
       // then POST to API sequentially. Each batch completes before the next starts,
       // so small files don't wait for large ones.
-      // vXXX: Skip items with >= 3 failed attempts — let Pass 2 individual handler retry them.
-      // This prevents the batch upload from getting stuck on problematic items forever.
       const galleryIds: number[] = [];
       for (const id of allIds) {
         const item = await db.outbox.get(id);
-        if (item && item.type === 'GALLERY_UPLOAD' && item.status === 'pending' && (item.attempts || 0) < 3) {
+        if (item && item.type === 'GALLERY_UPLOAD' && item.status === 'pending') {
           galleryIds.push(id);
         }
       }
@@ -655,19 +653,8 @@ export default function GlobalSyncWorker() {
                 }
                 
                 const folder = `projects/${gItem.projectId}`;
-                const fileSizeMB = Math.ceil(uploadFile.size / (1024 * 1024));
-                // vXXX: Per-upload timeout — prevents one stuck upload from blocking entire batch.
-                // Formula: max(3min, 30s per MB). 50MB = 25min timeout.
-                const uploadTimeoutMs = Math.max(180000, fileSizeMB * 30000);
-                
-                console.log(`[Sync] 📤 Uploading: ${uploadFilename} (${fileSizeMB}MB, timeout: ${Math.round(uploadTimeoutMs/60000)}min)...`);
-                
-                const uploadPromise = uploadToBunnyClientSide(uploadFile, uploadFilename, folder);
-                const timeoutPromise = new Promise<never>((_, reject) => 
-                  setTimeout(() => reject(new Error(`Upload timeout after ${Math.round(uploadTimeoutMs/60000)}min`)), uploadTimeoutMs)
-                );
-                
-                const result = await Promise.race([uploadPromise, timeoutPromise]);
+                console.log(`[Sync] 📤 Uploading: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)...`);
+                const result = await uploadToBunnyClientSide(uploadFile, uploadFilename, folder);
                 console.log(`[Sync] 📤 Batch upload OK: ${uploadFilename} → ${result.url}`);
                 return { id, url: result.url, mimeType: result.mimeType || (uploadFile as any).type, ok: true };
               } catch (err) {
@@ -689,7 +676,7 @@ export default function GlobalSyncWorker() {
             if (!ok) {
               const currentAttempts = (gItem?.attempts || 0) + 1;
               await db.outbox.update(id, {
-                status: currentAttempts >= 5 ? 'failed' : 'pending',
+                status: currentAttempts >= 15 ? 'failed' : 'pending',
                 attempts: currentAttempts,
                 lastAttemptAt: Date.now(),
                 failReason: `batch_upload_err: ${err?.substring(0, 150) || 'unknown'}`
@@ -738,7 +725,7 @@ export default function GlobalSyncWorker() {
                 console.error(`[Sync] ❌ Gallery API FAIL #${id}: ${res.status} ${errText}`);
                 const currentAttempts = (gItem.attempts || 0) + 1;
                 await db.outbox.update(id, {
-                  status: currentAttempts >= 5 ? 'failed' : 'pending',
+                  status: currentAttempts >= 15 ? 'failed' : 'pending',
                   attempts: currentAttempts,
                   lastAttemptAt: Date.now(),
                   failReason: `api_err_${res.status}: ${errText.substring(0, 150)}`
@@ -749,7 +736,7 @@ export default function GlobalSyncWorker() {
               console.error(`[Sync] ❌ Gallery API ERROR #${id}:`, errMsg);
               const currentAttempts = (gItem.attempts || 0) + 1;
               await db.outbox.update(id, {
-                status: currentAttempts >= 5 ? 'failed' : 'pending',
+                status: currentAttempts >= 15 ? 'failed' : 'pending',
                 attempts: currentAttempts,
                 lastAttemptAt: Date.now(),
                 failReason: `api_err: ${errMsg.substring(0, 150)}`
@@ -997,7 +984,7 @@ export default function GlobalSyncWorker() {
               console.error(`[Sync] GALLERY ❌ ERROR #${item.id}:`, errMsg, err);
               const currentAttempts = (item.attempts || 0) + 1;
               await db.outbox.update(item.id!, { 
-                status: currentAttempts >= 5 ? 'failed' : 'pending',
+                status: currentAttempts >= 15 ? 'failed' : 'pending',
                 attempts: currentAttempts,
                 lastAttemptAt: Date.now(),
                 failReason: `upload_err_${currentAttempts}: ${errMsg.substring(0, 200)}`

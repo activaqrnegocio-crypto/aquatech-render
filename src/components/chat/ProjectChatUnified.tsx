@@ -702,13 +702,13 @@ export default function ProjectChatUnified({
               onClick={() => {
                 const input = document.createElement('input');
                 input.type = 'file';
-                input.accept = 'image/*,video/*,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar';
+                input.accept = 'image/*,video/*';
                 input.style.display = 'none';
                 document.body.appendChild(input);
                 input.onchange = (e: any) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    const type = file.type.startsWith('video/') ? 'VIDEO' : (file.type.startsWith('image/') ? 'IMAGE' : 'FILE');
+                    const type = file.type.startsWith('video/') ? 'VIDEO' : 'IMAGE';
                     onSendMessage('', type, { file });
                   }
                   document.body.removeChild(input);
@@ -723,7 +723,7 @@ export default function ProjectChatUnified({
               onClick={() => {
                 const input = document.createElement('input');
                 input.type = 'file';
-                input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.zip,.rar';
+                input.accept = '.pdf,.doc,.docx,.xls,.xlsx';
                 input.style.display = 'none';
                 document.body.appendChild(input);
                 input.onchange = (e: any) => {
