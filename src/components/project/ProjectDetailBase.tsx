@@ -1157,73 +1157,79 @@ export default function ProjectDetailBase({
       }
     }
 
-    // 4. Offline/Fallback Logic — v453: ARRAYBUFER ONLY (the ONLY thing IndexedDB preserves reliably)
-    // File objects get garbage-collected by mobile browsers after IndexedDB structured clone.
-    // Cache API is unreliable across app suspensions on iOS/Android.
-    // ArrayBuffer is PURE BINARY DATA — IndexedDB stores it perfectly, always.
+    // 4. Offline/Fallback Logic — v453 FINAL FIX
+    // ROOT CAUSE: File objects die in IndexedDB on mobile (structured clone fails for >50MB).
+    // FIX: NEVER store raw File in IndexedDB. Use ONLY:
+    //   - ArrayBuffer (≤50MB): binary data that ALWAYS survives IndexedDB
+    //   - Cache API (>50MB): disk-backed, zero RAM, survives app suspension
+    //   - Cache API backup for ALL files (double safety)
     try {
-      const OFFLINE_MAX = 200 * 1024 * 1024; // 200MB max for offline
+      const ARRAYBUFFER_LIMIT = 50 * 1024 * 1024; // 50MB — max safe ArrayBuffer on mobile
       let storedFileData: { buffer: ArrayBuffer; type: string; name: string; size: number } | null = null;
+      let cacheKey: string | null = null;
+      const fileType = rawFileObject instanceof File ? rawFileObject.type : (file.mimeType || 'application/octet-stream');
+      const fileName = rawFileObject instanceof File ? rawFileObject.name : (file.filename || `media_${Date.now()}`);
+      const fileSize = rawFileObject?.size || 0;
 
-      if (rawFileObject && rawFileObject.size > 0) {
-        if (rawFileObject.size > OFFLINE_MAX) {
-          alert(`Este archivo (${(rawFileObject.size/1024/1024).toFixed(0)}MB) es demasiado grande para guardar offline. Máximo: 200MB. Conéctese a internet para subirlo.`);
-          setIsUploading(false);
-          saveLockRef.current = false;
-          return;
+      if (rawFileObject && fileSize > 0) {
+        // A) ArrayBuffer for files ≤50MB (MOST RELIABLE — pure binary, always survives IndexedDB)
+        if (fileSize <= ARRAYBUFFER_LIMIT) {
+          try {
+            // Timeout protection: 30s max to read file into RAM
+            const buffer = await Promise.race([
+              rawFileObject.arrayBuffer(),
+              new Promise<ArrayBuffer>((_, reject) => setTimeout(() => reject(new Error('arrayBuffer timeout')), 30000))
+            ]);
+            storedFileData = { buffer, type: fileType, name: fileName, size: fileSize };
+            console.log(`[Gallery] ✅ ArrayBuffer stored: ${fileName} (${(fileSize/1024/1024).toFixed(1)}MB)`);
+          } catch (e) {
+            console.warn(`[Gallery] ⚠️ ArrayBuffer failed for ${(fileSize/1024/1024).toFixed(1)}MB file:`, e);
+            // Will fall through to Cache API only
+          }
+        } else {
+          console.log(`[Gallery] File too large for ArrayBuffer (${(fileSize/1024/1024).toFixed(0)}MB > 50MB), using Cache API only`);
         }
 
-        // Read the ENTIRE file into ArrayBuffer — this is the ONLY reliable storage
-        console.log(`[Gallery] Reading ${(rawFileObject.size/1024/1024).toFixed(1)}MB into ArrayBuffer...`);
-        const buffer = await rawFileObject.arrayBuffer();
-        storedFileData = {
-          buffer,
-          type: rawFileObject instanceof File ? rawFileObject.type : (file.mimeType || 'application/octet-stream'),
-          name: rawFileObject instanceof File ? rawFileObject.name : (file.filename || `media_${Date.now()}`),
-          size: rawFileObject.size
-        };
-        console.log(`[Gallery] ArrayBuffer stored: ${storedFileData.name} (${(storedFileData.size/1024/1024).toFixed(1)}MB)`);
-      } else if (processedUrl && processedUrl.startsWith('data:')) {
-        // base64 data URL — convert to ArrayBuffer
-        const res = await fetch(processedUrl);
-        const blob = await res.blob();
-        const buffer = await blob.arrayBuffer();
-        storedFileData = {
-          buffer,
-          type: file.mimeType || 'application/octet-stream',
-          name: file.filename || `media_${Date.now()}`,
-          size: blob.size
-        };
-        console.log(`[Gallery] base64→ArrayBuffer: ${storedFileData.name} (${(storedFileData.size/1024/1024).toFixed(1)}MB)`);
+        // B) Cache API for ALL files (primary storage for >50MB, backup for ≤50MB)
+        try {
+          const { saveFileToCache } = await import('@/lib/offline-utils');
+          cacheKey = `gallery-${project.id}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          await saveFileToCache(cacheKey, rawFileObject);
+          console.log(`[Gallery] ✅ Cache API saved: ${cacheKey} (${(fileSize/1024/1024).toFixed(1)}MB)`);
+        } catch (e) {
+          console.warn('[Gallery] ⚠️ Cache API save failed:', e);
+          cacheKey = null;
+        }
+
+        // VERIFY: At least ONE storage mechanism worked
+        if (!storedFileData && !cacheKey) {
+          throw new Error(`No se pudo guardar el archivo offline (${(fileSize/1024/1024).toFixed(0)}MB). Intente con internet.`);
+        }
       }
 
-      if (!storedFileData || !storedFileData.buffer) {
-        alert('No se pudo guardar el archivo para sincronización offline.');
-        setGallery((prev: any) => prev.filter((i: any) => i.id !== optimisticId));
-        setIsUploading(false);
-        saveLockRef.current = false;
-        return;
-      }
-
+      // v453: NO raw File object in payload — it dies in IndexedDB on mobile!
+      // Only store: fileData (ArrayBuffer) + cacheKey (Cache API) + metadata
       await db.outbox.add({
         type: 'GALLERY_UPLOAD',
         projectId: project.id,
         payload: { 
-          url: '',  // Will be set after CDN upload
-          filename: storedFileData.name,
-          mimeType: storedFileData.type,
-          size: storedFileData.size,
-          fileData: storedFileData,  // v453: ONLY ArrayBuffer — NO File objects, NO Cache API
+          url: processedUrl || '', 
+          filename: file.filename || fileName,
+          mimeType: file.mimeType || fileType,
+          sizeBytes: file.size || fileSize,
+          fileData: storedFileData, // v453: ArrayBuffer for ≤50MB files
+          cacheKey: cacheKey,       // v453: Cache API key for ALL files (primary for >50MB)
           category 
         },
         timestamp: Date.now(),
         status: 'pending',
         syncId
       });
-      console.log(`[Gallery] Outbox item saved. ArrayBuffer ${(storedFileData.size/1024/1024).toFixed(1)}MB ready for sync.`);
+      console.log(`[Gallery] ✅ Outbox saved: ${fileName} | fileData=${!!storedFileData} | cacheKey=${!!cacheKey}`);
       triggerBackgroundSync();
-    } catch (e) {
-      console.error('Outbox save failed:', e);
+    } catch (e: any) {
+      console.error('[Gallery] ❌ Outbox save failed:', e);
+      alert(e?.message || 'Error al guardar archivo offline');
       setGallery((prev: any) => prev.filter((i: any) => i.id !== optimisticId));
     } finally {
       setIsUploading(false);
