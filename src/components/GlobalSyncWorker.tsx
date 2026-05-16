@@ -724,45 +724,69 @@ export default function GlobalSyncWorker() {
                              (typeof finalPayload.url === 'string' && finalPayload.url.startsWith('blob:')) ||
                              (typeof finalPayload.receiptPhoto === 'string' && finalPayload.receiptPhoto.startsWith('blob:')));
 
-          // v452: GALLERY_UPLOAD — USE EXACT SAME LOGIC AS PROJECT (lines 1038-1066)
-          // The generic media handler below uses duck-typing that fails on some mobile browsers.
-          // Projects work because they have their OWN simple handler. Gallery gets the same now.
+          // vXXX: GALLERY_UPLOAD — COPIA EXACTA del handler PROJECT (el que SÍ funciona)
+          // Misma lógica, mismas verificaciones, mismos fallbacks.
           if (item.type === 'GALLERY_UPLOAD') {
             let galleryUploadDone = false;
             try {
               let uploadFile: File | Blob | null = null;
               let uploadFilename = finalPayload.filename || `gallery_${Date.now()}`;
 
-              // Same as PROJECT line 1038: fileData.buffer first
+              // ── PRIORIDAD 0: fileData.buffer (ArrayBuffer) ──
+              // IDÉNTICO a PROJECT line 1094-1101
               if (finalPayload.fileData && finalPayload.fileData.buffer) {
                 uploadFile = new Blob([finalPayload.fileData.buffer], { 
                   type: finalPayload.fileData.type || finalPayload.mimeType || 'application/octet-stream' 
                 });
                 uploadFilename = finalPayload.fileData.name || uploadFilename;
-                console.log(`[Sync] GALLERY using ArrayBuffer: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
+                console.log(`[Sync] GALLERY ✅ ArrayBuffer: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
               }
-              // vXXX: EXACT same check as PROJECT line 1092 (instanceof File || instanceof Blob)
+              // ── PRIORIDAD 1: raw File/Blob (instanceof) ──
+              // IDÉNTICO a PROJECT line 1081: (f.file instanceof File || f.file instanceof Blob)
               else if (finalPayload.file instanceof File || finalPayload.file instanceof Blob) {
                 uploadFile = finalPayload.file as File | Blob;
                 uploadFilename = (finalPayload.file as File).name || uploadFilename;
-                console.log(`[Sync] GALLERY using raw File/Blob: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
+                console.log(`[Sync] GALLERY ✅ File/Blob (instanceof): ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
               }
-              // Extra: Cache API backup (projects don't have this — gallery bonus)
+              // ── PRIORIDAD 2: duck-typing fallback ──
+              // Cubre el caso donde IndexedDB structured clone NO preserva el prototype chain
+              // (pasa en algunos Android WebView: el objeto tiene .size y .slice pero NO es instanceof File/Blob)
+              else if (finalPayload.file && typeof finalPayload.file === 'object' && 
+                       typeof finalPayload.file.size === 'number' && finalPayload.file.size > 0) {
+                // Intentar reconstruir un Blob a partir de lo que tengamos
+                const raw = finalPayload.file;
+                console.warn(`[Sync] GALLERY ⚠️ File perdió prototype (size=${raw.size}). Reconstruyendo Blob...`);
+                try {
+                  // Si tiene stream/slice, es un Blob degradado
+                  uploadFile = raw as Blob;
+                  uploadFilename = (raw as any).name || uploadFilename;
+                } catch {
+                  // Último intento: crear Blob desde arrayBuffer si existe en fileData
+                  if (finalPayload.fileData?.buffer) {
+                    uploadFile = new Blob([finalPayload.fileData.buffer], { type: finalPayload.mimeType || 'application/octet-stream' });
+                  }
+                }
+                if (uploadFile && uploadFile.size > 0) {
+                  console.log(`[Sync] GALLERY ✅ Duck-typing Blob: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
+                }
+              }
+              // ── PRIORIDAD 3: Cache API (ítems viejos) ──
               else if (finalPayload.cacheKey) {
                 const { getFileFromCache } = await import('@/lib/offline-utils');
                 const cached = await getFileFromCache(finalPayload.cacheKey);
                 if (cached && cached.size > 0) {
                   uploadFile = cached;
-                  console.log(`[Sync] GALLERY using Cache API: ${uploadFilename} (${(cached.size/1024/1024).toFixed(1)}MB)`);
+                  console.log(`[Sync] GALLERY ⚠️ Cache API (legacy): ${uploadFilename} (${(cached.size/1024/1024).toFixed(1)}MB)`);
                 }
               }
-              // Last resort: base64/data URL
+              // ── PRIORIDAD 4: base64/data URL (ítems viejos pequeños) ──
               else if (finalPayload.url && finalPayload.url.startsWith('data:')) {
                 const res = await fetch(finalPayload.url);
                 uploadFile = await res.blob();
-                console.log(`[Sync] GALLERY using base64: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
+                console.log(`[Sync] GALLERY ⚠️ base64 (legacy): ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)`);
               }
 
+              // ── SUBIR A BUNNY (mismo código que PROJECT line 1095/1105) ──
               if (uploadFile && uploadFile.size > 0) {
                 const folder = `projects/${item.projectId}`;
                 setUploadProgress({ filename: uploadFilename, percent: 50, chunk: 1, totalChunks: 1 });
@@ -770,36 +794,48 @@ export default function GlobalSyncWorker() {
                 setUploadProgress({ filename: uploadFilename, percent: 100, chunk: 1, totalChunks: 1 });
                 setTimeout(() => setUploadProgress(null), 2000);
 
-                // Set the CDN URL and clean binary data
                 finalPayload.url = uploadResult.url;
                 finalPayload.mimeType = uploadResult.mimeType || (uploadFile as any).type;
                 delete finalPayload.file;
                 delete finalPayload.fileData;
                 delete finalPayload.base64;
                 if (finalPayload.cacheKey) {
-                  try {
-                    const { deleteFileFromCache } = await import('@/lib/offline-utils');
-                    await deleteFileFromCache(finalPayload.cacheKey);
-                  } catch {}
+                  try { const { deleteFileFromCache } = await import('@/lib/offline-utils'); await deleteFileFromCache(finalPayload.cacheKey); } catch {}
                   delete finalPayload.cacheKey;
                 }
                 galleryUploadDone = true;
-                console.log(`[Sync] GALLERY upload OK: ${uploadResult.url}`);
+                console.log(`[Sync] GALLERY 🎉 upload OK: ${uploadResult.url}`);
               } else {
-                console.error(`[Sync] GALLERY #${item.id}: NO valid file data found anywhere`);
-                await db.outbox.update(item.id!, { status: 'failed', failReason: 'FILE_DATA_LOST' });
-                await logSync('error', `Descartado: GALLERY #${item.id} - sin datos de archivo`, item.type);
+                // Diagnóstico completo de por qué no se encontraron datos
+                const diag = {
+                  hasFileData: !!finalPayload.fileData,
+                  hasBuffer: !!(finalPayload.fileData?.buffer),
+                  bufferSize: finalPayload.fileData?.buffer?.byteLength || 0,
+                  hasFile: !!finalPayload.file,
+                  fileType: typeof finalPayload.file,
+                  fileSize: finalPayload.file?.size || 0,
+                  isFile: finalPayload.file instanceof File,
+                  isBlob: finalPayload.file instanceof Blob,
+                  hasCacheKey: !!finalPayload.cacheKey,
+                  urlPreview: (finalPayload.url || '').substring(0, 40),
+                  mimeType: finalPayload.mimeType,
+                  filename: finalPayload.filename,
+                  attempts: item.attempts || 0
+                };
+                console.error(`[Sync] GALLERY ❌ #${item.id}: SIN DATOS. Diagnóstico:`, diag);
+                await db.outbox.update(item.id!, { status: 'failed', failReason: `FILE_DATA_LOST:${JSON.stringify(diag)}` });
+                await logSync('error', `Descartado: GALLERY #${item.id} sin datos (${finalPayload.filename || '?'})`, item.type);
                 continue;
               }
             } catch (err) {
               const errMsg = err instanceof Error ? err.message : String(err);
-              console.error(`[Sync] GALLERY UPLOAD ERROR #${item.id}:`, errMsg);
+              console.error(`[Sync] GALLERY ❌ ERROR #${item.id}:`, errMsg, err);
               const currentAttempts = (item.attempts || 0) + 1;
               await db.outbox.update(item.id!, { 
                 status: currentAttempts >= 15 ? 'failed' : 'pending',
                 attempts: currentAttempts,
                 lastAttemptAt: Date.now(),
-                failReason: `upload_err_${currentAttempts}: ${errMsg.substring(0, 150)}`
+                failReason: `upload_err_${currentAttempts}: ${errMsg.substring(0, 200)}`
               });
               continue;
             }
