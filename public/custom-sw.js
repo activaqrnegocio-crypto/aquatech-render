@@ -1,4 +1,4 @@
-const SW_VERSION = 'v375-retry-skip-gallery';
+const SW_VERSION = 'v376-ts-fix';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
@@ -2462,7 +2462,7 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
         // v286: Improved retry check - check if there are still items to sync
         try {
           const dbRetry = await openAquatechDB();
-          const allItems = await new Promise<any[]>(r => {
+          const allItems = await new Promise(r => {
             try {
               const tx = dbRetry.transaction(['outbox'], 'readonly');
               const req = tx.objectStore('outbox').getAll();
