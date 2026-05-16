@@ -1,4 +1,4 @@
-const SW_VERSION = 'v374-gallery-sw-skip';
+const SW_VERSION = 'v375-retry-skip-gallery';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
@@ -2462,16 +2462,20 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
         // v286: Improved retry check - check if there are still items to sync
         try {
           const dbRetry = await openAquatechDB();
-          const count = await new Promise(r => {
+          const allItems = await new Promise<any[]>(r => {
             try {
               const tx = dbRetry.transaction(['outbox'], 'readonly');
-              const req = tx.objectStore('outbox').count();
-              req.onsuccess = () => r(req.result);
-              req.onerror = () => r(0);
-            } catch(e) { r(0); }
+              const req = tx.objectStore('outbox').getAll();
+              req.onsuccess = () => r(req.result || []);
+              req.onerror = () => r([]);
+            } catch(e) { r([]); }
           });
-          if (count > 0) {
-            console.log(`[SW] ${count} items still pending. Starting retry chain...`);
+          const pendingItems = allItems.filter(i => i.status === 'pending' || i.status === 'failed');
+          // vXXX: Skip GALLERY_UPLOAD items — GlobalSyncWorker handles them
+          const nonGalleryPending = pendingItems.filter(i => i.type !== 'GALLERY_UPLOAD');
+          
+          if (nonGalleryPending.length > 0) {
+            console.log(`[SW] ${nonGalleryPending.length} non-gallery items still pending. Starting retry chain...`);
             // v333: Cadena de reintentos agresivos — 15s, 30s, 60s, 120s, 300s
             // Esto mantiene al SW vivo incluso sin Chrome abierto
             const retryDelays = [15000, 30000, 60000, 120000, 300000];

@@ -92,11 +92,15 @@ export async function uploadToBunnyClientSide(
   const uploadUrl = `https://${storageHost}${path}`;
 
   // 3. Direct PUT to Bunny.net (or Chunked if resumeState is provided)
-  // v440: Resumable chunked upload is ONLY used for synchronization (offline -> online)
-  // to ensure reliability. Normal online uploads use direct PUT for maximum speed.
-  if (resumeState) {
-     console.log(`[Storage] Resumable sync detected for ${processedName} (${(processedFile.size/1024/1024).toFixed(1)}MB), using chunked upload...`);
-     const chunkedResult = await uploadInChunks(processedFile, processedName, processedMime, resumeState, onChunkSuccess);
+  // v440: Resumable chunked upload for retries. Normal uploads use direct PUT.
+  // vXXX: Files > 200MB use chunked upload for reliability on slow/mobile connections.
+  const LARGE_FILE_THRESHOLD = 200 * 1024 * 1024; // 200MB
+  const useChunked = !!(resumeState || processedFile.size > LARGE_FILE_THRESHOLD);
+
+  if (useChunked) {
+     const label = resumeState ? 'Resumable sync' : `Large file (${(processedFile.size/1024/1024).toFixed(0)}MB)`;
+     console.log(`[Storage] ${label}: using chunked upload for ${processedName}...`);
+     const chunkedResult = await uploadInChunks(processedFile, processedName, processedMime, resumeState, onChunkSuccess, folder);
      return {
        url: chunkedResult.url,
        filename: processedName,
@@ -175,7 +179,9 @@ export async function uploadInChunks(
     completedChunks: number[]; // Chunks already on server
   },
   // v440: Called after each chunk succeeds — lets the Worker persist progress to Dexie
-  onChunkSuccess?: (chunkIndex: number, uploadId: string, completedChunks: number[]) => Promise<void>
+  onChunkSuccess?: (chunkIndex: number, uploadId: string, completedChunks: number[]) => Promise<void>,
+  // vXXX: Folder path for Bunny storage (e.g., 'projects/123')
+  folder?: string
 ): Promise<{ url: string; uploadId: string; completedChunks: number[] }> {
   // v440: Reduced from 10MB to 5MB — smaller chunks fail faster and resume faster on mobile
   const CHUNK_SIZE = 5 * 1024 * 1024;
@@ -233,6 +239,7 @@ export async function uploadInChunks(
         formData.append('totalChunks', totalChunks.toString());
         formData.append('filename', filename);
         formData.append('mimeType', mimeType || file.type || 'application/octet-stream');
+        if (folder) formData.append('subfolder', folder); // vXXX: folder path for Bunny storage
 
         const res = await fetch('/api/upload/chunk', {
           method: 'POST',

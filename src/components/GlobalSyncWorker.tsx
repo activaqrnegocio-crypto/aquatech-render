@@ -594,7 +594,159 @@ export default function GlobalSyncWorker() {
         }
       }
 
-      // Pass 2: Main processing loop
+      // Pass 1.5: BATCH GALLERY UPLOADS — upload files to Bunny in parallel batches of 3,
+      // then POST to API sequentially. Each batch completes before the next starts,
+      // so small files don't wait for large ones.
+      const galleryIds: number[] = [];
+      for (const id of allIds) {
+        const item = await db.outbox.get(id);
+        if (item && item.type === 'GALLERY_UPLOAD' && item.status === 'pending') {
+          galleryIds.push(id);
+        }
+      }
+      
+      if (galleryIds.length > 0) {
+        console.log(`[Sync] 🚀 Batch uploading ${galleryIds.length} gallery items (batches of 3)...`);
+        const BATCH_SIZE = 3;
+        const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
+        
+        for (let bi = 0; bi < galleryIds.length; bi += BATCH_SIZE) {
+          const batchIds = galleryIds.slice(bi, bi + BATCH_SIZE);
+          
+          // Step A: Upload this batch to Bunny in parallel
+          const uploadPromises: Promise<{ id: number; url: string; mimeType: string; ok: boolean; err?: string }>[] = [];
+          const batchItems: Map<number, any> = new Map();
+          
+          for (const id of batchIds) {
+            const gItem = await db.outbox.get(id);
+            if (!gItem || gItem.status !== 'pending') continue;
+            
+            await db.outbox.update(id, { status: 'syncing', lastAttemptAt: Date.now() });
+            batchItems.set(id, gItem);
+            
+            const p = gItem.payload || {};
+            const promise = (async () => {
+              try {
+                let uploadFile: File | Blob | null = null;
+                let uploadFilename = p.filename || `gallery_${Date.now()}`;
+                
+                if (p.fileData?.buffer) {
+                  uploadFile = new Blob([p.fileData.buffer], { type: p.fileData.type || p.mimeType || 'application/octet-stream' });
+                  uploadFilename = p.fileData.name || uploadFilename;
+                } else if (p.file instanceof File || p.file instanceof Blob) {
+                  uploadFile = p.file as File | Blob;
+                  uploadFilename = (p.file as File).name || uploadFilename;
+                } else if (p.file && typeof p.file === 'object' && typeof p.file.size === 'number' && p.file.size > 0) {
+                  uploadFile = p.file as Blob;
+                  uploadFilename = (p.file as any).name || uploadFilename;
+                } else if (p.cacheKey) {
+                  const { getFileFromCache } = await import('@/lib/offline-utils');
+                  const cached = await getFileFromCache(p.cacheKey);
+                  if (cached && cached.size > 0) uploadFile = cached;
+                } else if (p.url?.startsWith('data:')) {
+                  const res = await fetch(p.url);
+                  uploadFile = await res.blob();
+                }
+                
+                if (!uploadFile || uploadFile.size === 0) {
+                  return { id, url: '', mimeType: '', ok: false, err: 'No file data' };
+                }
+                
+                const folder = `projects/${gItem.projectId}`;
+                console.log(`[Sync] 📤 Uploading: ${uploadFilename} (${(uploadFile.size/1024/1024).toFixed(1)}MB)...`);
+                const result = await uploadToBunnyClientSide(uploadFile, uploadFilename, folder);
+                console.log(`[Sync] 📤 Batch upload OK: ${uploadFilename} → ${result.url}`);
+                return { id, url: result.url, mimeType: result.mimeType || (uploadFile as any).type, ok: true };
+              } catch (err) {
+                const errMsg = err instanceof Error ? err.message : String(err);
+                console.error(`[Sync] ❌ Batch upload FAIL #${id}:`, errMsg);
+                return { id, url: '', mimeType: '', ok: false, err: errMsg };
+              }
+            })();
+            uploadPromises.push(promise);
+          }
+          
+          if (uploadPromises.length === 0) continue;
+          
+          const uploadResults = await Promise.all(uploadPromises);
+          
+          // Step B: POST to API sequentially (fast, just URLs)
+          for (const { id, url, mimeType, ok, err } of uploadResults) {
+            const gItem = batchItems.get(id);
+            if (!ok) {
+              const currentAttempts = (gItem?.attempts || 0) + 1;
+              await db.outbox.update(id, {
+                status: currentAttempts >= 15 ? 'failed' : 'pending',
+                attempts: currentAttempts,
+                lastAttemptAt: Date.now(),
+                failReason: `batch_upload_err: ${err?.substring(0, 150) || 'unknown'}`
+              });
+              continue;
+            }
+            
+            if (!gItem || gItem.status !== 'syncing') continue;
+            
+            try {
+              const finalPayload = { ...gItem.payload };
+              finalPayload.url = url;
+              finalPayload.mimeType = mimeType || finalPayload.mimeType;
+              delete finalPayload.file;
+              delete finalPayload.fileData;
+              delete finalPayload.cacheKey;
+              delete finalPayload.base64;
+              
+              const endpoint = `/api/projects/${gItem.projectId}/gallery`;
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 300000);
+              const res = await fetch(endpoint, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'x-sync-id': gItem.syncId || `batch-${id}-${gItem.timestamp}` },
+                body: JSON.stringify({ ...finalPayload, isOfflineSync: true }),
+                signal: controller.signal
+              });
+              clearTimeout(timeoutId);
+              
+              if (res.ok) {
+                const resData = await res.json().catch(() => ({}));
+                await db.outbox.update(id, { status: 'synced' });
+                console.log(`[Sync] ✅ Gallery synced #${id}: ${finalPayload.filename || 'file'}`);
+                await logSync('success', `Galería: ${finalPayload.filename || 'archivo'}`, 'GALLERY_UPLOAD');
+                // vXXX: Dispatch sync-success so UI refreshes gallery
+                window.dispatchEvent(new CustomEvent('sync-success', { detail: {
+                  type: 'GALLERY_UPLOAD',
+                  projectId: gItem.projectId,
+                  label: 'Archivo subido a galería',
+                  payload: finalPayload,
+                  result: resData
+                }}));
+                hasSyncedAnything = true;
+              } else {
+                const errText = await res.text().catch(() => '');
+                console.error(`[Sync] ❌ Gallery API FAIL #${id}: ${res.status} ${errText}`);
+                const currentAttempts = (gItem.attempts || 0) + 1;
+                await db.outbox.update(id, {
+                  status: currentAttempts >= 15 ? 'failed' : 'pending',
+                  attempts: currentAttempts,
+                  lastAttemptAt: Date.now(),
+                  failReason: `api_err_${res.status}: ${errText.substring(0, 150)}`
+                });
+              }
+            } catch (apiErr) {
+              const errMsg = apiErr instanceof Error ? apiErr.message : String(apiErr);
+              console.error(`[Sync] ❌ Gallery API ERROR #${id}:`, errMsg);
+              const currentAttempts = (gItem.attempts || 0) + 1;
+              await db.outbox.update(id, {
+                status: currentAttempts >= 15 ? 'failed' : 'pending',
+                attempts: currentAttempts,
+                lastAttemptAt: Date.now(),
+                failReason: `api_err: ${errMsg.substring(0, 150)}`
+              });
+            }
+          }
+        }
+      }
+
+      // Pass 2: Main processing loop (non-GALLERY items only)
       for (const id of allIds) {
         const item = await db.outbox.get(id);
         if (!item || item.status === 'synced' || item.status === 'syncing') continue;

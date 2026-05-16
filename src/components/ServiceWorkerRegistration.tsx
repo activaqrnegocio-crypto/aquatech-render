@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
-    const SW_VERSION = 'v374'; // v374: SW skips GALLERY_UPLOAD (GSW handles it) — fixes infinite retry loop
+    const SW_VERSION = 'v375'; // v375: SW retry chain skips GALLERY_UPLOAD (GSW handles)
     const swUrl = `/custom-sw.js?v=${SW_VERSION}`
     console.log(`[App] Solicitando registro de Robot ${SW_VERSION} (Fetch Trigger)...`);
     // v338: NO recargar la página cuando un nuevo SW toma control.

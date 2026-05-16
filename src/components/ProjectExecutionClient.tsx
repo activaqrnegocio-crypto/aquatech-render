@@ -21,7 +21,6 @@ import { formatDate } from '@/lib/date-utils'
 
 import OperatorHeader from './operator/OperatorHeader'
 import OperatorFicha from './operator/OperatorFicha'
-import OperatorSyncBadge from './operator/OperatorSyncBadge'
 import OperatorGalleryGrid from './operator/OperatorGalleryGrid'
 import ProjectEditModal from './project/ProjectEditModal'
 import ProjectTeamSection from './project/ProjectTeamSection'
@@ -2005,19 +2004,7 @@ export default function ProjectExecutionClient({
                 top: isSmallScreen ? '0' : 'auto',
                 zIndex: 10
             }}>
-              <OperatorSyncBadge 
-                globalPending={globalPending} 
-                globalFailed={globalFailed} 
-                isSyncingGlobal={isSyncingGlobal} 
-                isSmallScreen={isSmallScreen}
-                lastError={globalLastError}
-                onSync={() => {
-                  triggerBackgroundSync();
-                  // Visual feedback
-                  refreshGallery();
-                  fetchMessages();
-                }} 
-              />
+              {/* vXXX: OperatorSyncBadge removed — showed inaccurate upload status */}
 
               {tabs.map(tab => (
                 <button
