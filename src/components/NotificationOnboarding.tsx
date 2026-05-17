@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
+import { createPortal } from 'react-dom'
 
 interface OnboardingProps {
   onDone: () => void
@@ -77,8 +78,10 @@ const GUIDES: Record<string, { titulo: string; pasos: string[] }> = {
 export function NotificationOnboarding({ onDone }: OnboardingProps) {
   const [brand, setBrand] = useState('android')
   const [visible, setVisible] = useState(false)
+  const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
+    setMounted(true)
     setBrand(detectBrand())
     // Subtle entry animation delay
     const timer = setTimeout(() => setVisible(true), 100)
@@ -87,7 +90,9 @@ export function NotificationOnboarding({ onDone }: OnboardingProps) {
 
   const guide = GUIDES[brand] || GUIDES.android
 
-  return (
+  if (!mounted) return null
+
+  return createPortal(
     <div className={`onboarding-overlay ${visible ? 'visible' : ''}`}>
       <div className="onboarding-card">
         <div className="onboarding-header">
@@ -118,13 +123,16 @@ export function NotificationOnboarding({ onDone }: OnboardingProps) {
           left: 0;
           right: 0;
           bottom: 0;
-          z-index: 9999;
+          width: 100vw;
+          height: 100vh;
+          height: 100dvh;
+          z-index: 1000000;
           display: flex;
           align-items: center;
           justify-content: center;
           padding: 20px;
           opacity: 0;
-          background: rgba(0, 0, 0, 0.4);
+          background: rgba(0, 0, 0, 0.7);
           backdrop-filter: blur(8px);
           transition: all 0.4s ease;
           pointer-events: none;
@@ -257,7 +265,37 @@ export function NotificationOnboarding({ onDone }: OnboardingProps) {
           background: #f0f0f0;
           box-shadow: 0 6px 20px rgba(255, 255, 255, 0.15);
         }
+
+        @media (max-width: 480px) {
+          .onboarding-overlay {
+            padding: 10px;
+            align-items: center;
+          }
+          .onboarding-card {
+            padding: 24px 16px;
+            border-radius: 20px;
+            max-height: 90vh;
+            max-height: 90dvh;
+            overflow-y: auto;
+          }
+          .onboarding-icon {
+            width: 55px;
+            height: 55px;
+            font-size: 2rem;
+          }
+          h3 {
+            font-size: 1.15rem;
+          }
+          .onboarding-desc {
+            font-size: 0.85rem;
+            margin-bottom: 15px;
+          }
+          .onboarding-steps li {
+            padding: 10px 12px;
+          }
+        }
       `}</style>
-    </div>
+    </div>,
+    document.body
   )
 }

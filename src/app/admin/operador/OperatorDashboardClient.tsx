@@ -241,6 +241,36 @@ export default function OperatorDashboardClient({
     return undefined
   })
 
+  // v480: Function to fetch fresh projects list from server and populate IndexedDB cache
+  const refreshProjectsList = async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    try {
+      const res = await fetch('/api/operator/projects')
+      if (res.ok) {
+        const apiProjects = await res.json()
+        if (Array.isArray(apiProjects)) {
+          // Sync Dexie Cache
+          for (const proj of apiProjects) {
+            const existing = await db.projectsCache.get(Number(proj.id))
+            await db.projectsCache.put({
+              ...existing,
+              ...proj,
+              id: Number(proj.id),
+              lastAccessedAt: existing?.lastAccessedAt || Date.now()
+            })
+          }
+          // Sync emergency snapshot state
+          setEmergencyProjects(apiProjects)
+          try {
+            localStorage.setItem('last_op_projects_snapshot', JSON.stringify(apiProjects))
+          } catch (e) {}
+        }
+      }
+    } catch (e) {
+      console.warn('[refreshProjectsList] Failed to refresh:', e)
+    }
+  }
+
   useEffect(() => {
     // v400: Added AbortController to prevent multiple concurrent emergency fetches
     // from racing each other when projectsFromCache updates multiple times on mount.
@@ -248,8 +278,7 @@ export default function OperatorDashboardClient({
     const controller = new AbortController();
 
     const timer = setTimeout(async () => {
-      const realProjects = projectsFromCache?.filter(p => !p.isPending && !String(p.id).startsWith('pending')) || []
-      if (realProjects.length > 5) return 
+      // v480: Keep local Dexie cached projects synced on mount
       
       try {
         const uId = user?.id || localUser?.id
@@ -383,6 +412,9 @@ export default function OperatorDashboardClient({
       if (event.detail?.type === 'PROJECT' && event.detail?.projectId) {
         processSyncedProject(event.detail.projectId);
       }
+      if (['PROJECT', 'TEAM_UPDATE', 'PROJECT_DELETE'].includes(event.detail?.type)) {
+        refreshProjectsList();
+      }
     };
 
     navigator.serviceWorker?.addEventListener('message', handleSwMessage);
@@ -392,6 +424,15 @@ export default function OperatorDashboardClient({
       window.removeEventListener('sync-success', handleSyncSuccess);
     };
   }, []);
+
+  // v480: Periodically refresh active projects list from server in background every 30s
+  useEffect(() => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    const interval = setInterval(() => {
+      refreshProjectsList()
+    }, 30000)
+    return () => clearInterval(interval)
+  }, [])
 
   // v264: Delayed unread counts to prevent UI blocking on mobile
   const [unreadCounts, setUnreadCounts] = useState<Record<number, number>>({})
@@ -680,12 +721,15 @@ export default function OperatorDashboardClient({
     triggerWarmCache();
   }, [projects?.length, user?.id, localUser?.id]);
 
-  // v264: Instant Outbox Kick - Force sync when returning to focus or online
+  // v264: Instant Outbox Kick - Force sync and refresh projects when returning to focus or online
   useEffect(() => {
     const triggerSync = async () => {
       if (typeof window !== 'undefined' && navigator.serviceWorker.controller && navigator.onLine) {
         // Trigger the outbox sync explicitly
         navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
+      }
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        refreshProjectsList();
       }
     };
 
@@ -697,7 +741,7 @@ export default function OperatorDashboardClient({
       window.removeEventListener('focus', triggerSync);
       window.removeEventListener('online', triggerSync);
     };
-  }, []);
+  }, [user?.id, localUser?.id]);
 
 
 
