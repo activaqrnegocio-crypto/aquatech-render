@@ -149,9 +149,10 @@ export async function DELETE(request: Request, { params }: { params: Promise<{ i
         select: { clientId: true }
       })
 
-      // 1. Delete quotes associated with this project (instead of unlinking them)
-      await tx.quote.deleteMany({
-        where: { projectId: projectId }
+      // 1. Unlink quotes associated with this project (v414: per user request, don't delete quotes)
+      await tx.quote.updateMany({
+        where: { projectId: projectId },
+        data: { projectId: null }
       })
 
       // 2. Delete the project (cascades to phases, budgetItems, teams, etc. based on schema)

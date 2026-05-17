@@ -184,6 +184,25 @@ export default function GlobalSyncWorker() {
           projectsToProcess = fetchedProjects;
         }
 
+        // v414: Limpieza de proyectos "huérfanos" en la caché local
+        // Si un proyecto ya no viene del servidor (porque se borró) y no es un borrador offline (pending-), lo borramos de la caché.
+        try {
+          const fetchedIds = projectsToProcess.map((p: any) => p.id);
+          const cachedProjects = await db.projectsCache.toArray();
+          
+          for (const cached of cachedProjects) {
+            const isPending = typeof cached.id === 'string' && cached.id.startsWith('pending-');
+            if (!fetchedIds.includes(cached.id) && !isPending) {
+              console.log(`[Sync] Borrando proyecto huérfano de la caché: ${cached.id}`);
+              await db.projectsCache.delete(cached.id);
+              // También borrar el chat asociado
+              await db.chatCache.delete(cached.id);
+            }
+          }
+        } catch (cleanupErr) {
+          console.error('Error limpiando proyectos huérfanos:', cleanupErr);
+        }
+
         
         const totalToSync = projectsToProcess.length
         const syncChannel = new BroadcastChannel('aquatech-sync');
