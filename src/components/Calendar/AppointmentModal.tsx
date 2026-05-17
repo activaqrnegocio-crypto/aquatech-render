@@ -1414,7 +1414,7 @@ export default function AppointmentModal({
           }}
           onClick={e => e.stopPropagation()}
         >
-          {selectedMedia.type.includes('image') ? (
+          {(selectedMedia.type || '').toLowerCase().includes('image') ? (
             <img 
               src={selectedMedia.url || selectedMedia.data} 
               alt="large-preview" 
@@ -1429,7 +1429,7 @@ export default function AppointmentModal({
                 (e.target as HTMLImageElement).src = 'https://placehold.co/800x600?text=Error+al+Cargar+Imagen';
               }}
             />
-          ) : selectedMedia.type.includes('video') ? (
+          ) : (selectedMedia.type || '').toLowerCase().includes('video') ? (
             <div style={{ width: '100%', maxWidth: '800px', background: '#000', borderRadius: '12px', overflow: 'hidden' }}>
               <video 
                 src={selectedMedia.url || selectedMedia.data} 
@@ -1443,7 +1443,7 @@ export default function AppointmentModal({
                 }} 
               />
             </div>
-          ) : selectedMedia.type.includes('audio') ? (
+          ) : (selectedMedia.type || '').toLowerCase().includes('audio') ? (
             <div style={{ background: '#111827', padding: '40px', borderRadius: '24px', textAlign: 'center', border: '1px solid rgba(255,255,255,0.1)', width: '100%', maxWidth: '400px' }}>
               <div style={{ marginBottom: '20px', fontSize: '4rem' }}>🎙️</div>
               <audio 

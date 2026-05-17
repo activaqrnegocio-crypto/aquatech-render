@@ -304,13 +304,32 @@ export default function AdminCalendarClient({
         return
       }
 
-      const res = await fetch(url, {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      })
+      let res;
+      try {
+        res = await fetch(url, {
+          method,
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        })
+      } catch (fetchErr) {
+        // Network error (Lie-Fi) - fallback to offline outbox
+        console.warn('Network error during save, falling back to offline outbox:', fetchErr);
+        await db.outbox.add({
+          type: 'TASK',
+          projectId: Number(payload.projectId) || 0,
+          payload: { ...payload, isNew },
+          timestamp: Date.now(),
+          status: 'pending'
+        });
+        setIsModalOpen(false);
+        if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+          navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
+        }
+        alert('📅 Tarea encolada. Se guardará cuando la conexión mejore.');
+        return;
+      }
       
-      if (res.ok) {
+      if (res && res.ok) {
         setIsModalOpen(false)
         fetchAppointments()
       } else {

@@ -140,8 +140,21 @@ export default function DashboardClient({
     async function handleCache() {
       const isOffline = typeof navigator !== 'undefined' && !navigator.onLine
       
-      // If we have fresh data from props, SAVE it to cache
-      if (!isOffline && initialProjects.length > 0) {
+      // 1. Aggressive Cache Hydration (Instant UI Paint)
+      // Load from cache if we have an empty shell (offline) OR if the server failed
+      if (initialProjects.length === 0) {
+        const cached = await db.dashboardCache.get('main')
+        if (cached) {
+          setStats(cached.stats)
+          setRecentExpenses(cached.recentExpenses)
+          setRecentMessages(cached.recentMessages)
+          setActiveProjects(cached.activeProjects)
+          setTeamList(cached.teamList)
+        }
+      }
+
+      // 2. If we have fresh data from props, SAVE it to cache
+      if (initialProjects.length > 0) {
         const dashboardData = {
           id: 'main',
           stats: initialStats,
@@ -153,17 +166,6 @@ export default function DashboardClient({
         }
         await db.dashboardCache.put(dashboardData)
       } 
-      // If we are OFFLINE and have no data, LOAD from cache
-      else if (isOffline && activeProjects.length === 0) {
-        const cached = await db.dashboardCache.get('main')
-        if (cached) {
-          setStats(cached.stats)
-          setRecentExpenses(cached.recentExpenses)
-          setRecentMessages(cached.recentMessages)
-          setActiveProjects(cached.activeProjects)
-          setTeamList(cached.teamList)
-        }
-      }
     }
     handleCache()
   }, [initialStats, initialExpenses, initialMessages, initialProjects, initialTeam])
