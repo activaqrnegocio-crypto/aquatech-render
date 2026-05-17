@@ -345,7 +345,16 @@ export default function ProjectExecutionClient({
   useEffect(() => {
     const handleSyncSuccess = (event: any) => {
       const { type, projectId } = event.detail || {};
-      if (type === 'TEAM_UPDATE' && Number(projectId) === Number(idFromUrl)) {
+      
+      // v413: Comparación robusta de IDs (soporta strings, números y prefijos 'pending-')
+      const idStr = String(idFromUrl);
+      const eventIdStr = String(projectId);
+      const matchesId = idStr === eventIdStr || 
+                        Number(idFromUrl) === Number(projectId) ||
+                        idStr.includes(eventIdStr) || 
+                        eventIdStr.includes(idStr);
+
+      if (type === 'TEAM_UPDATE' && matchesId) {
         console.log('[ProjectExecutionClient] Team sync success detected, clearing badge...');
         // Limpiar el flag en el estado local inmediatamente
         if (setLocalProject) {
