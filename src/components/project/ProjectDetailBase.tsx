@@ -118,6 +118,127 @@ export default function ProjectDetailBase({
     }
   }, [localProject])
 
+  // v480: Refresh entire project data from API and update localState + Dexie Cache (syncs team, phases, budget)
+  const refreshProject = useCallback(async () => {
+    if (typeof navigator !== 'undefined' && !navigator.onLine) return
+    const projectId = project?.id || idFromUrl
+    if (!projectId || Number(projectId) === 0) return
+    try {
+      const res = await fetch(`/api/projects/${projectId}?_t=${Date.now()}`)
+      if (res.ok) {
+        const fresh = await res.json()
+        if (fresh && !fresh.error) {
+          setLocalProject((prev: any) => {
+            if (!prev) return fresh
+            const updated = { ...prev, ...fresh }
+            db.projectsCache.put({ ...updated, lastAccessedAt: Date.now() }).catch(() => {})
+            return updated
+          })
+        }
+      }
+    } catch (e) {
+      console.warn('[Admin Project Sync] Failed to refresh project:', e)
+    }
+  }, [project?.id, idFromUrl, setLocalProject])
+
+  // v480: Dynamic project refresh & event listeners for real-time synchronization parity with Operator
+  useEffect(() => {
+    if (!isMounted || !project?.id || Number(project.id) === 0) return;
+
+    // 1. On mount, immediately read from Dexie cache to show files synced while away
+    const applyDexieCache = async () => {
+      try {
+        const cached = await db.projectsCache.get(Number(project.id));
+        if (cached && !cached.isSkeleton) {
+          setLocalProject((prev: any) => {
+            if (!prev) return cached;
+            return { ...prev, ...cached };
+          });
+        }
+      } catch (e) {}
+    };
+    applyDexieCache();
+
+    // 2. Listen for force-gallery-refresh from SyncToast click
+    const handleForceRefresh = (e: any) => {
+      const { projectId: evtProjectId } = e.detail || {};
+      if (!evtProjectId || String(evtProjectId) === String(project.id)) {
+        refreshProject();
+      }
+    };
+    window.addEventListener('force-gallery-refresh', handleForceRefresh);
+
+    // 2.5. Listen for window focus to pull latest updates automatically when administrator returns
+    const handleWindowFocus = () => {
+      if (typeof navigator !== 'undefined' && navigator.onLine) {
+        refreshProject();
+      }
+    };
+    window.addEventListener('focus', handleWindowFocus);
+
+    // 3. Listen for sync-success event (fired when background sync finishes uploading a file, team member, phase etc.)
+    const handleSyncSuccess = (e: any) => {
+      const { type, projectId: syncProjectId, payload, result } = e.detail;
+      if (Number(syncProjectId) === Number(project.id)) {
+        if (type === 'MEDIA_UPLOAD' || type === 'GALLERY_UPLOAD') {
+          const syncedItem = {
+            id: result?.id || `synced-${Date.now()}-${Math.random()}`,
+            url: result?.url || payload?.url || payload?.previewBase64 || '',
+            filename: result?.filename || payload?.filename || 'Archivo',
+            mimeType: result?.mimeType || payload?.mimeType || 'image/jpeg',
+            category: result?.category || payload?.category || 'MASTER',
+            createdAt: new Date().toISOString()
+          };
+          
+          setLocalProject((prev: any) => {
+            if (!prev) return prev;
+            const existingGallery = prev.gallery || [];
+            const alreadyThere = existingGallery.some((g: any) => 
+              g.url === syncedItem.url || g.filename === syncedItem.filename
+            );
+            if (alreadyThere) return prev;
+            const updated = { ...prev, gallery: [syncedItem, ...existingGallery] };
+            db.projectsCache.put({ ...updated, lastAccessedAt: Date.now() }).catch(() => {});
+            return updated;
+          });
+          
+          refreshProject();
+        } else if (['TEAM_UPDATE', 'PROJECT_UPDATE', 'PHASE_UPDATE', 'EXPENSE', 'EXPENSE_LOG', 'GALLERY_DELETE'].includes(type)) {
+          refreshProject();
+        }
+      }
+    };
+    window.addEventListener('sync-success', handleSyncSuccess);
+
+    // 4. First API fetch after 500ms
+    const initialTimer = setTimeout(refreshProject, 500);
+    
+    // 5. Global fallback periodic refresh every 30s (syncs whole project)
+    const periodicInterval = setInterval(() => {
+      if (typeof navigator !== 'undefined' && navigator.onLine) refreshProject();
+    }, 30000);
+    
+    return () => {
+      clearTimeout(initialTimer);
+      clearInterval(periodicInterval);
+      window.removeEventListener('force-gallery-refresh', handleForceRefresh);
+      window.removeEventListener('sync-success', handleSyncSuccess);
+      window.removeEventListener('focus', handleWindowFocus);
+    };
+  }, [isMounted, project?.id, refreshProject]);
+
+  // v480: Active tab rapid polling (every 20s) when gallery is visible to stay in sync with operator actions
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const isOnline = navigator.onLine;
+    if (activeTab !== 'GALLERY' && activeTab !== 'EVIDENCE') return;
+    if (!isOnline) return;
+    const interval = setInterval(() => {
+      refreshProject()
+    }, 20000);
+    return () => clearInterval(interval);
+  }, [activeTab, refreshProject]);
+
   // v262: Sincronización y cerrojos síncronos
   const saveLockRef = useRef(false);
 
@@ -711,6 +832,13 @@ export default function ProjectDetailBase({
         startTransition(() => {
           setGallery((prev: any[]) => prev.filter((item: any) => item.id !== itemId))
         })
+        // v480: Update IndexedDB cache instantly
+        db.projectsCache.get(Number(project.id)).then(cached => {
+          if (cached) {
+            const updatedGallery = (cached.gallery || []).filter((g: any) => g.id !== itemId);
+            db.projectsCache.put({ ...cached, gallery: updatedGallery }).catch(() => {});
+          }
+        });
       } else {
         alert('Error al eliminar el archivo')
       }
@@ -761,6 +889,14 @@ export default function ProjectDetailBase({
     
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       triggerBackgroundSync();
+    } else {
+      // v480: Update IndexedDB cache for bulk deletion instantly
+      db.projectsCache.get(Number(project.id)).then(cached => {
+        if (cached) {
+          const updatedGallery = (cached.gallery || []).filter((g: any) => !targetIds.includes(g.id));
+          db.projectsCache.put({ ...cached, gallery: updatedGallery }).catch(() => {});
+        }
+      });
     }
   }
 
@@ -1145,6 +1281,16 @@ export default function ProjectDetailBase({
         if (resp.ok) {
           const newItem = await resp.json();
           setGallery((prev: any) => [newItem, ...prev.filter((i: any) => i.id !== optimisticId)]);
+          
+          // v480: Update IndexedDB cache instantly for online parity
+          db.projectsCache.get(Number(project.id)).then(cached => {
+            if (cached) {
+              const currentGallery = cached.gallery || [];
+              const updatedGallery = [newItem, ...currentGallery.filter((g: any) => g.id !== newItem.id)];
+              db.projectsCache.put({ ...cached, gallery: updatedGallery }).catch(() => {});
+            }
+          });
+
           setIsUploading(false);
           saveLockRef.current = false;
           return;

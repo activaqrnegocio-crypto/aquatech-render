@@ -286,8 +286,8 @@ export function useProjectCache({
   }, [idFromUrl]) || []
 
   // --- v408: Reactive Cache Watcher ---
-  // Listen for changes in IndexedDB to automatically clear 'Syncing' flags
-  // when the GlobalSyncWorker finishes its job in the background.
+  // Listen for changes in IndexedDB to automatically clear 'Syncing' flags and update gallery/expenses
+  // when the GlobalSyncWorker finishes its job in the background on this or another tab.
   const liveProject = useLiveQuery(
     () => {
       const numericId = Number(idFromUrl);
@@ -299,16 +299,22 @@ export function useProjectCache({
 
   useEffect(() => {
     if (liveProject && !isIdentityMismatch) {
-      // Update local state ONLY if sync flags have changed to avoid unnecessary re-renders
-      const hasSyncFlagChange = 
-        liveProject._pendingTeamSync !== localProject?._pendingTeamSync ||
-        liveProject._pendingProjectSync !== localProject?._pendingProjectSync;
+      const liveGalleryIds = (liveProject.gallery || []).map((g: any) => String(g.id)).join(',');
+      const localGalleryIds = (localProject?.gallery || []).map((g: any) => String(g.id)).join(',');
+      const liveExpenseIds = (liveProject.expenses || []).map((e: any) => String(e.id)).join(',');
+      const localExpenseIds = (localProject?.expenses || []).map((e: any) => String(e.id)).join(',');
 
-      if (hasSyncFlagChange) {
+      const hasDataChange = 
+        liveProject._pendingTeamSync !== localProject?._pendingTeamSync ||
+        liveProject._pendingProjectSync !== localProject?._pendingProjectSync ||
+        liveGalleryIds !== localGalleryIds ||
+        liveExpenseIds !== localExpenseIds;
+
+      if (hasDataChange || !localProject) {
         setLocalProject((prev: any) => ({ ...prev, ...liveProject }));
       }
     }
-  }, [liveProject, isIdentityMismatch, localProject?._pendingTeamSync, localProject?._pendingProjectSync]);
+  }, [liveProject, isIdentityMismatch, localProject]);
 
   // ─── Message Deduplication ───
   const deduplicateMessages = useCallback((messages: any[]) => {
