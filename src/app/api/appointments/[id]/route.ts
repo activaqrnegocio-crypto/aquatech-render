@@ -19,7 +19,7 @@ export async function PATCH(
     }
 
     const body = await request.json()
-    const { title, description, startTime, endTime, status, projectId, clientName, clientPhone } = body
+    const { title, description, startTime, endTime, status, projectId, clientName, clientPhone, clientLocation, operatorLocation } = body
 
     const existing = await prisma.appointment.findUnique({
       where: { id: Number(id) }
@@ -50,6 +50,8 @@ export async function PATCH(
     if (projectId !== undefined) data.projectId = projectId ? Number(projectId) : null
     if (clientName !== undefined) data.clientName = clientName
     if (clientPhone !== undefined) data.clientPhone = clientPhone
+    if (clientLocation !== undefined) data.clientLocation = clientLocation || null
+    if (operatorLocation !== undefined) data.operatorLocation = operatorLocation || null
     if (body.files !== undefined) data.files = body.files ? (typeof body.files === 'string' ? body.files : JSON.stringify(body.files)) : null
 
     const updated = await prisma.appointment.update({
