@@ -1,0 +1,747 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id               Int                @id @default(autoincrement())
+  name             String             @db.VarChar(255)
+  email            String?            @unique @db.VarChar(255)
+  phone            String?            @db.VarChar(50)
+  role             UserRole           @default(OPERATOR)
+  username         String             @unique @db.VarChar(100)
+  passwordHash     String             @map("password_hash") @db.VarChar(255)
+  isActive         Boolean            @default(true) @map("is_active")
+  createdAt        DateTime           @default(now()) @map("created_at")
+  updatedAt        DateTime           @updatedAt @map("updated_at")
+  image            String?            @db.LongText
+  sessionVersion   Int                @default(1) @map("session_version")
+  displayPassword  String?            @map("display_password") @db.VarChar(255)
+  branch           String?            @db.VarChar(100)
+  permissions      String?            @db.Text
+  lastSummarySent  DateTime?          @map("last_summary_sent")
+  appointments     Appointment[]
+  blogPosts        BlogPost[]         @relation("BlogPostAuthor")
+  chatMessages     ChatMessage[]
+  contentPipelines ContentPipeline[]
+  dayRecords       DayRecord[]
+  expenses         Expense[]
+  phaseCompletions PhaseCompletion[]
+  projectTeams     ProjectTeam[]
+  projectViews     ProjectView[]
+  createdProjects  Project[]          @relation("ProjectCreator")
+  pushSubs         PushSubscription[]
+  createdQuotes    Quote[]            @relation("QuoteCreator")
+
+  @@map("users")
+}
+
+model Client {
+  id        Int       @id @default(autoincrement())
+  name      String    @db.VarChar(255)
+  email     String?   @db.VarChar(255)
+  phone     String?   @db.VarChar(50)
+  address   String?   @db.VarChar(500)
+  city      String?   @db.VarChar(100)
+  notes     String?   @db.Text
+  createdAt DateTime  @default(now()) @map("created_at")
+  ruc       String?   @db.VarChar(20)
+  projects  Project[]
+  quotes    Quote[]
+
+  @@map("clients")
+}
+
+model Project {
+  id                 Int                  @id @default(autoincrement())
+  title              String               @db.VarChar(255)
+  type               ProjectType?         @default(OTRO)
+  subtype            String?              @db.VarChar(255)
+  status             ProjectStatus        @default(LEAD)
+  description        String?              @db.Text
+  address            String?              @db.VarChar(500)
+  city               String?              @db.VarChar(100)
+  startDate          DateTime?            @map("start_date") @db.Date
+  endDate            DateTime?            @map("end_date") @db.Date
+  estimatedBudget    Decimal              @default(0.00) @map("estimated_budget") @db.Decimal(12, 2)
+  realCost           Decimal              @default(0.00) @map("real_cost") @db.Decimal(12, 2)
+  leadNotes          String?              @map("lead_notes") @db.Text
+  clientId           Int?                 @map("client_id")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  categoryList       String?              @map("category_list") @db.LongText
+  technicalSpecs     String?              @map("technical_specs") @db.LongText
+  contractTypeList   String?              @map("contract_type_list") @db.LongText
+  specsAudioUrl      String?              @map("specs_audio_url") @db.VarChar(500)
+  specsTranscription String?              @map("specs_transcription") @db.Text
+  createdBy          Int?                 @map("created_by")
+  appointments       Appointment[]
+  budgetItems        BudgetItem[]
+  chatMessages       ChatMessage[]
+  dayRecords         DayRecord[]
+  expenses           Expense[]
+  gallery            ProjectGalleryItem[]
+  phases             ProjectPhase[]
+  team               ProjectTeam[]
+  views              ProjectView[]
+  client             Client?              @relation(fields: [clientId], references: [id])
+  creator            User?                @relation("ProjectCreator", fields: [createdBy], references: [id])
+  quotes             Quote[]
+
+  @@index([status])
+  @@index([clientId])
+  @@index([createdBy], map: "projects_created_by_fkey")
+  @@map("projects")
+}
+
+model ProjectPhase {
+  id             Int               @id @default(autoincrement())
+  projectId      Int               @map("project_id")
+  title          String            @db.VarChar(255)
+  description    String?           @db.Text
+  estimatedHours Int?              @map("estimated_hours")
+  displayOrder   Int               @map("display_order")
+  status         PhaseStatus       @default(PENDIENTE)
+  startedAt      DateTime?         @map("started_at")
+  completedAt    DateTime?         @map("completed_at")
+  createdAt      DateTime          @default(now()) @map("created_at")
+  estimatedDays  Int?              @map("estimated_days")
+  chatMessages   ChatMessage[]
+  completions    PhaseCompletion[]
+  project        Project           @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId, displayOrder])
+  @@map("project_phases")
+}
+
+model PhaseCompletion {
+  id          Int          @id @default(autoincrement())
+  phaseId     Int          @map("phase_id")
+  userId      Int          @map("user_id")
+  completedAt DateTime     @default(now()) @map("completed_at")
+  phase       ProjectPhase @relation(fields: [phaseId], references: [id], onDelete: Cascade)
+  user        User         @relation(fields: [userId], references: [id])
+
+  @@unique([phaseId, userId])
+  @@index([userId], map: "phase_completions_user_id_fkey")
+  @@map("phase_completions")
+}
+
+model ProjectTeam {
+  id         Int      @id @default(autoincrement())
+  projectId  Int      @map("project_id")
+  userId     Int      @map("user_id")
+  assignedAt DateTime @default(now()) @map("assigned_at")
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user       User     @relation(fields: [userId], references: [id])
+
+  @@unique([projectId, userId])
+  @@index([userId])
+  @@map("project_team")
+}
+
+model Expense {
+  id          Int              @id @default(autoincrement())
+  projectId   Int              @map("project_id")
+  userId      Int              @map("user_id")
+  amount      Decimal          @db.Decimal(10, 2)
+  description String?          @db.VarChar(500)
+  category    ExpenseCategory?
+  receiptUrl  String?          @map("receipt_url") @db.VarChar(500)
+  date        DateTime
+  createdAt   DateTime         @default(now()) @map("created_at")
+  lat         Decimal?         @db.Decimal(10, 7)
+  lng         Decimal?         @db.Decimal(10, 7)
+  isNote      Boolean          @default(false) @map("is_note")
+  project     Project          @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user        User             @relation(fields: [userId], references: [id])
+
+  @@index([projectId, date])
+  @@index([userId], map: "expenses_user_id_fkey")
+  @@map("expenses")
+}
+
+model Material {
+  id          Int          @id @default(autoincrement())
+  code        String       @unique @db.VarChar(50)
+  name        String       @db.VarChar(255)
+  description String?      @db.Text
+  unit        String?      @db.VarChar(50)
+  unitPrice   Decimal      @map("unit_price") @db.Decimal(10, 2)
+  category    String?      @db.VarChar(100)
+  stock       Int          @default(0)
+  isActive    Boolean      @default(true) @map("is_active")
+  createdAt   DateTime     @default(now()) @map("created_at")
+  updatedAt   DateTime     @updatedAt @map("updated_at")
+  budgetItems BudgetItem[]
+  quoteItems  QuoteItem[]
+
+  @@index([category])
+  @@map("materials")
+}
+
+model BudgetItem {
+  id            Int       @id @default(autoincrement())
+  projectId     Int       @map("project_id")
+  materialId    Int?      @map("material_id")
+  quantity      Decimal   @db.Decimal(10, 2)
+  estimatedCost Decimal   @map("estimated_cost") @db.Decimal(12, 2)
+  name          String?   @db.VarChar(255)
+  unit          String?   @db.VarChar(50)
+  material      Material? @relation(fields: [materialId], references: [id])
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([materialId], map: "budget_items_material_id_fkey")
+  @@index([projectId], map: "budget_items_project_id_fkey")
+  @@map("budget_items")
+}
+
+model Quote {
+  id              Int         @id @default(autoincrement())
+  projectId       Int?        @map("project_id")
+  clientId        Int         @map("client_id")
+  status          QuoteStatus @default(BORRADOR)
+  totalAmount     Decimal     @default(0.00) @map("total_amount") @db.Decimal(12, 2)
+  notes           String?     @db.Text
+  validUntil      DateTime?   @map("valid_until") @db.Date
+  createdAt       DateTime    @default(now()) @map("created_at")
+  updatedAt       DateTime    @updatedAt @map("updated_at")
+  clientAddress   String?     @db.VarChar(500)
+  clientAttention String?     @db.VarChar(255)
+  clientName      String?     @db.VarChar(255)
+  clientPhone     String?     @db.VarChar(50)
+  clientRuc       String?     @db.VarChar(20)
+  discountTotal   Decimal     @default(0.00) @map("discount_total") @db.Decimal(12, 2)
+  ivaAmount       Decimal     @default(0.00) @map("iva_amount") @db.Decimal(12, 2)
+  subtotal0       Decimal     @default(0.00) @map("subtotal_0") @db.Decimal(12, 2)
+  subtotal15      Decimal     @default(0.00) @map("subtotal_15") @db.Decimal(12, 2)
+  subtotal        Decimal     @default(0.00) @map("subtotal") @db.Decimal(12, 2)
+  userId          Int?        @map("user_id")
+  optionalTitle       String?     @db.VarChar(255)
+  optionalDescription String?     @db.Text
+  optionalImage       String?     @db.MediumText
+  optionalImage2      String?     @db.MediumText
+  isBudget        Boolean     @default(false) @map("is_budget")
+  items           QuoteItem[]
+  client          Client      @relation(fields: [clientId], references: [id])
+  project         Project?    @relation(fields: [projectId], references: [id])
+  creator         User?       @relation("QuoteCreator", fields: [userId], references: [id])
+
+  @@index([clientId], map: "quotes_client_id_fkey")
+  @@index([projectId], map: "quotes_project_id_fkey")
+  @@index([userId], map: "quotes_user_id_fkey")
+  @@map("quotes")
+}
+
+model QuoteItem {
+  id          Int       @id @default(autoincrement())
+  quoteId     Int       @map("quote_id")
+  materialId  Int?      @map("material_id")
+  description String?   @db.VarChar(500)
+  quantity    Decimal   @db.Decimal(10, 2)
+  unitPrice   Decimal   @map("unit_price") @db.Decimal(12, 2)
+  total       Decimal   @db.Decimal(12, 2)
+  discountPct Decimal   @default(0.00) @map("discount_pct") @db.Decimal(12, 2)
+  isTaxed     Boolean   @default(true) @map("is_taxed")
+  material    Material? @relation(fields: [materialId], references: [id])
+  quote       Quote     @relation(fields: [quoteId], references: [id], onDelete: Cascade)
+
+  @@index([materialId], map: "quote_items_material_id_fkey")
+  @@index([quoteId], map: "quote_items_quote_id_fkey")
+  @@map("quote_items")
+}
+
+model DayRecord {
+  id            Int       @id @default(autoincrement())
+  userId        Int       @map("user_id")
+  projectId     Int       @map("project_id")
+  startTime     DateTime  @map("start_time")
+  endTime       DateTime? @map("end_time")
+  startLat      Decimal?  @map("start_lat") @db.Decimal(10, 7)
+  startLng      Decimal?  @map("start_lng") @db.Decimal(10, 7)
+  endLat        Decimal?  @map("end_lat") @db.Decimal(10, 7)
+  endLng        Decimal?  @map("end_lng") @db.Decimal(10, 7)
+  startMetadata String?   @map("start_metadata") @db.LongText
+  endMetadata   String?   @map("end_metadata") @db.LongText
+  createdAt     DateTime  @default(now()) @map("created_at")
+  project       Project   @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user          User      @relation(fields: [userId], references: [id])
+
+  @@index([userId, createdAt])
+  @@index([projectId], map: "day_records_project_id_fkey")
+  @@map("day_records")
+}
+
+model ChatMessage {
+  id        Int           @id @default(autoincrement())
+  projectId Int           @map("project_id")
+  phaseId   Int?          @map("phase_id")
+  userId    Int           @map("user_id")
+  content   String?       @db.Text
+  type      MessageType   @default(TEXT)
+  createdAt DateTime      @default(now()) @map("created_at")
+  lat       Decimal?      @db.Decimal(10, 7)
+  lng       Decimal?      @db.Decimal(10, 7)
+  extraData String?       @map("extra_data") @db.LongText
+  phase     ProjectPhase? @relation(fields: [phaseId], references: [id])
+  project   Project       @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id])
+  media     MediaFile[]
+
+  @@index([projectId, phaseId, createdAt])
+  @@index([projectId, createdAt])
+  @@index([phaseId], map: "chat_messages_phase_id_fkey")
+  @@index([userId], map: "chat_messages_user_id_fkey")
+  @@map("chat_messages")
+}
+
+model MediaFile {
+  id        Int         @id @default(autoincrement())
+  messageId Int         @map("message_id")
+  filename  String      @db.VarChar(255)
+  mimeType  String      @map("mime_type") @db.VarChar(100)
+  url       String      @db.VarChar(500)
+  sizeBytes Int?        @map("size_bytes")
+  createdAt DateTime    @default(now()) @map("created_at")
+  message   ChatMessage @relation(fields: [messageId], references: [id], onDelete: Cascade)
+
+  @@index([messageId], map: "media_files_message_id_fkey")
+  @@map("media_files")
+}
+
+model ProjectView {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @map("user_id")
+  projectId Int      @map("project_id")
+  lastSeen  DateTime @default(now()) @map("last_seen")
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@unique([userId, projectId])
+  @@index([projectId], map: "project_views_project_id_fkey")
+  @@map("project_views")
+}
+
+model ProjectGalleryItem {
+  id         Int      @id @default(autoincrement())
+  projectId  Int      @map("project_id")
+  url        String   @db.VarChar(500)
+  filename   String   @db.VarChar(255)
+  mimeType   String   @map("mime_type") @db.VarChar(100)
+  sizeBytes  Int?     @map("size_bytes")
+  category   String   @default("MASTER") @db.VarChar(50)
+  isOfficial Boolean  @default(true) @map("is_official")
+  createdAt  DateTime @default(now()) @map("created_at")
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@index([projectId])
+  @@map("project_gallery_items")
+}
+
+model PushSubscription {
+  id         Int      @id @default(autoincrement())
+  userId     Int      @map("user_id")
+  endpoint   String   @db.VarChar(500)
+  p256dh     String   @db.VarChar(200)
+  auth       String   @db.VarChar(100)
+  deviceName String?  @map("device_name") @db.VarChar(100)
+  createdAt  DateTime @default(now()) @map("created_at")
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, endpoint])
+  @@index([userId])
+  @@map("push_subscriptions")
+}
+
+model BlogCategory {
+  id        Int        @id @default(autoincrement())
+  slug      String     @unique @db.VarChar(100)
+  name      String     @db.VarChar(100)
+  createdAt DateTime   @default(now()) @map("created_at")
+  posts     BlogPost[]
+
+  @@map("blog_categories")
+}
+
+model BlogTag {
+  id        Int           @id @default(autoincrement())
+  slug      String        @unique @db.VarChar(100)
+  name      String        @db.VarChar(100)
+  createdAt DateTime      @default(now()) @map("created_at")
+  posts     BlogPostTag[]
+
+  @@map("blog_tags")
+}
+
+model BlogPost {
+  id              Int              @id @default(autoincrement())
+  slug            String           @unique @db.VarChar(255)
+  title           String           @db.VarChar(255)
+  excerpt         String?          @db.Text
+  content         String           @db.LongText
+  imageUrl        String?          @map("image_url") @db.VarChar(500)
+  metaDescription String?          @map("meta_description") @db.VarChar(500)
+  focusKeyword    String?          @map("focus_keyword") @db.VarChar(255)
+  isPublished     Boolean          @default(false) @map("is_published")
+  publishedAt     DateTime?        @map("published_at")
+  createdAt       DateTime         @default(now()) @map("created_at")
+  updatedAt       DateTime         @updatedAt @map("updated_at")
+  authorId        Int              @map("author_id")
+  categoryId      Int?             @map("category_id")
+  tags            BlogPostTag[]
+  author          User             @relation("BlogPostAuthor", fields: [authorId], references: [id])
+  category        BlogCategory?    @relation(fields: [categoryId], references: [id])
+  pipelineArticle PipelineArticle?
+
+  @@index([authorId])
+  @@index([categoryId])
+  @@index([slug])
+  @@map("blog_posts")
+}
+
+model BlogPostTag {
+  postId Int      @map("post_id")
+  tagId  Int      @map("tag_id")
+  post   BlogPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  tag    BlogTag  @relation(fields: [tagId], references: [id], onDelete: Cascade)
+
+  @@id([postId, tagId])
+  @@index([postId])
+  @@index([tagId])
+  @@map("blog_post_tags")
+}
+
+model Appointment {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(255)
+  description String?  @db.Text
+  startTime   DateTime @map("start_time")
+  endTime     DateTime @map("end_time")
+  status      String   @default("PENDIENTE") @db.VarChar(50)
+  userId      Int      @map("user_id")
+  projectId   Int?     @map("project_id")
+  clientName  String?  @map("client_name") @db.VarChar(255)
+  clientPhone String?  @map("client_phone") @db.VarChar(50)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+  clientLocation   String?  @map("client_location") @db.VarChar(500)
+  operatorLocation String?  @map("operator_location") @db.VarChar(500)
+  files            String?  @db.LongText
+  
+  // v500: Multiple assigned operators (JSON array of {id, name})
+  assignedUsers String? @map("assigned_users") @db.Text
+
+  // Flags para evitar duplicados en recordatorios
+  reminded60  Boolean  @default(false) @map("reminded_60")
+  reminded30  Boolean  @default(false) @map("reminded_30")
+  reminded10  Boolean  @default(false) @map("reminded_10")
+
+  project     Project? @relation(fields: [projectId], references: [id])
+  user        User     @relation(fields: [userId], references: [id])
+
+  @@index([userId])
+  @@index([projectId])
+  @@map("appointments")
+}
+
+model BrandConfig {
+  id              Int      @id @default(autoincrement())
+  name            String   @db.VarChar(100)
+  imagePrompt     String   @db.LongText
+  brandColors     String?  @db.Text
+  typography      String?  @db.VarChar(255)
+  logoUrl         String?  @map("logo_url") @db.VarChar(500)
+  additionalNotes String?  @map("additional_notes") @db.Text
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+
+  @@map("brand_configs")
+}
+
+model ContentPipeline {
+  id              Int               @id @default(autoincrement())
+  idea            String            @db.Text
+  ideaContext     String?           @db.LongText
+  status          PipelineStatus    @default(IDEA)
+  weekNumber      Int?              @map("week_number")
+  year            Int?
+  createdById     Int               @map("created_by_id")
+  createdAt       DateTime          @default(now()) @map("created_at")
+  updatedAt       DateTime          @updatedAt @map("updated_at")
+  createdBy       User              @relation(fields: [createdById], references: [id])
+  headlineOptions HeadlineOption[]
+  articles        PipelineArticle[]
+  socialPosts     SocialPost[]
+
+  @@index([createdById], map: "content_pipelines_created_by_id_fkey")
+  @@map("content_pipelines")
+}
+
+model HeadlineOption {
+  id         Int             @id @default(autoincrement())
+  pipelineId Int             @map("pipeline_id")
+  headline   String          @db.VarChar(500)
+  keyword    String?         @db.VarChar(255)
+  isSelected Boolean         @default(false) @map("is_selected")
+  createdAt  DateTime        @default(now()) @map("created_at")
+  pipeline   ContentPipeline @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  @@index([pipelineId])
+  @@map("headline_options")
+}
+
+model PipelineArticle {
+  id              Int                @id @default(autoincrement())
+  pipelineId      Int                @map("pipeline_id")
+  type            ArticleType        @default(CLUSTER)
+  title           String             @db.VarChar(500)
+  slug            String?            @db.VarChar(500)
+  content         String?            @db.LongText
+  excerpt         String?            @db.Text
+  metaDescription String?            @map("meta_description") @db.VarChar(500)
+  focusKeyword    String?            @map("focus_keyword") @db.VarChar(255)
+  status          ArticleStatus      @default(DRAFT)
+  feedback        String?            @db.Text
+  blogPostId      Int?               @unique @map("blog_post_id")
+  displayOrder    Int                @default(0) @map("display_order")
+  createdAt       DateTime           @default(now()) @map("created_at")
+  updatedAt       DateTime           @updatedAt @map("updated_at")
+  images          ArticleImage[]
+  interlinks      ArticleInterlink[] @relation("SourceArticle")
+  incomingLinks   ArticleInterlink[] @relation("TargetArticle")
+  blogPost        BlogPost?          @relation(fields: [blogPostId], references: [id])
+  pipeline        ContentPipeline    @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+  socialPosts     SocialPost[]
+
+  @@index([pipelineId])
+  @@map("pipeline_articles")
+}
+
+model ArticleImage {
+  id         Int             @id @default(autoincrement())
+  articleId  Int             @map("article_id")
+  imageUrl   String          @map("image_url") @db.VarChar(500)
+  prompt     String?         @db.Text
+  isSelected Boolean         @default(false) @map("is_selected")
+  createdAt  DateTime        @default(now()) @map("created_at")
+  article    PipelineArticle @relation(fields: [articleId], references: [id], onDelete: Cascade)
+
+  @@index([articleId])
+  @@map("article_images")
+}
+
+model ArticleInterlink {
+  id              Int             @id @default(autoincrement())
+  sourceArticleId Int             @map("source_article_id")
+  targetArticleId Int             @map("target_article_id")
+  anchorText      String          @map("anchor_text") @db.VarChar(255)
+  linkType        InterlinkType   @default(CLUSTER_TO_PILLAR) @map("link_type")
+  sourceArticle   PipelineArticle @relation("SourceArticle", fields: [sourceArticleId], references: [id], onDelete: Cascade)
+  targetArticle   PipelineArticle @relation("TargetArticle", fields: [targetArticleId], references: [id], onDelete: Cascade)
+
+  @@unique([sourceArticleId, targetArticleId])
+  @@index([targetArticleId], map: "article_interlinks_target_article_id_fkey")
+  @@map("article_interlinks")
+}
+
+model SocialPost {
+  id          Int                 @id @default(autoincrement())
+  pipelineId  Int                 @map("pipeline_id")
+  articleId   Int?                @map("article_id")
+  type        SocialPostType
+  status      SocialPostStatus    @default(DRAFT)
+  scheduledAt DateTime?           @map("scheduled_at")
+  createdAt   DateTime            @default(now()) @map("created_at")
+  updatedAt   DateTime            @updatedAt @map("updated_at")
+  variants    SocialPostVariant[]
+  article     PipelineArticle?    @relation(fields: [articleId], references: [id])
+  pipeline    ContentPipeline     @relation(fields: [pipelineId], references: [id], onDelete: Cascade)
+
+  @@index([pipelineId])
+  @@index([articleId])
+  @@index([scheduledAt])
+  @@map("social_posts")
+}
+
+model SocialPostVariant {
+  id          Int               @id @default(autoincrement())
+  postId      Int               @map("post_id")
+  platform    SocialPlatform
+  caption     String?           @db.LongText
+  hashtags    String?           @db.Text
+  articleLink String?           @map("article_link") @db.VarChar(500)
+  metaPostId  String?           @map("meta_post_id") @db.VarChar(255)
+  status      SocialPostStatus  @default(DRAFT)
+  isCarousel  Boolean           @default(false) @map("is_carousel")
+  publishedAt DateTime?         @map("published_at")
+  images      SocialPostImage[]
+  post        SocialPost        @relation(fields: [postId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, platform])
+  @@index([postId])
+  @@map("social_post_variants")
+}
+
+model SocialPostImage {
+  id         Int               @id @default(autoincrement())
+  variantId  Int               @map("variant_id")
+  imageUrl   String            @map("image_url") @db.VarChar(500)
+  prompt     String?           @db.Text
+  isSelected Boolean           @default(false) @map("is_selected")
+  createdAt  DateTime          @default(now()) @map("created_at")
+  variant    SocialPostVariant @relation(fields: [variantId], references: [id], onDelete: Cascade)
+
+  @@index([variantId])
+  @@map("social_post_images")
+}
+
+enum UserRole {
+  SUPERADMIN
+  ADMIN
+  ADMINISTRADORA
+  OPERATOR
+  SUBCONTRATISTA
+}
+
+enum ProjectType {
+  PISCINA
+  JACUZZI
+  BOMBAS
+  TRATAMIENTO
+  RIEGO
+  CALENTAMIENTO
+  CONTRA_INCENDIOS
+  MANTENIMIENTO
+  INSTALLATION
+  REPAIR
+  OTRO
+}
+
+enum ProjectStatus {
+  LEAD
+  NEGOCIANDO
+  ACTIVO
+  PENDIENTE
+  COMPLETADO
+  CANCELADO
+  ARCHIVADO
+}
+
+enum PhaseStatus {
+  PENDIENTE
+  EN_PROGRESO
+  COMPLETADA
+}
+
+enum ExpenseCategory {
+  MATERIAL
+  TRANSPORTE
+  MANO_OBRA
+  EQUIPO
+  ALIMENTACION
+  OTRO
+}
+
+enum QuoteStatus {
+  BORRADOR
+  ENVIADA
+  ACEPTADA
+  RECHAZADA
+}
+
+enum MessageType {
+  TEXT
+  IMAGE
+  VIDEO
+  AUDIO
+  NOTE
+  EXPENSE_LOG
+  DAY_START
+  DAY_END
+  PHASE_COMPLETE
+  DOCUMENT
+  LOCATION
+}
+
+enum PipelineStatus {
+  IDEA
+  HEADLINES
+  WRITING
+  REVIEWING_ARTICLES
+  GENERATING_IMAGES
+  INTERLINKING
+  SOCIAL_DRAFTING
+  SOCIAL_IMAGES
+  SCHEDULING
+  READY
+  PUBLISHED
+}
+
+enum ArticleType {
+  PILLAR
+  CLUSTER
+}
+
+enum ArticleStatus {
+  DRAFT
+  AI_GENERATED
+  USER_REVIEWING
+  NEEDS_REVISION
+  APPROVED
+  PUBLISHED
+}
+
+enum InterlinkType {
+  CLUSTER_TO_PILLAR
+  PILLAR_TO_CLUSTER
+  CLUSTER_TO_CLUSTER
+  PILLAR_TO_WEB
+}
+
+enum SocialPostType {
+  EDUCATIVO
+  PROMOCIONAL
+  MOTIVACIONAL
+}
+
+enum SocialPostStatus {
+  DRAFT
+  AI_GENERATED
+  APPROVED
+  SCHEDULED
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
+enum SocialPlatform {
+  FACEBOOK
+  INSTAGRAM
+}
+
+model Resource {
+  id          Int      @id @default(autoincrement())
+  title       String   @db.VarChar(255)
+  description String?  @db.Text
+  imageUrl    String?  @db.LongText
+  type        String?  @db.VarChar(100)
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  @@map("resources")
+}
+
+model SyncLog {
+  id        Int      @id @default(autoincrement())
+  syncId    String   @unique @map("sync_id") @db.VarChar(100)
+  resultId  String   @map("result_id") @db.VarChar(100)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([createdAt])
+  @@map("sync_logs")
+}

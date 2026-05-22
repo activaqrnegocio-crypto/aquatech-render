@@ -1,0 +1,26 @@
+{
+  "name": "Aquatech CRM — Innovación Hidráulica",
+  "short_name": "Aquatech",
+  "description": "Sistema de gestión y seguimiento de proyectos en campo para Aquatech Loja",
+  "start_url": "/admin",
+  "scope": "/",
+  "id": "/admin/operador",
+  "display": "standalone",
+  "background_color": "#036BB2",
+  "theme_color": "#036BB2",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}

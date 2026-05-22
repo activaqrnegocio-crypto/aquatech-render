@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  app:
+    image: ghcr.io/activaqrnegocio-crypto/aquatech-render:latest
+    container_name: aquatech-crm-v2
+    restart: always
+    network_mode: host
+    env_file:
+      - .env
+    environment:
+      - NODE_ENV=production
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
+      - NEXTAUTH_URL=https://178.238.238.158.sslip.io/
+      - AUTH_TRUST_HOST=true
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://127.0.0.1:3000/api/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
