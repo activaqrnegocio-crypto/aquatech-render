@@ -24,7 +24,7 @@ export default function AdminCalendarClient({
   const [cachedOperators, setCachedOperators] = useState<any[]>(operators)
   const [cachedProjects, setCachedProjects] = useState<any[]>(projects)
   const [appointments, setAppointments] = useState<any[]>([])
-  const [selectedOperatorId, setSelectedOperatorId] = useState<string>(isAdmin ? 'all' : userId.toString())
+  const [selectedOperatorId, setSelectedOperatorId] = useState<string>('all')
   const [isOverviewOpen, setIsOverviewOpen] = useState(false)
   const [selectedDate, setSelectedDate] = useState<Date>(getLocalNow())
   const [editingEvent, setEditingEvent] = useState<any>(null)
@@ -344,11 +344,16 @@ export default function AdminCalendarClient({
       if (res && res.ok) {
         fetchAppointments()
       } else {
-        alert('Error al guardar en el servidor')
+        let errorMsg = 'Error al guardar en el servidor'
+        try {
+          const errorBody = await res?.json()
+          if (errorBody?.error) errorMsg = errorBody.error
+        } catch {}
+        throw new Error(errorMsg)
       }
     } catch (err) {
       console.error('Error saving task:', err)
-      alert('Error crítico al guardar la tarea')
+      throw err // Re-lanzar para que DayOverviewModal sepa que falló
     } finally {
       setIsSaving(false)
       saveLockRef.current = false
@@ -387,18 +392,18 @@ export default function AdminCalendarClient({
       </div>
 
       <div className="card mb-lg calendar-card" style={{ marginTop: 'var(--space-md)' }}>
-        {isAdmin && (
-          <div className="filter-container">
-             <label className="filter-label">Filtrar por Operador:</label>
-             <select 
-               className="form-select operator-select" 
-               onChange={(e) => setSelectedOperatorId(e.target.value)}
-             >
-               <option value="all">Todos los operadores</option>
-               {cachedOperators.map(op => (
-                 <option key={op.id} value={op.id}>{op.name}</option>
-               ))}
-             </select>
+        <div className="filter-container">
+           <label className="filter-label">Filtrar por Operador:</label>
+           <select 
+             className="form-select operator-select" 
+             value={selectedOperatorId}
+             onChange={(e) => setSelectedOperatorId(e.target.value)}
+           >
+             <option value="all">Todos los operadores</option>
+             {cachedOperators.map(op => (
+               <option key={op.id} value={op.id}>{op.name}</option>
+             ))}
+           </select>
              {loading && <span className="loading-text spinner-xs">Sincronizando...</span>}
              {!loading && initialDataLoaded && (
                <button 
@@ -409,7 +414,6 @@ export default function AdminCalendarClient({
                </button>
              )}
           </div>
-        )}
 
         <div className="calendar-wrapper">
           {loading && !initialDataLoaded ? (
