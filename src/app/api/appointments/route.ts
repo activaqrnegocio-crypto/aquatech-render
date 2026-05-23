@@ -127,13 +127,8 @@ export async function POST(request: Request) {
     // v261: Asegurar IDs únicos para evitar duplicados accidentales
     targetUserIds = Array.from(new Set(targetUserIds));
 
-    // Non-managers can only assign to themselves
-    if (!canManage) {
-      const selfId = Number(session.user.id)
-      if (targetUserIds.length !== 1 || targetUserIds[0] !== selfId) {
-        return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-      }
-    }
+    // Non-managers can assign tasks to any operator(s)
+    // (removed self-only restriction to allow assigning to other operators)
 
     const start = new Date(forceEcuadorTZ(startTime))
     const end = new Date(forceEcuadorTZ(endTime))

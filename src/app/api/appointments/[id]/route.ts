@@ -2,7 +2,6 @@ import { NextResponse } from 'next/server'
 import { prisma } from '@/lib/prisma'
 import { getServerSession } from 'next-auth'
 import { authOptions } from '@/lib/auth'
-import { isAdmin as checkIsAdmin } from '@/lib/rbac'
 import { sendWhatsAppMessage } from '@/lib/whatsapp'
 import { formatTimeEcuador, formatDateEcuador } from '@/lib/date-utils'
 import { notifyUser } from '@/lib/push'
@@ -29,14 +28,6 @@ export async function PATCH(
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 })
     }
 
-    const isAdmin = checkIsAdmin((session.user as any).role)
-    // v500: Check if user is admin OR is in assignedUsers
-    const existingAssigned = existing.assignedUsers ? JSON.parse(existing.assignedUsers) : []
-    const isAssigned = existingAssigned.some((u: any) => u.id === Number(session.user.id))
-    if (!isAdmin && !isAssigned) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
-    }
-
     // Validar rango si se está actualizando
     const start = startTime ? new Date(startTime) : existing.startTime
     const end = endTime ? new Date(endTime) : existing.endTime
@@ -57,8 +48,8 @@ export async function PATCH(
     if (operatorLocation !== undefined) data.operatorLocation = operatorLocation || null
     if (body.files !== undefined) data.files = body.files ? (typeof body.files === 'string' ? body.files : JSON.stringify(body.files)) : null
 
-    // v500: Handle userIds update (admin only)
-    if (isAdmin && userIds && Array.isArray(userIds) && userIds.length > 0) {
+    // v500: Handle userIds update (admin or assigned user)
+    if (userIds && Array.isArray(userIds) && userIds.length > 0) {
       const newUserIds = Array.from(new Set(userIds.map((id: any) => Number(id))))
       const newUsers = await prisma.user.findMany({
         where: { id: { in: newUserIds } },
@@ -144,14 +135,6 @@ export async function DELETE(
 
     if (!existing) {
       return NextResponse.json({ error: 'Appointment not found' }, { status: 404 })
-    }
-
-    const isAdmin = checkIsAdmin((session.user as any).role)
-    // v500: Check if user is admin OR is in assignedUsers
-    const existingAssigned = existing.assignedUsers ? JSON.parse(existing.assignedUsers) : []
-    const isAssigned = existingAssigned.some((u: any) => u.id === Number(session.user.id))
-    if (!isAdmin && !isAssigned) {
-      return NextResponse.json({ error: 'Forbidden' }, { status: 403 })
     }
 
     await prisma.appointment.delete({
