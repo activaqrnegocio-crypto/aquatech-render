@@ -352,7 +352,7 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
                         ))}
                       </div>
                       <div style={{ textAlign: 'center' }}>
-                        <input type="file" multiple onChange={handleUpload} style={{ display: 'none' }} id="resource-upload" accept="image/*,video/*" />
+                        <input type="file" multiple onChange={handleUpload} style={{ display: 'none' }} id="resource-upload" accept="image/*,video/*,audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac" />
                         <label htmlFor="resource-upload" className="btn btn-ghost btn-sm" style={{ cursor: 'pointer', borderRadius: '8px' }}>
                           {isUploading ? 'Procesando...' : '+ Añadir más archivos'}
                         </label>
@@ -362,7 +362,7 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
                     <div style={{ textAlign: 'center', padding: '20px' }}>
                       <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" style={{ color: 'var(--text-muted)', marginBottom: '10px' }}><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
                       <p style={{ margin: 0, fontSize: '0.8rem', color: 'var(--text-muted)' }}>{isUploading ? 'Subiendo archivos...' : 'Se requiere al menos un archivo'}</p>
-                      <input type="file" multiple onChange={handleUpload} style={{ display: 'none' }} id="resource-upload" accept="image/*,video/*" />
+                      <input type="file" multiple onChange={handleUpload} style={{ display: 'none' }} id="resource-upload" accept="image/*,video/*,audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac" />
                       <label htmlFor="resource-upload" className="btn btn-ghost btn-sm" style={{ marginTop: '15px', cursor: 'pointer', borderRadius: '8px' }}>
                         {isUploading ? 'Procesando...' : 'Seleccionar Archivos'}
                       </label>
