@@ -705,13 +705,13 @@ export default function ProjectChatUnified({
               onClick={() => {
                 const input = document.createElement('input');
                 input.type = 'file';
-                input.accept = 'image/*,video/*';
+                input.accept = 'image/*,video/*,audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac';
                 input.style.display = 'none';
                 document.body.appendChild(input);
                 input.onchange = (e: any) => {
                   const file = e.target.files?.[0];
                   if (file) {
-                    const type = file.type.startsWith('video/') ? 'VIDEO' : 'IMAGE';
+                    const type = file.type.startsWith('video/') ? 'VIDEO' : file.type.startsWith('audio/') ? 'AUDIO' : 'IMAGE';
                     onSendMessage('', type, { file });
                   }
                   document.body.removeChild(input);
