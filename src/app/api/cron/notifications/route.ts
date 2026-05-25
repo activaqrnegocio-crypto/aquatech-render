@@ -33,11 +33,11 @@ export async function GET(request: Request) {
     if (currentHour === 6 || testPhone) {
       const todayStr = formatDateEcuador(localTime); // YYYY-MM-DD
       
+      // Si es test, traer solo operadores activos (sin filtro de teléfono aún)
       const operatorsWithTasks = await prisma.user.findMany({
         where: { 
           role: 'OPERATOR', 
-          isActive: true,
-          ...(testPhone ? { phone: testPhone } : {})
+          isActive: true
         },
         select: {
           id: true,
@@ -48,6 +48,14 @@ export async function GET(request: Request) {
 
       for (let i = 0; i < operatorsWithTasks.length; i++) {
         const op = operatorsWithTasks[i];
+
+        // En modo test, filtrar por teléfono (normalizando formato)
+        if (testPhone) {
+          const dbPhone = (op.phone || '').replace(/[^0-9]/g, '');
+          const testNum = testPhone.replace(/[^0-9]/g, '');
+          // Comparar: 593967491847 vs 0967491847 (últimos 10 dígitos)
+          if (!dbPhone.endsWith(testNum.slice(-10)) && !testNum.endsWith(dbPhone.slice(-10))) continue;
+        }
 
         // Traer tareas donde sea userId principal O esté en assignedUsers
         const opAppointments = await prisma.appointment.findMany({
@@ -164,8 +172,12 @@ export async function GET(request: Request) {
       const win = windows.find(w => diffMins >= w.min && diffMins <= w.max);
       if (!win) continue;
 
-      // En modo test, solo enviar al número indicado
-      if (testPhone && ud.phone !== testPhone) continue;
+      // En modo test, solo enviar al número indicado (normalizando formato)
+      if (testPhone) {
+        const dbPhone = (ud.phone || '').replace(/[^0-9]/g, '');
+        const testNum = testPhone.replace(/[^0-9]/g, '');
+        if (!dbPhone.endsWith(testNum.slice(-10)) && !testNum.endsWith(dbPhone.slice(-10))) continue;
+      }
 
       // Atomic lock: marcar TODAS sus tareas como notificadas
       const locked = await prisma.appointment.updateMany({
