@@ -179,7 +179,7 @@ export async function GET(request: Request) {
         select: { id: true, name: true }
       });
       if (demoUser) {
-        const demoUserEntry = { name: demoUser.name, phone: demoPhone, tasks: [
+        const demoUserEntry: any = { name: demoUser.name, phone: demoPhone, _isDemo: true, tasks: [
           { id: -1, title: '1', description: 'Instalación de hidromasaje en Hostería las Brisas', startTime: new Date(demoNow.getTime() + 60*60000) },
           { id: -2, title: '2', description: 'Revisión de sistema de riego - Pablo', startTime: new Date(demoNow.getTime() + 60*60000) },
           { id: -3, title: '3', description: 'Mantenimiento piscina San Pedro', startTime: new Date(demoNow.getTime() + 60*60000) },
@@ -209,12 +209,16 @@ export async function GET(request: Request) {
         if (!dbPhone.endsWith(testNum.slice(-10)) && !testNum.endsWith(dbPhone.slice(-10))) continue;
       }
 
-      // Atomic lock: marcar TODAS sus tareas como notificadas
-      const locked = await prisma.appointment.updateMany({
-        where: { id: { in: ud.tasks.map(t => t.id) }, [win.flag]: false },
-        data: { [win.flag]: true }
-      });
-      if (locked.count === 0) continue;
+      // Atomic lock: marcar TODAS sus tareas como notificadas (solo si NO son demo)
+      if ((ud as any)._isDemo) {
+        // Demo: enviar directamente sin lock
+      } else {
+        const locked = await prisma.appointment.updateMany({
+          where: { id: { in: ud.tasks.map(t => t.id) }, [win.flag]: false },
+          data: { [win.flag]: true }
+        });
+        if (locked.count === 0) continue;
+      }
 
       const sorted = [...ud.tasks].sort((a, b) => (parseInt(a.title||'999999',10)||999999) - (parseInt(b.title||'999999',10)||999999));
       const dateLocal = formatDateEcuador(ud.tasks[0].startTime);
