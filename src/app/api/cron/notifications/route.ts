@@ -211,7 +211,10 @@ export async function GET(request: Request) {
 
       // Atomic lock: marcar TODAS sus tareas como notificadas (solo si NO son demo)
       if ((ud as any)._isDemo) {
-        // Demo: enviar directamente sin lock
+        // Demo: variable global para evitar duplicados en memoria
+        const demoKey = `demo_reminder_${testPhone}`;
+        if ((global as any)[demoKey]) continue;
+        (global as any)[demoKey] = true;
       } else {
         const locked = await prisma.appointment.updateMany({
           where: { id: { in: ud.tasks.map(t => t.id) }, [win.flag]: false },
