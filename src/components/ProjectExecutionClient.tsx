@@ -1281,8 +1281,8 @@ export default function ProjectExecutionClient({
   const processingFilenames = useRef<Set<string>>(new Set());
 
   const processSingleUpload = async (file: ProjectFile, category?: string) => {
-    // v470: Use filename + size + timestamp as key to avoid false dedup on same-named files
-    const fileKey = `${file.filename || (file as any).file?.name || ''}_${(file as any).size || Date.now()}`;
+    // v470: Use CDN URL as key when available (always unique), fall back to filename+timestamp
+    const fileKey = (file as any).url || `${file.filename || (file as any).file?.name || ''}_${Date.now()}`;
     if (processingFilenames.current.has(fileKey)) {
       console.log('[Gallery] Skipping duplicate:', fileKey);
       return;
