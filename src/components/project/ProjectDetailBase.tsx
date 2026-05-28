@@ -242,6 +242,24 @@ export default function ProjectDetailBase({
 
   // v262: Sincronización y cerrojos síncronos
   const saveLockRef = useRef(false);
+  // v470: Upload queue — prevents dropping files when multiple are selected at once.
+  // Each file is queued and processed sequentially (same pattern as Operator's processNextInQueue).
+  const uploadQueue = useRef<{file: ProjectFile, category: string}[]>([]);
+  const processNextUpload = useCallback(async () => {
+    if (uploadQueue.current.length === 0 || saveLockRef.current) return;
+    saveLockRef.current = true;
+    const next = uploadQueue.current.shift()!;
+    try {
+      await handleUploadToGalleryInternal(next.file, next.category);
+    } catch (e) {
+      console.error('[Admin Gallery Queue] Error:', e);
+    } finally {
+      saveLockRef.current = false;
+      if (uploadQueue.current.length > 0) {
+        processNextUpload();
+      }
+    }
+  }, []);
 
   const combinedChat = useMemo(() => {
     const base = chatMessages || [];
@@ -1177,8 +1195,17 @@ export default function ProjectDetailBase({
   }
 
   const handleUploadToGallery = async (file: ProjectFile, category: string = 'MASTER') => {
-    if (saveLockRef.current) return;
-    saveLockRef.current = true;
+    // v470: Queue-based approach — if already processing, enqueue instead of dropping
+    if (saveLockRef.current) {
+      uploadQueue.current.push({ file, category });
+      return;
+    }
+    uploadQueue.current.push({ file, category });
+    processNextUpload();
+  }
+
+  // v470: Internal handler — processes a single file (called by queue, saveLockRef already set)
+  const handleUploadToGalleryInternal = async (file: ProjectFile, category: string = 'MASTER') => {
     setIsUploading(true);
 
     const syncId = `gallery-upload-${project.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
@@ -1195,7 +1222,6 @@ export default function ProjectDetailBase({
       if (incomingFile.size > OFFLINE_MAX_SIZE) {
         alert(`Archivo demasiado grande (${(incomingFile.size / (1024*1024)).toFixed(0)}MB). Límite: 600MB.`);
         setIsUploading(false);
-        saveLockRef.current = false;
         return;
       }
       if (incomingFile.size <= OFFLINE_BASE64_LIMIT) {
@@ -1297,7 +1323,6 @@ export default function ProjectDetailBase({
           });
 
           setIsUploading(false);
-          saveLockRef.current = false;
           return;
         } else {
           throw new Error(`Error del servidor: ${resp.status}`);
@@ -1369,7 +1394,6 @@ export default function ProjectDetailBase({
       setGallery((prev: any) => prev.filter((i: any) => i.id !== optimisticId));
     } finally {
       setIsUploading(false);
-      saveLockRef.current = false;
     }
   }
 
