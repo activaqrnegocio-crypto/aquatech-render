@@ -1,0 +1,1895 @@
+﻿Initialized native services in: C:\Users\Smart\.gradle\native
+Initialized jansi services in: C:\Users\Smart\.gradle\native
+Found daemon DaemonInfo{pid=16024, address=[1c24639a-9f62-4686-80a9-d8cbd6ed8485 port:52776, addresses:[/127.0.0.1]], state=Idle, lastBusy=1781658125021, context=DefaultDaemonContext[uid=20d17e6e-34eb-47e6-b68f-d73feb6d5ba2,javaHome=C:\Program Files\Android\Android Studio\jbr,javaVersion=21,javaVendor=JetBrains s.r.o.,daemonRegistryDir=C:\Users\Smart\.gradle\daemon,pid=16024,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-Xmx1536m,-Dfile.encoding=UTF-8,-Duser.country=EC,-Duser.language=es,-Duser.variant]} however its context does not match the desired criteria.
+JVM is incompatible.
+Wanted: DaemonRequestContext{jvmCriteria=C:\Java\jdk-21 (no Daemon JVM specified, using current Java home), daemonOpts=[-Xmx1536m, -Dfile.encoding=UTF-8, -Duser.country=EC, -Duser.language=es, -Duser.variant], applyInstrumentationAgent=true, nativeServicesMode=ENABLED, priority=NORMAL}
+Actual: DefaultDaemonContext[uid=20d17e6e-34eb-47e6-b68f-d73feb6d5ba2,javaHome=C:\Program Files\Android\Android Studio\jbr,javaVersion=21,javaVendor=JetBrains s.r.o.,daemonRegistryDir=C:\Users\Smart\.gradle\daemon,pid=16024,idleTimeout=10800000,priority=NORMAL,applyInstrumentationAgent=true,nativeServicesMode=ENABLED,daemonOpts=-Xmx1536m,-Dfile.encoding=UTF-8,-Duser.country=EC,-Duser.language=es,-Duser.variant]
+
+  Looking for a different daemon...
+The client will now receive all logging from the daemon (pid: 15412). The daemon log file: C:\Users\Smart\.gradle\daemon\9.4.1\daemon-15412.out.log
+Starting 26th build in daemon [uptime: 2 hrs 24 mins 46.695 secs, performance: 100%, GC rate: 0.00/s, heap usage: 0% of 1.5 GiB]
+Using 8 worker leases.
+Operational build model parameters: {cachingModelBuilding=false, configurationCache=false, configurationCacheDisabledReason=null, configurationCacheParallelLoad=false, configurationCacheParallelStore=false, configureOnDemand=false, invalidateCoupledProjects=false, isolatedProjects=false, modelAsProjectDependency=false, modelBuilding=false, parallelModelBuilding=false, parallelProjectConfiguration=false, parallelProjectExecution=false, resilientModelBuilding=false}
+Now considering [D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android] as hierarchies to watch
+Watching the file system is configured to be enabled if available
+File system watching is active
+Starting Build
+Settings evaluated using settings file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\settings.gradle'.
+Projects loaded. Root project using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\build.gradle'.
+Included projects: [root project 'android', project ':app', project ':capacitor-android', project ':capacitor-background-runner', project ':capacitor-camera', project ':capacitor-community-sqlite', project ':capacitor-cordova-android-plugins', project ':capacitor-filesystem', project ':capacitor-geolocation', project ':capacitor-local-notifications', project ':capacitor-preferences', project ':capacitor-push-notifications', project ':capgo-capacitor-audio-recorder']
+
+> Configure project :
+Evaluating root project 'android' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\build.gradle'.
+
+> Configure project :app
+Evaluating project ':app' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\app\build.gradle'.
+WARNING: The option setting 'android.usesSdkInManifest.disallowed=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: The option setting 'android.sdk.defaultTargetSdkToCompileSdkIfUnset=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: The option setting 'android.enableAppCompileTimeRClass=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: The option setting 'android.builtInKotlin=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: The option setting 'android.newDsl=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: The option setting 'android.r8.optimizedResourceShrinking=false' is deprecated.
+The current default is 'true'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+WARNING: The option setting 'android.defaults.buildfeatures.resvalues=true' is deprecated.
+The current default is 'false'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+Using default execution profile
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capacitor-android
+Evaluating project ':capacitor-android' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\android\capacitor\build.gradle'.
+Using default execution profile
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capacitor-background-runner
+Evaluating project ':capacitor-background-runner' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\build.gradle'.
+Using default execution profile
+Build 607cb5af-0945-488d-9d7d-618b3fb58693 is started
+Using Kotlin Gradle Plugin gradle813 variant
+WARNING: API 'libraryVariants' is obsolete and has been replaced with 'AndroidComponentsExtension'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+The legacy variant API is disabled by default in AGP 9.0, but can be re-enabled by adding 
+    android.newDsl=false
+to this project's gradle.properties file.
+For more information, see http://developer.android.com/build/r/new-dsl.
+
+To determine what is calling libraryVariants, use -Pandroid.debug.obsoleteApi=true on the command line to display more information.
+WARNING: API 'testVariants' is obsolete and has been replaced with 'AndroidComponentsExtension'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+The legacy variant API is disabled by default in AGP 9.0, but can be re-enabled by adding 
+    android.newDsl=false
+to this project's gradle.properties file.
+For more information, see http://developer.android.com/build/r/new-dsl.
+
+To determine what is calling testVariants, use -Pandroid.debug.obsoleteApi=true on the command line to display more information.
+WARNING: API 'unitTestVariants' is obsolete and has been replaced with 'AndroidComponentsExtension'.
+It will be removed in version 10.0 of the Android Gradle plugin.
+The legacy variant API is disabled by default in AGP 9.0, but can be re-enabled by adding 
+    android.newDsl=false
+to this project's gradle.properties file.
+For more information, see http://developer.android.com/build/r/new-dsl.
+
+To determine what is calling unitTestVariants, use -Pandroid.debug.obsoleteApi=true on the command line to display more information.
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capacitor-camera
+Evaluating project ':capacitor-camera' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\build.gradle'.
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capacitor-community-sqlite
+Evaluating project ':capacitor-community-sqlite' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor-community\sqlite\android\build.gradle'.
+Using default execution profile
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capacitor-cordova-android-plugins
+Evaluating project ':capacitor-cordova-android-plugins' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\capacitor-cordova-android-plugins\build.gradle'.
+Using default execution profile
+WARNING: Using flatDir should be avoided because it doesn't support any meta-data formats.
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capacitor-filesystem
+Evaluating project ':capacitor-filesystem' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\build.gradle'.
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capacitor-geolocation
+Evaluating project ':capacitor-geolocation' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\build.gradle'.
+Using default execution profile
+Using Kotlin Gradle Plugin gradle813 variant
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capacitor-local-notifications
+Evaluating project ':capacitor-local-notifications' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\local-notifications\android\build.gradle'.
+Using default execution profile
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capacitor-preferences
+Evaluating project ':capacitor-preferences' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\preferences\android\build.gradle'.
+Using default execution profile
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capacitor-push-notifications
+Evaluating project ':capacitor-push-notifications' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\push-notifications\android\build.gradle'.
+Using default execution profile
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+
+> Configure project :capgo-capacitor-audio-recorder
+Evaluating project ':capgo-capacitor-audio-recorder' using build file 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capgo\capacitor-audio-recorder\android\build.gradle'.
+Using default execution profile
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+WARNING: The property android.dependency.excludeLibraryComponentsFromConstraints improves project import performance for very large projects. It should be enabled to improve performance.
+To suppress this warning, add android.generateSyncIssueWhenLibraryConstraintsAreEnabled=false to gradle.properties
+All projects evaluated.
+Task path ':app:compileDebugJavaWithJavac' matched project ':app'
+Task name matched 'compileDebugJavaWithJavac'
+Selected primary task 'compileDebugJavaWithJavac' from project :app
+SDK initialized in 15 ms
+[=========                              ] 25%                                   
+Tasks to be executed: [task ':app:preBuild', task ':app:preDebugBuild', task ':app:javaPreCompileDebug', task ':capacitor-android:preBuild', task ':capacitor-android:preDebugBuild', task ':capacitor-android:writeDebugAarMetadata', task ':capacitor-background-runner:preBuild', task ':capacitor-background-runner:preDebugBuild', task ':capacitor-background-runner:writeDebugAarMetadata', task ':capacitor-camera:preBuild', task ':capacitor-camera:preDebugBuild', task ':capacitor-camera:writeDebugAarMetadata', task ':capacitor-community-sqlite:preBuild', task ':capacitor-community-sqlite:preDebugBuild', task ':capacitor-community-sqlite:writeDebugAarMetadata', task ':capacitor-cordova-android-plugins:preBuild', task ':capacitor-cordova-android-plugins:preDebugBuild', task ':capacitor-cordova-android-plugins:writeDebugAarMetadata', task ':capacitor-filesystem:preBuild', task ':capacitor-filesystem:preDebugBuild', task ':capacitor-filesystem:writeDebugAarMetadata', task ':capacitor-geolocation:preBuild', task ':capacitor-geolocation:preDebugBuild', task ':capacitor-geolocation:writeDebugAarMetadata', task ':capacitor-local-notifications:preBuild', task ':capacitor-local-notifications:preDebugBuild', task ':capacitor-local-notifications:writeDebugAarMetadata', task ':capacitor-preferences:preBuild', task ':capacitor-preferences:preDebugBuild', task ':capacitor-preferences:writeDebugAarMetadata', task ':capacitor-push-notifications:preBuild', task ':capacitor-push-notifications:preDebugBuild', task ':capacitor-push-notifications:writeDebugAarMetadata', task ':capgo-capacitor-audio-recorder:preBuild', task ':capgo-capacitor-audio-recorder:preDebugBuild', task ':capgo-capacitor-audio-recorder:writeDebugAarMetadata', task ':app:checkDebugAarMetadata', task ':app:generateDebugResValues', task ':app:processDebugGoogleServices', task ':app:mapDebugSourceSetPaths', task ':capacitor-android:processDebugNavigationResources', task ':capacitor-background-runner:processDebugNavigationResources', task ':capacitor-camera:processDebugNavigationResources', task ':capacitor-community-sqlite:processDebugNavigationResources', task ':capacitor-cordova-android-plugins:processDebugNavigationResources', task ':capacitor-filesystem:processDebugNavigationResources', task ':capacitor-geolocation:processDebugNavigationResources', task ':capacitor-local-notifications:processDebugNavigationResources', task ':capacitor-preferences:processDebugNavigationResources', task ':capacitor-push-notifications:processDebugNavigationResources', task ':capgo-capacitor-audio-recorder:processDebugNavigationResources', task ':app:processDebugNavigationResources', task ':app:compileDebugNavigationResources', task ':app:generateDebugResources', task ':capacitor-android:generateDebugResValues', task ':capacitor-android:generateDebugResources', task ':capacitor-android:packageDebugResources', task ':capacitor-background-runner:generateDebugResValues', task ':capacitor-background-runner:generateDebugResources', task ':capacitor-background-runner:packageDebugResources', task ':capacitor-camera:generateDebugResValues', task ':capacitor-camera:generateDebugResources', task ':capacitor-camera:packageDebugResources', task ':capacitor-community-sqlite:generateDebugResValues', task ':capacitor-community-sqlite:generateDebugResources', task ':capacitor-community-sqlite:packageDebugResources', task ':capacitor-cordova-android-plugins:generateDebugResValues', task ':capacitor-cordova-android-plugins:generateDebugResources', task ':capacitor-cordova-android-plugins:packageDebugResources', task ':capacitor-filesystem:generateDebugResValues', task ':capacitor-filesystem:generateDebugResources', task ':capacitor-filesystem:packageDebugResources', task ':capacitor-geolocation:generateDebugResValues', task ':capacitor-geolocation:generateDebugResources', task ':capacitor-geolocation:packageDebugResources', task ':capacitor-local-notifications:generateDebugResValues', task ':capacitor-local-notifications:generateDebugResources', task ':capacitor-local-notifications:packageDebugResources', task ':capacitor-preferences:generateDebugResValues', task ':capacitor-preferences:generateDebugResources', task ':capacitor-preferences:packageDebugResources', task ':capacitor-push-notifications:generateDebugResValues', task ':capacitor-push-notifications:generateDebugResources', task ':capacitor-push-notifications:packageDebugResources', task ':capgo-capacitor-audio-recorder:generateDebugResValues', task ':capgo-capacitor-audio-recorder:generateDebugResources', task ':capgo-capacitor-audio-recorder:packageDebugResources', task ':app:mergeDebugResources', task ':app:packageDebugResources', task ':app:parseDebugLocalResources', task ':app:createDebugCompatibleScreenManifests', task ':app:extractDeepLinksDebug', task ':capacitor-android:extractDeepLinksDebug', task ':capacitor-android:processDebugManifest', task ':capacitor-background-runner:extractDeepLinksDebug', task ':capacitor-background-runner:processDebugManifest', task ':capacitor-camera:extractDeepLinksDebug', task ':capacitor-camera:processDebugManifest', task ':capacitor-community-sqlite:extractDeepLinksDebug', task ':capacitor-community-sqlite:processDebugManifest', task ':capacitor-cordova-android-plugins:extractDeepLinksDebug', task ':capacitor-cordova-android-plugins:processDebugManifest', task ':capacitor-filesystem:extractDeepLinksDebug', task ':capacitor-filesystem:processDebugManifest', task ':capacitor-geolocation:extractDeepLinksDebug', task ':capacitor-geolocation:processDebugManifest', task ':capacitor-local-notifications:extractDeepLinksDebug', task ':capacitor-local-notifications:processDebugManifest', task ':capacitor-preferences:extractDeepLinksDebug', task ':capacitor-preferences:processDebugManifest', task ':capacitor-push-notifications:extractDeepLinksDebug', task ':capacitor-push-notifications:processDebugManifest', task ':capgo-capacitor-audio-recorder:extractDeepLinksDebug', task ':capgo-capacitor-audio-recorder:processDebugManifest', task ':app:processDebugMainManifest', task ':app:processDebugManifest', task ':app:processDebugManifestForPackage', task ':capacitor-android:mapDebugSourceSetPaths', task ':capacitor-android:compileDebugLibraryResources', task ':capacitor-android:parseDebugLocalResources', task ':capacitor-android:generateDebugRFile', task ':capacitor-background-runner:mapDebugSourceSetPaths', task ':capacitor-background-runner:compileDebugLibraryResources', task ':capacitor-background-runner:parseDebugLocalResources', task ':capacitor-background-runner:generateDebugRFile', task ':capacitor-camera:mapDebugSourceSetPaths', task ':capacitor-camera:compileDebugLibraryResources', task ':capacitor-camera:parseDebugLocalResources', task ':capacitor-camera:generateDebugRFile', task ':capacitor-community-sqlite:mapDebugSourceSetPaths', task ':capacitor-community-sqlite:compileDebugLibraryResources', task ':capacitor-community-sqlite:parseDebugLocalResources', task ':capacitor-community-sqlite:generateDebugRFile', task ':capacitor-cordova-android-plugins:mapDebugSourceSetPaths', task ':capacitor-cordova-android-plugins:compileDebugLibraryResources', task ':capacitor-cordova-android-plugins:parseDebugLocalResources', task ':capacitor-cordova-android-plugins:generateDebugRFile', task ':capacitor-filesystem:mapDebugSourceSetPaths', task ':capacitor-filesystem:compileDebugLibraryResources', task ':capacitor-filesystem:parseDebugLocalResources', task ':capacitor-filesystem:generateDebugRFile', task ':capacitor-geolocation:mapDebugSourceSetPaths', task ':capacitor-geolocation:compileDebugLibraryResources', task ':capacitor-geolocation:parseDebugLocalResources', task ':capacitor-geolocation:generateDebugRFile', task ':capacitor-local-notifications:mapDebugSourceSetPaths', task ':capacitor-local-notifications:compileDebugLibraryResources', task ':capacitor-local-notifications:parseDebugLocalResources', task ':capacitor-local-notifications:generateDebugRFile', task ':capacitor-preferences:mapDebugSourceSetPaths', task ':capacitor-preferences:compileDebugLibraryResources', task ':capacitor-preferences:parseDebugLocalResources', task ':capacitor-preferences:generateDebugRFile', task ':capacitor-push-notifications:mapDebugSourceSetPaths', task ':capacitor-push-notifications:compileDebugLibraryResources', task ':capacitor-push-notifications:parseDebugLocalResources', task ':capacitor-push-notifications:generateDebugRFile', task ':capgo-capacitor-audio-recorder:mapDebugSourceSetPaths', task ':capgo-capacitor-audio-recorder:compileDebugLibraryResources', task ':capgo-capacitor-audio-recorder:parseDebugLocalResources', task ':capgo-capacitor-audio-recorder:generateDebugRFile', task ':app:processDebugResources', task ':capacitor-android:javaPreCompileDebug', task ':capacitor-android:compileDebugJavaWithJavac', task ':capacitor-android:bundleLibCompileToJarDebug', task ':capacitor-background-runner:checkKotlinGradlePluginConfigurationErrors', task ':capacitor-background-runner:compileDebugKotlin', task ':capacitor-background-runner:javaPreCompileDebug', task ':capacitor-background-runner:compileDebugJavaWithJavac', task ':capacitor-background-runner:bundleLibCompileToJarDebug', task ':capacitor-camera:checkKotlinGradlePluginConfigurationErrors', task ':capacitor-camera:compileDebugKotlin', task ':capacitor-camera:javaPreCompileDebug', task ':capacitor-camera:compileDebugJavaWithJavac', task ':capacitor-camera:bundleLibCompileToJarDebug', task ':capacitor-community-sqlite:javaPreCompileDebug', task ':capacitor-community-sqlite:compileDebugJavaWithJavac', task ':capacitor-community-sqlite:bundleLibCompileToJarDebug', task ':capacitor-cordova-android-plugins:javaPreCompileDebug', task ':capacitor-cordova-android-plugins:compileDebugJavaWithJavac', task ':capacitor-cordova-android-plugins:bundleLibCompileToJarDebug', task ':capacitor-filesystem:checkKotlinGradlePluginConfigurationErrors', task ':capacitor-filesystem:compileDebugKotlin', task ':capacitor-filesystem:javaPreCompileDebug', task ':capacitor-filesystem:compileDebugJavaWithJavac', task ':capacitor-filesystem:bundleLibCompileToJarDebug', task ':capacitor-geolocation:checkKotlinGradlePluginConfigurationErrors', task ':capacitor-geolocation:compileDebugKotlin', task ':capacitor-geolocation:javaPreCompileDebug', task ':capacitor-geolocation:compileDebugJavaWithJavac', task ':capacitor-geolocation:bundleLibCompileToJarDebug', task ':capacitor-local-notifications:javaPreCompileDebug', task ':capacitor-local-notifications:compileDebugJavaWithJavac', task ':capacitor-local-notifications:bundleLibCompileToJarDebug', task ':capacitor-preferences:javaPreCompileDebug', task ':capacitor-preferences:compileDebugJavaWithJavac', task ':capacitor-preferences:bundleLibCompileToJarDebug', task ':capacitor-push-notifications:javaPreCompileDebug', task ':capacitor-push-notifications:compileDebugJavaWithJavac', task ':capacitor-push-notifications:bundleLibCompileToJarDebug', task ':capgo-capacitor-audio-recorder:javaPreCompileDebug', task ':capgo-capacitor-audio-recorder:compileDebugJavaWithJavac', task ':capgo-capacitor-audio-recorder:bundleLibCompileToJarDebug', task ':app:compileDebugJavaWithJavac']
+Tasks that were excluded: []
+Resolve mutations for :app:preBuild (Thread[#1357,Execution worker,5,main]) started.
+:app:preBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :app:preBuild UP-TO-DATE
+Skipping task ':app:preBuild' as it has no actions.
+Resolve mutations for :app:preDebugBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:app:preDebugBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :app:preDebugBuild UP-TO-DATE
+Skipping task ':app:preDebugBuild' as it has no actions.
+Resolve mutations for :app:javaPreCompileDebug (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:app:javaPreCompileDebug (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :app:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':app:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':app:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-android:preBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-android:preBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-android:preBuild UP-TO-DATE
+Skipping task ':capacitor-android:preBuild' as it has no actions.
+Resolve mutations for :capacitor-android:preDebugBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-android:preDebugBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-android:preDebugBuild UP-TO-DATE
+Skipping task ':capacitor-android:preDebugBuild' as it has no actions.
+Resolve mutations for :capacitor-android:writeDebugAarMetadata (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-android:writeDebugAarMetadata (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-android:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capacitor-android:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-android:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capacitor-android) (Thread[#1363,Execution worker Thread 7,5,main]) started.
+Resolve mutations for :capacitor-background-runner:preBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-background-runner:preBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-background-runner:preBuild UP-TO-DATE
+Skipping task ':capacitor-background-runner:preBuild' as it has no actions.
+Resolve mutations for :capacitor-background-runner:preDebugBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-background-runner:preDebugBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-background-runner:preDebugBuild UP-TO-DATE
+Skipping task ':capacitor-background-runner:preDebugBuild' as it has no actions.
+Resolve mutations for :capacitor-background-runner:writeDebugAarMetadata (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-background-runner:writeDebugAarMetadata (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-background-runner:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-background-runner:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capacitor-background-runner) (Thread[#1363,Execution worker Thread 7,5,main]) started.
+Resolve mutations for :capacitor-camera:preBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-camera:preBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-camera:preBuild UP-TO-DATE
+Skipping task ':capacitor-camera:preBuild' as it has no actions.
+Resolve mutations for :capacitor-camera:preDebugBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-camera:preDebugBuild (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-camera:preDebugBuild UP-TO-DATE
+Skipping task ':capacitor-camera:preDebugBuild' as it has no actions.
+Resolve mutations for :capacitor-camera:writeDebugAarMetadata (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-camera:writeDebugAarMetadata (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-camera:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capacitor-camera:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-camera:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capacitor-camera) (Thread[#1363,Execution worker Thread 7,5,main]) started.
+Resolve mutations for :capacitor-community-sqlite:preBuild (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-community-sqlite:preBuild (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-community-sqlite:preBuild UP-TO-DATE
+Skipping task ':capacitor-community-sqlite:preBuild' as it has no actions.
+Resolve mutations for :capacitor-community-sqlite:preDebugBuild (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-community-sqlite:preDebugBuild (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-community-sqlite:preDebugBuild UP-TO-DATE
+Skipping task ':capacitor-community-sqlite:preDebugBuild' as it has no actions.
+Resolve mutations for :capacitor-community-sqlite:writeDebugAarMetadata (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-community-sqlite:writeDebugAarMetadata (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-community-sqlite:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-community-sqlite:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capacitor-community-sqlite) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-cordova-android-plugins:preBuild (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-cordova-android-plugins:preBuild (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:preBuild UP-TO-DATE
+Skipping task ':capacitor-cordova-android-plugins:preBuild' as it has no actions.
+Resolve mutations for :capacitor-cordova-android-plugins:preDebugBuild (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-cordova-android-plugins:preDebugBuild (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:preDebugBuild UP-TO-DATE
+Skipping task ':capacitor-cordova-android-plugins:preDebugBuild' as it has no actions.
+Resolve mutations for :capacitor-cordova-android-plugins:writeDebugAarMetadata (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-cordova-android-plugins:writeDebugAarMetadata (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-cordova-android-plugins:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capacitor-cordova-android-plugins) (Thread[#1357,Execution worker,5,main]) started.
+Resolve mutations for :capacitor-filesystem:preBuild (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-filesystem:preBuild (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-filesystem:preBuild UP-TO-DATE
+Skipping task ':capacitor-filesystem:preBuild' as it has no actions.
+Resolve mutations for :capacitor-filesystem:preDebugBuild (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-filesystem:preDebugBuild (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-filesystem:preDebugBuild UP-TO-DATE
+Skipping task ':capacitor-filesystem:preDebugBuild' as it has no actions.
+Resolve mutations for :capacitor-filesystem:writeDebugAarMetadata (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-filesystem:writeDebugAarMetadata (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-filesystem:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-filesystem:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capacitor-filesystem) (Thread[#1357,Execution worker,5,main]) started.
+Resolve mutations for :capacitor-geolocation:preBuild (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-geolocation:preBuild (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-geolocation:preBuild UP-TO-DATE
+Skipping task ':capacitor-geolocation:preBuild' as it has no actions.
+Resolve mutations for :capacitor-geolocation:preDebugBuild (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-geolocation:preDebugBuild (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-geolocation:preDebugBuild UP-TO-DATE
+Skipping task ':capacitor-geolocation:preDebugBuild' as it has no actions.
+Resolve mutations for :capacitor-geolocation:writeDebugAarMetadata (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-geolocation:writeDebugAarMetadata (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-geolocation:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-geolocation:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capacitor-geolocation) (Thread[#1357,Execution worker,5,main]) started.
+Resolve mutations for :capacitor-local-notifications:preBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-local-notifications:preBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-local-notifications:preBuild UP-TO-DATE
+Skipping task ':capacitor-local-notifications:preBuild' as it has no actions.
+Resolve mutations for :capacitor-local-notifications:preDebugBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-local-notifications:preDebugBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-local-notifications:preDebugBuild UP-TO-DATE
+Skipping task ':capacitor-local-notifications:preDebugBuild' as it has no actions.
+Resolve mutations for :capacitor-local-notifications:writeDebugAarMetadata (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-local-notifications:writeDebugAarMetadata (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-local-notifications:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-local-notifications:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capacitor-local-notifications) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-preferences:preBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-preferences:preBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-preferences:preBuild UP-TO-DATE
+Skipping task ':capacitor-preferences:preBuild' as it has no actions.
+Resolve mutations for :capacitor-preferences:preDebugBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-preferences:preDebugBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-preferences:preDebugBuild UP-TO-DATE
+Skipping task ':capacitor-preferences:preDebugBuild' as it has no actions.
+Resolve mutations for :capacitor-preferences:writeDebugAarMetadata (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-preferences:writeDebugAarMetadata (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-preferences:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-preferences:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capacitor-preferences) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-push-notifications:preBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-push-notifications:preBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-push-notifications:preBuild UP-TO-DATE
+Skipping task ':capacitor-push-notifications:preBuild' as it has no actions.
+Resolve mutations for :capacitor-push-notifications:preDebugBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-push-notifications:preDebugBuild (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-push-notifications:preDebugBuild UP-TO-DATE
+Skipping task ':capacitor-push-notifications:preDebugBuild' as it has no actions.
+Resolve mutations for :capacitor-push-notifications:writeDebugAarMetadata (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-push-notifications:writeDebugAarMetadata (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-push-notifications:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-push-notifications:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capacitor-push-notifications) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capgo-capacitor-audio-recorder:preBuild (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capgo-capacitor-audio-recorder:preBuild (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:preBuild UP-TO-DATE
+Skipping task ':capgo-capacitor-audio-recorder:preBuild' as it has no actions.
+Resolve mutations for :capgo-capacitor-audio-recorder:preDebugBuild (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capgo-capacitor-audio-recorder:preDebugBuild (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:preDebugBuild UP-TO-DATE
+Skipping task ':capgo-capacitor-audio-recorder:preDebugBuild' as it has no actions.
+Resolve mutations for :capgo-capacitor-audio-recorder:writeDebugAarMetadata (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capgo-capacitor-audio-recorder:writeDebugAarMetadata (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:writeDebugAarMetadata UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:writeDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capgo-capacitor-audio-recorder:writeDebugAarMetadata' as it is up-to-date.
+work action resolve aar-metadata.properties (project :capgo-capacitor-audio-recorder) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :app:checkDebugAarMetadata (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:app:checkDebugAarMetadata (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :app:checkDebugAarMetadata UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor-community\sqlite\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\local-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\preferences\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\push-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capgo\capacitor-audio-recorder\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\android\capacitor\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\capacitor-cordova-android-plugins\src\main\libs', not found
+Caching disabled for task ':app:checkDebugAarMetadata' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:checkDebugAarMetadata' as it is up-to-date.
+Resolve mutations for :app:generateDebugResValues (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:app:generateDebugResValues (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :app:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':app:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :app:processDebugGoogleServices (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:app:processDebugGoogleServices (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :app:processDebugGoogleServices UP-TO-DATE
+Caching disabled for task ':app:processDebugGoogleServices' because:
+  Build cache is disabled
+Skipping task ':app:processDebugGoogleServices' as it is up-to-date.
+Resolve mutations for :app:mapDebugSourceSetPaths (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:app:mapDebugSourceSetPaths (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :app:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':app:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:mapDebugSourceSetPaths' as it is up-to-date.
+Resolve mutations for :capacitor-android:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-android:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-android:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capacitor-android:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capacitor-android) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-background-runner:processDebugNavigationResources (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-background-runner:processDebugNavigationResources (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-background-runner:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capacitor-background-runner) (Thread[#1363,Execution worker Thread 7,5,main]) started.
+Resolve mutations for :capacitor-camera:processDebugNavigationResources (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-camera:processDebugNavigationResources (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-camera:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capacitor-camera:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capacitor-camera) (Thread[#1363,Execution worker Thread 7,5,main]) started.
+Resolve mutations for :capacitor-community-sqlite:processDebugNavigationResources (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-community-sqlite:processDebugNavigationResources (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-community-sqlite:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capacitor-community-sqlite) (Thread[#1363,Execution worker Thread 7,5,main]) started.
+Resolve mutations for :capacitor-cordova-android-plugins:processDebugNavigationResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-cordova-android-plugins:processDebugNavigationResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-cordova-android-plugins:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capacitor-cordova-android-plugins) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-filesystem:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-filesystem:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-filesystem:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capacitor-filesystem) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-geolocation:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-geolocation:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-geolocation:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capacitor-geolocation) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-local-notifications:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-local-notifications:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-local-notifications:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capacitor-local-notifications) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-preferences:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-preferences:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-preferences:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capacitor-preferences) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-push-notifications:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-push-notifications:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-push-notifications:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capacitor-push-notifications) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capgo-capacitor-audio-recorder:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capgo-capacitor-audio-recorder:processDebugNavigationResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:processDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:processDebugNavigationResources' as it is up-to-date.
+work action resolve debug (project :capgo-capacitor-audio-recorder) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :app:processDebugNavigationResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:app:processDebugNavigationResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :app:processDebugNavigationResources UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor-community\sqlite\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\local-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\preferences\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\push-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capgo\capacitor-audio-recorder\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\android\capacitor\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\capacitor-cordova-android-plugins\src\main\libs', not found
+Caching disabled for task ':app:processDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':app:processDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :app:compileDebugNavigationResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:app:compileDebugNavigationResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :app:compileDebugNavigationResources UP-TO-DATE
+Caching disabled for task ':app:compileDebugNavigationResources' because:
+  Build cache is disabled
+Skipping task ':app:compileDebugNavigationResources' as it is up-to-date.
+Resolve mutations for :app:generateDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:app:generateDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :app:generateDebugResources UP-TO-DATE
+Caching disabled for task ':app:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-android:generateDebugResValues (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-android:generateDebugResValues (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-android:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capacitor-android:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capacitor-android:generateDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-android:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-android:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-android:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-android:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-android:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-android:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-android:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capacitor-android) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-background-runner:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-background-runner:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-background-runner:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capacitor-background-runner:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-background-runner:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-background-runner:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-background-runner:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-background-runner:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-background-runner:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capacitor-background-runner) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-camera:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-camera:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-camera:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capacitor-camera:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capacitor-camera:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-camera:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-camera:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-camera:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-camera:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-camera:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-camera:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-camera:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capacitor-camera) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-community-sqlite:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-community-sqlite:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-community-sqlite:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capacitor-community-sqlite:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-community-sqlite:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-community-sqlite:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-community-sqlite:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-community-sqlite:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-community-sqlite:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capacitor-community-sqlite) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-cordova-android-plugins:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-cordova-android-plugins:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capacitor-cordova-android-plugins:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capacitor-cordova-android-plugins:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-cordova-android-plugins:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-cordova-android-plugins:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-cordova-android-plugins:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-cordova-android-plugins:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-cordova-android-plugins:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capacitor-cordova-android-plugins) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-filesystem:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-filesystem:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-filesystem:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capacitor-filesystem:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-filesystem:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-filesystem:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-filesystem:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-filesystem:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-filesystem:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capacitor-filesystem) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-geolocation:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-geolocation:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-geolocation:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capacitor-geolocation:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-geolocation:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-geolocation:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-geolocation:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-geolocation:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-geolocation:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capacitor-geolocation) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-local-notifications:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-local-notifications:generateDebugResValues (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-local-notifications:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capacitor-local-notifications:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-local-notifications:generateDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-local-notifications:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-local-notifications:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-local-notifications:packageDebugResources (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-local-notifications:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capacitor-local-notifications) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-preferences:generateDebugResValues (Thread[#1362,Execution worker Thread 6,5,main]) started.
+:capacitor-preferences:generateDebugResValues (Thread[#1362,Execution worker Thread 6,5,main]) started.
+
+> Task :capacitor-preferences:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capacitor-preferences:generateDebugResources (Thread[#1362,Execution worker Thread 6,5,main]) started.
+:capacitor-preferences:generateDebugResources (Thread[#1362,Execution worker Thread 6,5,main]) started.
+
+> Task :capacitor-preferences:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-preferences:packageDebugResources (Thread[#1362,Execution worker Thread 6,5,main]) started.
+:capacitor-preferences:packageDebugResources (Thread[#1362,Execution worker Thread 6,5,main]) started.
+
+> Task :capacitor-preferences:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capacitor-preferences) (Thread[#1362,Execution worker Thread 6,5,main]) started.
+Resolve mutations for :capacitor-push-notifications:generateDebugResValues (Thread[#1356,included builds,5,main]) started.
+:capacitor-push-notifications:generateDebugResValues (Thread[#1356,included builds,5,main]) started.
+
+> Task :capacitor-push-notifications:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capacitor-push-notifications:generateDebugResources (Thread[#1356,included builds,5,main]) started.
+:capacitor-push-notifications:generateDebugResources (Thread[#1356,included builds,5,main]) started.
+
+> Task :capacitor-push-notifications:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-push-notifications:packageDebugResources (Thread[#1356,included builds,5,main]) started.
+:capacitor-push-notifications:packageDebugResources (Thread[#1356,included builds,5,main]) started.
+
+> Task :capacitor-push-notifications:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capacitor-push-notifications) (Thread[#1356,included builds,5,main]) started.
+Resolve mutations for :capgo-capacitor-audio-recorder:generateDebugResValues (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capgo-capacitor-audio-recorder:generateDebugResValues (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:generateDebugResValues UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:generateDebugResValues' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:generateDebugResValues' as it is up-to-date.
+Resolve mutations for :capgo-capacitor-audio-recorder:generateDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capgo-capacitor-audio-recorder:generateDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:generateDebugResources UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:generateDebugResources' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:generateDebugResources' as it is up-to-date.
+Resolve mutations for :capgo-capacitor-audio-recorder:packageDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capgo-capacitor-audio-recorder:packageDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:packageDebugResources UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:packageDebugResources' as it is up-to-date.
+work action resolve packageDebugResources (project :capgo-capacitor-audio-recorder) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :app:mergeDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:app:mergeDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :app:mergeDebugResources UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor-community\sqlite\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\local-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\preferences\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\push-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capgo\capacitor-audio-recorder\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\android\capacitor\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\capacitor-cordova-android-plugins\src\main\libs', not found
+Caching disabled for task ':app:mergeDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:mergeDebugResources' as it is up-to-date.
+Resolve mutations for :app:packageDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:app:packageDebugResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :app:packageDebugResources UP-TO-DATE
+Caching disabled for task ':app:packageDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:packageDebugResources' as it is up-to-date.
+Resolve mutations for :app:parseDebugLocalResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:app:parseDebugLocalResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :app:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':app:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':app:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :app:createDebugCompatibleScreenManifests (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:app:createDebugCompatibleScreenManifests (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :app:createDebugCompatibleScreenManifests UP-TO-DATE
+Caching disabled for task ':app:createDebugCompatibleScreenManifests' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':app:createDebugCompatibleScreenManifests' as it is up-to-date.
+Resolve mutations for :app:extractDeepLinksDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:app:extractDeepLinksDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :app:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':app:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':app:extractDeepLinksDebug' as it is up-to-date.
+Resolve mutations for :capacitor-android:extractDeepLinksDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-android:extractDeepLinksDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-android:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capacitor-android:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capacitor-android) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-android:processDebugManifest (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-android:processDebugManifest (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-android:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capacitor-android:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capacitor-android) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-background-runner:extractDeepLinksDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-background-runner:extractDeepLinksDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-background-runner:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capacitor-background-runner) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-background-runner:processDebugManifest (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-background-runner:processDebugManifest (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-background-runner:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capacitor-background-runner) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-camera:extractDeepLinksDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-camera:extractDeepLinksDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-camera:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capacitor-camera:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capacitor-camera) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-camera:processDebugManifest (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-camera:processDebugManifest (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-camera:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capacitor-camera:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capacitor-camera) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-community-sqlite:extractDeepLinksDebug (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-community-sqlite:extractDeepLinksDebug (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-community-sqlite:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capacitor-community-sqlite) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-community-sqlite:processDebugManifest (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-community-sqlite:processDebugManifest (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-community-sqlite:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capacitor-community-sqlite) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-cordova-android-plugins:extractDeepLinksDebug (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-cordova-android-plugins:extractDeepLinksDebug (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-cordova-android-plugins:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capacitor-cordova-android-plugins) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-cordova-android-plugins:processDebugManifest (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-cordova-android-plugins:processDebugManifest (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capacitor-cordova-android-plugins:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capacitor-cordova-android-plugins) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-filesystem:extractDeepLinksDebug (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-filesystem:extractDeepLinksDebug (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-filesystem:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capacitor-filesystem) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-filesystem:processDebugManifest (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-filesystem:processDebugManifest (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-filesystem:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capacitor-filesystem) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-geolocation:extractDeepLinksDebug (Thread[#1360,Execution worker Thread 4,5,main]) started.
+:capacitor-geolocation:extractDeepLinksDebug (Thread[#1360,Execution worker Thread 4,5,main]) started.
+
+> Task :capacitor-geolocation:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capacitor-geolocation) (Thread[#1360,Execution worker Thread 4,5,main]) started.
+Resolve mutations for :capacitor-geolocation:processDebugManifest (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-geolocation:processDebugManifest (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-geolocation:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capacitor-geolocation) (Thread[#1363,Execution worker Thread 7,5,main]) started.
+Resolve mutations for :capacitor-local-notifications:extractDeepLinksDebug (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-local-notifications:extractDeepLinksDebug (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-local-notifications:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capacitor-local-notifications) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-local-notifications:processDebugManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-local-notifications:processDebugManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-local-notifications:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capacitor-local-notifications) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-preferences:extractDeepLinksDebug (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-preferences:extractDeepLinksDebug (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-preferences:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capacitor-preferences) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-preferences:processDebugManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-preferences:processDebugManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-preferences:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capacitor-preferences) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-push-notifications:extractDeepLinksDebug (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-push-notifications:extractDeepLinksDebug (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-push-notifications:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capacitor-push-notifications) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-push-notifications:processDebugManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-push-notifications:processDebugManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-push-notifications:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capacitor-push-notifications) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capgo-capacitor-audio-recorder:extractDeepLinksDebug (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capgo-capacitor-audio-recorder:extractDeepLinksDebug (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:extractDeepLinksDebug UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:extractDeepLinksDebug' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:extractDeepLinksDebug' as it is up-to-date.
+work action resolve navigation.json (project :capgo-capacitor-audio-recorder) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capgo-capacitor-audio-recorder:processDebugManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capgo-capacitor-audio-recorder:processDebugManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:processDebugManifest UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:processDebugManifest' as it is up-to-date.
+work action resolve AndroidManifest.xml (project :capgo-capacitor-audio-recorder) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :app:processDebugMainManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:app:processDebugMainManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :app:processDebugMainManifest UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor-community\sqlite\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\local-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\preferences\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\push-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capgo\capacitor-audio-recorder\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\android\capacitor\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\capacitor-cordova-android-plugins\src\main\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor-community\sqlite\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\local-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\preferences\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\push-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capgo\capacitor-audio-recorder\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\android\capacitor\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\capacitor-cordova-android-plugins\src\main\libs', not found
+Caching disabled for task ':app:processDebugMainManifest' because:
+  Build cache is disabled
+Skipping task ':app:processDebugMainManifest' as it is up-to-date.
+Resolve mutations for :app:processDebugManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:app:processDebugManifest (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :app:processDebugManifest UP-TO-DATE
+Caching disabled for task ':app:processDebugManifest' because:
+  Build cache is disabled
+Skipping task ':app:processDebugManifest' as it is up-to-date.
+Resolve mutations for :app:processDebugManifestForPackage (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:app:processDebugManifestForPackage (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :app:processDebugManifestForPackage UP-TO-DATE
+Custom actions are attached to task ':app:processDebugManifestForPackage'.
+Caching disabled for task ':app:processDebugManifestForPackage' because:
+  Build cache is disabled
+Skipping task ':app:processDebugManifestForPackage' as it is up-to-date.
+Resolve mutations for :capacitor-android:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-android:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-android:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capacitor-android:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-android:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capacitor-android) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-android:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-android:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-android:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capacitor-android:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capacitor-android) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-android:parseDebugLocalResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-android:parseDebugLocalResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-android:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capacitor-android:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capacitor-android:generateDebugRFile (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-android:generateDebugRFile (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-android:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capacitor-android:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capacitor-android) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-background-runner:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-background-runner:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-background-runner:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-background-runner:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capacitor-background-runner) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-background-runner:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-background-runner:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-background-runner:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capacitor-background-runner) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-background-runner:parseDebugLocalResources (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-background-runner:parseDebugLocalResources (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-background-runner:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capacitor-background-runner:generateDebugRFile (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-background-runner:generateDebugRFile (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-background-runner:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capacitor-background-runner) (Thread[#1363,Execution worker Thread 7,5,main]) started.
+Resolve mutations for :capacitor-camera:mapDebugSourceSetPaths (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-camera:mapDebugSourceSetPaths (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-camera:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capacitor-camera:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-camera:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capacitor-camera) (Thread[#1363,Execution worker Thread 7,5,main]) started.
+Resolve mutations for :capacitor-camera:compileDebugLibraryResources (Thread[#1363,Execution worker Thread 7,5,main]) started.
+:capacitor-camera:compileDebugLibraryResources (Thread[#1363,Execution worker Thread 7,5,main]) started.
+
+> Task :capacitor-camera:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capacitor-camera:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capacitor-camera) (Thread[#1363,Execution worker Thread 7,5,main]) started.
+Resolve mutations for :capacitor-camera:parseDebugLocalResources (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-camera:parseDebugLocalResources (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-camera:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capacitor-camera:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capacitor-camera:generateDebugRFile (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-camera:generateDebugRFile (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-camera:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capacitor-camera:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capacitor-camera) (Thread[#1357,Execution worker,5,main]) started.
+Resolve mutations for :capacitor-community-sqlite:mapDebugSourceSetPaths (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-community-sqlite:mapDebugSourceSetPaths (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-community-sqlite:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-community-sqlite:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capacitor-community-sqlite) (Thread[#1357,Execution worker,5,main]) started.
+Resolve mutations for :capacitor-community-sqlite:compileDebugLibraryResources (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-community-sqlite:compileDebugLibraryResources (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-community-sqlite:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capacitor-community-sqlite) (Thread[#1357,Execution worker,5,main]) started.
+Resolve mutations for :capacitor-community-sqlite:parseDebugLocalResources (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-community-sqlite:parseDebugLocalResources (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-community-sqlite:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capacitor-community-sqlite:generateDebugRFile (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-community-sqlite:generateDebugRFile (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-community-sqlite:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capacitor-community-sqlite) (Thread[#1357,Execution worker,5,main]) started.
+Resolve mutations for :capacitor-cordova-android-plugins:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-cordova-android-plugins:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-cordova-android-plugins:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capacitor-cordova-android-plugins) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-cordova-android-plugins:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-cordova-android-plugins:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-cordova-android-plugins:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capacitor-cordova-android-plugins) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-cordova-android-plugins:parseDebugLocalResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-cordova-android-plugins:parseDebugLocalResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-cordova-android-plugins:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capacitor-cordova-android-plugins:generateDebugRFile (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-cordova-android-plugins:generateDebugRFile (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capacitor-cordova-android-plugins:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capacitor-cordova-android-plugins) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-filesystem:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-filesystem:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-filesystem:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-filesystem:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capacitor-filesystem) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-filesystem:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-filesystem:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-filesystem:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capacitor-filesystem) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-filesystem:parseDebugLocalResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-filesystem:parseDebugLocalResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-filesystem:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capacitor-filesystem:generateDebugRFile (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-filesystem:generateDebugRFile (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-filesystem:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capacitor-filesystem) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-geolocation:mapDebugSourceSetPaths (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-geolocation:mapDebugSourceSetPaths (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-geolocation:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-geolocation:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capacitor-geolocation) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-geolocation:compileDebugLibraryResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-geolocation:compileDebugLibraryResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-geolocation:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capacitor-geolocation) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-geolocation:parseDebugLocalResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-geolocation:parseDebugLocalResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-geolocation:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capacitor-geolocation:generateDebugRFile (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-geolocation:generateDebugRFile (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-geolocation:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capacitor-geolocation) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-local-notifications:mapDebugSourceSetPaths (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-local-notifications:mapDebugSourceSetPaths (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-local-notifications:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-local-notifications:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capacitor-local-notifications) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-local-notifications:compileDebugLibraryResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-local-notifications:compileDebugLibraryResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-local-notifications:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capacitor-local-notifications) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-local-notifications:parseDebugLocalResources (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-local-notifications:parseDebugLocalResources (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-local-notifications:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capacitor-local-notifications:generateDebugRFile (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-local-notifications:generateDebugRFile (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-local-notifications:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capacitor-local-notifications) (Thread[#1357,Execution worker,5,main]) started.
+Resolve mutations for :capacitor-preferences:mapDebugSourceSetPaths (Thread[#1357,Execution worker,5,main]) started.
+:capacitor-preferences:mapDebugSourceSetPaths (Thread[#1357,Execution worker,5,main]) started.
+
+> Task :capacitor-preferences:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-preferences:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capacitor-preferences) (Thread[#1357,Execution worker,5,main]) started.
+Resolve mutations for :capacitor-preferences:compileDebugLibraryResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-preferences:compileDebugLibraryResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-preferences:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capacitor-preferences) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-preferences:parseDebugLocalResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-preferences:parseDebugLocalResources (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-preferences:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capacitor-preferences:generateDebugRFile (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-preferences:generateDebugRFile (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-preferences:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capacitor-preferences) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-push-notifications:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-push-notifications:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-push-notifications:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capacitor-push-notifications:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capacitor-push-notifications) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-push-notifications:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-push-notifications:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-push-notifications:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capacitor-push-notifications) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capacitor-push-notifications:parseDebugLocalResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-push-notifications:parseDebugLocalResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-push-notifications:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capacitor-push-notifications:generateDebugRFile (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capacitor-push-notifications:generateDebugRFile (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capacitor-push-notifications:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capacitor-push-notifications) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capgo-capacitor-audio-recorder:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capgo-capacitor-audio-recorder:mapDebugSourceSetPaths (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:mapDebugSourceSetPaths UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:mapDebugSourceSetPaths' because:
+  Build cache is disabled
+  Caching has been disabled for the task
+Skipping task ':capgo-capacitor-audio-recorder:mapDebugSourceSetPaths' as it is up-to-date.
+work action resolve file-map.txt (project :capgo-capacitor-audio-recorder) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capgo-capacitor-audio-recorder:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capgo-capacitor-audio-recorder:compileDebugLibraryResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:compileDebugLibraryResources UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:compileDebugLibraryResources' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:compileDebugLibraryResources' as it is up-to-date.
+work action resolve out (project :capgo-capacitor-audio-recorder) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :capgo-capacitor-audio-recorder:parseDebugLocalResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capgo-capacitor-audio-recorder:parseDebugLocalResources (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:parseDebugLocalResources UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:parseDebugLocalResources' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:parseDebugLocalResources' as it is up-to-date.
+Resolve mutations for :capgo-capacitor-audio-recorder:generateDebugRFile (Thread[#1359,Execution worker Thread 3,5,main]) started.
+:capgo-capacitor-audio-recorder:generateDebugRFile (Thread[#1359,Execution worker Thread 3,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:generateDebugRFile UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:generateDebugRFile' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:generateDebugRFile' as it is up-to-date.
+work action resolve package-aware-r.txt (project :capgo-capacitor-audio-recorder) (Thread[#1359,Execution worker Thread 3,5,main]) started.
+Resolve mutations for :app:processDebugResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:app:processDebugResources (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :app:processDebugResources UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor-community\sqlite\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\local-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\preferences\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\push-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capgo\capacitor-audio-recorder\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\android\capacitor\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\capacitor-cordova-android-plugins\src\main\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor-community\sqlite\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\local-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\preferences\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\push-notifications\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capgo\capacitor-audio-recorder\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\android\capacitor\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\capacitor-cordova-android-plugins\src\main\libs', not found
+Registered task dependencies: app:debugCompileClasspath
+Skipping misunderstood TO dep string: org.jetbrains.kotlin:kotlin-stdlib
+Skipping misunderstood TO dep string: org.jetbrains.kotlin:kotlin-stdlib
+Skipping misunderstood TO dep string: org.jetbrains.kotlin:kotlin-stdlib
+Skipping misunderstood TO dep string: org.jetbrains.kotlin:kotlin-stdlib
+Skipping misunderstood TO dep string: org.jetbrains.kotlin:kotlin-stdlib
+Skipping misunderstood TO dep string: project :capacitor-android
+Skipping misunderstood TO dep string: project :capacitor-cordova-android-plugins
+Skipping misunderstood TO dep string: com.google.firebase:firebase-messaging
+Skipping misunderstood TO dep string: project :capacitor-community-sqlite
+Skipping misunderstood TO dep string: project :capacitor-background-runner
+Skipping misunderstood TO dep string: project :capacitor-camera
+Skipping misunderstood TO dep string: project :capacitor-filesystem
+Skipping misunderstood TO dep string: project :capacitor-geolocation
+Skipping misunderstood TO dep string: project :capacitor-local-notifications
+Skipping misunderstood TO dep string: project :capacitor-preferences
+Skipping misunderstood TO dep string: project :capacitor-push-notifications
+Skipping misunderstood TO dep string: project :capgo-capacitor-audio-recorder
+Starting dependency analysis
+Caching disabled for task ':app:processDebugResources' because:
+  Build cache is disabled
+Skipping task ':app:processDebugResources' as it is up-to-date.
+Resolve mutations for :capacitor-android:javaPreCompileDebug (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-android:javaPreCompileDebug (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-android:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capacitor-android:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-android:compileDebugJavaWithJavac (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-android:compileDebugJavaWithJavac (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-android:compileDebugJavaWithJavac UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\android\capacitor\libs', not found
+Custom actions are attached to task ':capacitor-android:compileDebugJavaWithJavac'.
+Caching disabled for task ':capacitor-android:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Skipping task ':capacitor-android:compileDebugJavaWithJavac' as it is up-to-date.
+No compile result for :capacitor-android:compileDebugJavaWithJavac
+No compile result for :capacitor-android:compileDebugJavaWithJavac
+Resolve mutations for :capacitor-android:bundleLibCompileToJarDebug (Thread[#1361,Execution worker Thread 5,5,main]) started.
+:capacitor-android:bundleLibCompileToJarDebug (Thread[#1361,Execution worker Thread 5,5,main]) started.
+
+> Task :capacitor-android:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capacitor-android:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capacitor-android:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capacitor-android) (Thread[#1361,Execution worker Thread 5,5,main]) started.
+Resolve mutations for :capacitor-background-runner:checkKotlinGradlePluginConfigurationErrors (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-background-runner:checkKotlinGradlePluginConfigurationErrors (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-background-runner:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':capacitor-background-runner:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :capacitor-background-runner:compileDebugKotlin (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-background-runner:compileDebugKotlin (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-background-runner:compileDebugKotlin UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+Adding -Xuse-inline-scopes-numbers Kotlin compiler flag for task :capacitor-background-runner:compileDebugAndroidTestKotlin
+GradleBuildProject.Builder should not be accessed through AnalyticsConfiguratorService after AnalyticsService is created. Analytics information of this build might be incomplete.
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\background-runner\android\libs', not found
+Caching disabled for task ':capacitor-background-runner:compileDebugKotlin' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:compileDebugKotlin' as it is up-to-date.
+Resolve mutations for :capacitor-background-runner:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-background-runner:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-background-runner:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-background-runner:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-background-runner:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-background-runner:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-background-runner:compileDebugJavaWithJavac NO-SOURCE
+Skipping task ':capacitor-background-runner:compileDebugJavaWithJavac' as it has no source files and no previous output files.
+Resolve mutations for :capacitor-background-runner:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-background-runner:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-background-runner:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capacitor-background-runner:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capacitor-background-runner:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capacitor-background-runner) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-camera:checkKotlinGradlePluginConfigurationErrors (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-camera:checkKotlinGradlePluginConfigurationErrors (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-camera:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':capacitor-camera:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :capacitor-camera:compileDebugKotlin (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-camera:compileDebugKotlin (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-camera:compileDebugKotlin UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+Adding -Xuse-inline-scopes-numbers Kotlin compiler flag for task :capacitor-camera:compileDebugAndroidTestKotlin
+GradleBuildProject.Builder should not be accessed through AnalyticsConfiguratorService after AnalyticsService is created. Analytics information of this build might be incomplete.
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+Caching disabled for task ':capacitor-camera:compileDebugKotlin' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:compileDebugKotlin' as it is up-to-date.
+Resolve mutations for :capacitor-camera:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-camera:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-camera:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capacitor-camera:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-camera:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-camera:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-camera:compileDebugJavaWithJavac UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\camera\android\libs', not found
+Custom actions are attached to task ':capacitor-camera:compileDebugJavaWithJavac'.
+Caching disabled for task ':capacitor-camera:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Skipping task ':capacitor-camera:compileDebugJavaWithJavac' as it is up-to-date.
+No compile result for :capacitor-camera:compileDebugJavaWithJavac
+No compile result for :capacitor-camera:compileDebugJavaWithJavac
+Resolve mutations for :capacitor-camera:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-camera:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-camera:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capacitor-camera:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capacitor-camera:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capacitor-camera) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-community-sqlite:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-community-sqlite:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-community-sqlite:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-community-sqlite:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-community-sqlite:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-community-sqlite:compileDebugJavaWithJavac UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor-community\sqlite\android\libs', not found
+Custom actions are attached to task ':capacitor-community-sqlite:compileDebugJavaWithJavac'.
+Caching disabled for task ':capacitor-community-sqlite:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Skipping task ':capacitor-community-sqlite:compileDebugJavaWithJavac' as it is up-to-date.
+No compile result for :capacitor-community-sqlite:compileDebugJavaWithJavac
+No compile result for :capacitor-community-sqlite:compileDebugJavaWithJavac
+Resolve mutations for :capacitor-community-sqlite:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-community-sqlite:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-community-sqlite:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capacitor-community-sqlite:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capacitor-community-sqlite:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capacitor-community-sqlite) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-cordova-android-plugins:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-cordova-android-plugins:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-cordova-android-plugins:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-cordova-android-plugins:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-cordova-android-plugins:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:compileDebugJavaWithJavac NO-SOURCE
+Skipping task ':capacitor-cordova-android-plugins:compileDebugJavaWithJavac' as it has no source files and no previous output files.
+Resolve mutations for :capacitor-cordova-android-plugins:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-cordova-android-plugins:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-cordova-android-plugins:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capacitor-cordova-android-plugins:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capacitor-cordova-android-plugins:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capacitor-cordova-android-plugins) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-filesystem:checkKotlinGradlePluginConfigurationErrors (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-filesystem:checkKotlinGradlePluginConfigurationErrors (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-filesystem:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':capacitor-filesystem:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :capacitor-filesystem:compileDebugKotlin (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-filesystem:compileDebugKotlin (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-filesystem:compileDebugKotlin UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+Adding -Xuse-inline-scopes-numbers Kotlin compiler flag for task :capacitor-filesystem:compileDebugAndroidTestKotlin
+GradleBuildProject.Builder should not be accessed through AnalyticsConfiguratorService after AnalyticsService is created. Analytics information of this build might be incomplete.
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\filesystem\android\libs', not found
+Caching disabled for task ':capacitor-filesystem:compileDebugKotlin' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:compileDebugKotlin' as it is up-to-date.
+Resolve mutations for :capacitor-filesystem:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-filesystem:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-filesystem:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-filesystem:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-filesystem:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-filesystem:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-filesystem:compileDebugJavaWithJavac NO-SOURCE
+Skipping task ':capacitor-filesystem:compileDebugJavaWithJavac' as it has no source files and no previous output files.
+Resolve mutations for :capacitor-filesystem:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-filesystem:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-filesystem:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capacitor-filesystem:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capacitor-filesystem:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capacitor-filesystem) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-geolocation:checkKotlinGradlePluginConfigurationErrors (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-geolocation:checkKotlinGradlePluginConfigurationErrors (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-geolocation:checkKotlinGradlePluginConfigurationErrors SKIPPED
+Skipping task ':capacitor-geolocation:checkKotlinGradlePluginConfigurationErrors' as task onlyIf 'errorDiagnostics are present' is false.
+Resolve mutations for :capacitor-geolocation:compileDebugKotlin (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-geolocation:compileDebugKotlin (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-geolocation:compileDebugKotlin UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+Adding -Xuse-inline-scopes-numbers Kotlin compiler flag for task :capacitor-geolocation:compileDebugAndroidTestKotlin
+GradleBuildProject.Builder should not be accessed through AnalyticsConfiguratorService after AnalyticsService is created. Analytics information of this build might be incomplete.
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\geolocation\android\libs', not found
+Caching disabled for task ':capacitor-geolocation:compileDebugKotlin' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:compileDebugKotlin' as it is up-to-date.
+Resolve mutations for :capacitor-geolocation:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-geolocation:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-geolocation:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-geolocation:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-geolocation:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-geolocation:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-geolocation:compileDebugJavaWithJavac NO-SOURCE
+Skipping task ':capacitor-geolocation:compileDebugJavaWithJavac' as it has no source files and no previous output files.
+Resolve mutations for :capacitor-geolocation:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-geolocation:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-geolocation:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capacitor-geolocation:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capacitor-geolocation:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capacitor-geolocation) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-local-notifications:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-local-notifications:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-local-notifications:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-local-notifications:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-local-notifications:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-local-notifications:compileDebugJavaWithJavac UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\local-notifications\android\libs', not found
+Custom actions are attached to task ':capacitor-local-notifications:compileDebugJavaWithJavac'.
+Caching disabled for task ':capacitor-local-notifications:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Skipping task ':capacitor-local-notifications:compileDebugJavaWithJavac' as it is up-to-date.
+No compile result for :capacitor-local-notifications:compileDebugJavaWithJavac
+No compile result for :capacitor-local-notifications:compileDebugJavaWithJavac
+Resolve mutations for :capacitor-local-notifications:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-local-notifications:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-local-notifications:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capacitor-local-notifications:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capacitor-local-notifications:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capacitor-local-notifications) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-preferences:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-preferences:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-preferences:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-preferences:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-preferences:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-preferences:compileDebugJavaWithJavac UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\preferences\android\libs', not found
+Custom actions are attached to task ':capacitor-preferences:compileDebugJavaWithJavac'.
+Caching disabled for task ':capacitor-preferences:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Skipping task ':capacitor-preferences:compileDebugJavaWithJavac' as it is up-to-date.
+No compile result for :capacitor-preferences:compileDebugJavaWithJavac
+No compile result for :capacitor-preferences:compileDebugJavaWithJavac
+Resolve mutations for :capacitor-preferences:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-preferences:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-preferences:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capacitor-preferences:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capacitor-preferences:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capacitor-preferences) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capacitor-push-notifications:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-push-notifications:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-push-notifications:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capacitor-push-notifications:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-push-notifications:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-push-notifications:compileDebugJavaWithJavac UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capacitor\push-notifications\android\libs', not found
+Custom actions are attached to task ':capacitor-push-notifications:compileDebugJavaWithJavac'.
+Caching disabled for task ':capacitor-push-notifications:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Skipping task ':capacitor-push-notifications:compileDebugJavaWithJavac' as it is up-to-date.
+No compile result for :capacitor-push-notifications:compileDebugJavaWithJavac
+No compile result for :capacitor-push-notifications:compileDebugJavaWithJavac
+Resolve mutations for :capacitor-push-notifications:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capacitor-push-notifications:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capacitor-push-notifications:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capacitor-push-notifications:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capacitor-push-notifications:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capacitor-push-notifications) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :capgo-capacitor-audio-recorder:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capgo-capacitor-audio-recorder:javaPreCompileDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:javaPreCompileDebug UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:javaPreCompileDebug' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:javaPreCompileDebug' as it is up-to-date.
+Resolve mutations for :capgo-capacitor-audio-recorder:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capgo-capacitor-audio-recorder:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:compileDebugJavaWithJavac UP-TO-DATE
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\node_modules\@capgo\capacitor-audio-recorder\android\libs', not found
+Custom actions are attached to task ':capgo-capacitor-audio-recorder:compileDebugJavaWithJavac'.
+Caching disabled for task ':capgo-capacitor-audio-recorder:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Skipping task ':capgo-capacitor-audio-recorder:compileDebugJavaWithJavac' as it is up-to-date.
+No compile result for :capgo-capacitor-audio-recorder:compileDebugJavaWithJavac
+No compile result for :capgo-capacitor-audio-recorder:compileDebugJavaWithJavac
+Resolve mutations for :capgo-capacitor-audio-recorder:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:capgo-capacitor-audio-recorder:bundleLibCompileToJarDebug (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :capgo-capacitor-audio-recorder:bundleLibCompileToJarDebug UP-TO-DATE
+Caching disabled for task ':capgo-capacitor-audio-recorder:bundleLibCompileToJarDebug' because:
+  Build cache is disabled
+  Simple merging task
+Skipping task ':capgo-capacitor-audio-recorder:bundleLibCompileToJarDebug' as it is up-to-date.
+work action resolve classes.jar (project :capgo-capacitor-audio-recorder) (Thread[#1358,Execution worker Thread 2,5,main]) started.
+Resolve mutations for :app:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+:app:compileDebugJavaWithJavac (Thread[#1358,Execution worker Thread 2,5,main]) started.
+
+> Task :app:compileDebugJavaWithJavac FAILED
+Custom actions are attached to task ':app:compileDebugJavaWithJavac'.
+Caching disabled for task ':app:compileDebugJavaWithJavac' because:
+  Build cache is disabled
+Task ':app:compileDebugJavaWithJavac' is not up-to-date because:
+  Input property 'stableSources' file D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\app\src\main\java\com\aquatech\crm\MainActivity.java has changed.
+Compilation mode: in-process compilation
+Created classpath snapshot for incremental compilation in 0.01 secs.
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\app\src\debug\java', not found
+Compiling with toolchain 'C:\Java\jdk-21'.
+file or directory 'D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android\app\src\debug\java', not found
+Compiling with JDK Java compiler API.
+Incremental compilation of 2 classes completed in 0.345 secs.
+Build 607cb5af-0945-488d-9d7d-618b3fb58693 is closed
+
+[Incubating] Problems report is available at: file:///D:/Abel%20paginas/Aquatech/crm%20mayo/aquatech-render-main/android/build/reports/problems/problems-report.html
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.4.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+172 actionable tasks: 1 executed, 171 up-to-date
+Watched directory hierarchies: [D:\Abel paginas\Aquatech\crm mayo\aquatech-render-main\android]

@@ -1,0 +1,75 @@
+# 📝 TEXTOS PARA GOOGLE PLAY STORE
+
+---
+
+## DESCRIPCIÓN CORTA
+(Máximo 80 caracteres)
+
+```
+CRM de proyectos hidráulicos para equipos de campo
+```
+
+---
+
+## DESCRIPCIÓN LARGA
+(Máximo 4000 caracteres)
+
+```
+Aquatech CRM es una aplicación diseñada para gestionar proyectos de instalación hidráulica y construcción. 
+
+Permite a equipos de campo:
+• Registrar avances con fotos, videos y notas de voz
+• Chat en tiempo real entre administradores y operadores
+• Sincronización offline - trabaja sin internet y sincroniza después
+• GPS para registrar ubicación de trabajos
+• Gestión completa de proyectos y clientes
+
+Ideal para empresas de:
+- Instalación de piscinas
+- Sistemas de riego
+- Agua potable
+- Mantenimiento hidráulico
+- Construcción en general
+
+CARACTERÍSTICAS PRINCIPALES:
+✓ Dashboard con todos tus proyectos
+✓ Galería de fotos y videos por proyecto
+✓ Chat integrado para comunicación del equipo
+✓ Registro de horas de entrada/salida con GPS
+✓ Notas de voz para reportar avances
+✓ Notificaciones push en tiempo real
+✓ Funciona offline y sincroniza automáticamente
+✓ Copia de seguridad en la nube
+
+La aplicación permite funcionar offline y sincroniza automáticamente cuando hay conexión a internet, garantizando que ningún dato se pierda.
+
+Compatible con dispositivos Android.
+```
+
+---
+
+## NOMBRE DE LA APP
+```
+Aquatech CRM
+```
+
+---
+
+## CATEGORÍA
+```
+Productividad
+```
+
+---
+
+## EMAIL DE CONTACTO
+```
+aquatech@cesarreyesjaramillo.com
+```
+
+---
+
+## POLÍTICA DE PRIVACIDAD
+```
+https://178.238.238.158.sslip.io/privacy.html
+```

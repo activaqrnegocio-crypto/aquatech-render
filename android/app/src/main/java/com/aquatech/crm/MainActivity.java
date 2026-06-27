@@ -6,8 +6,12 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.util.Log;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebView;
+import com.getcapacitor.BridgeWebViewClient;
 
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.community.database.sqlite.CapacitorSQLitePlugin;
 import java.io.File;
 import java.io.FileWriter;
 
@@ -23,6 +27,52 @@ public class MainActivity extends BridgeActivity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        
+        // Register SQLite plugin
+        registerPlugin(CapacitorSQLitePlugin.class);
+        // Register BackgroundRunner plugin
+        registerPlugin(io.ionic.backgroundrunner.plugin.BackgroundRunnerPlugin.class);
+
+        // ── INTERCEPTAR NAVEGACIONES http:// → https:// ──────────────────────
+        // Problema: Capacitor configura el WebView para https://, pero algunas
+        // URLs internas (FCM, pending-nav, NextAuth redirects) usan http://.
+        // Capacitor's BridgeWebViewClient abre Chrome para http:// que no
+        // coincide con el server URL (https://). La solución correcta es:
+        //   1. Extender BridgeWebViewClient (preserva toda la lógica nativa)
+        //   2. Solo interceptar http:// → convertir a https:// con view.loadUrl()
+        //   3. NO hacer soft-navigation (history.pushState) — rompe cookies de auth
+        new Handler(Looper.getMainLooper()).postDelayed(() -> {
+            try {
+                if (bridge != null && bridge.getWebView() != null) {
+                    bridge.getWebView().setWebViewClient(new BridgeWebViewClient(bridge) {
+                        @Override
+                        public boolean shouldOverrideUrlLoading(WebView view, WebResourceRequest request) {
+                            String url = request.getUrl().toString();
+                            String scheme = request.getUrl().getScheme();
+
+                            // Interceptar SOLO http:// (no https://).
+                            // Convertir a https:// y cargar como navegación completa
+                            // dentro del WebView. Esto preserva cookies, redireciones
+                            // y el flujo de autenticación de NextAuth correctamente.
+                            if ("http".equals(scheme)) {
+                                String httpsUrl = url.replaceFirst("^http://", "https://");
+                                Log.d(TAG, "🔄 http→https (navegación completa): " + httpsUrl);
+                                view.loadUrl(httpsUrl);
+                                return true; // Nosotros lo manejamos
+                            }
+
+                            // Para https://, capacitor://, etc. usar la lógica
+                            // de Capacitor (incluye permitir nuestro server URL)
+                            return super.shouldOverrideUrlLoading(view, request);
+                        }
+                    });
+                    Log.d(TAG, "✅ BridgeWebViewClient con http→https instalado");
+                }
+            } catch (Exception e) {
+                Log.e(TAG, "Error instalando WebViewClient: " + e.getMessage());
+            }
+        }, 800); // Esperar 800ms a que el bridge esté listo
+        // ─────────────────────────────────────────────────────────────────────
         
         // Manejar el intent de notificación
         handleNotificationIntent(getIntent());

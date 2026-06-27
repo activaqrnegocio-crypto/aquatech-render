@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#036BB2">
+  <title>Aquatech CRM — Sin Conexión</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #0a0f1e 0%, #1a1f2e 100%);
+      color: #e2e8f0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+    .card {
+      background: rgba(255,255,255,0.05);
+      border: 1px solid rgba(255,255,255,0.1);
+      border-radius: 20px;
+      padding: 40px 32px;
+      max-width: 380px;
+      width: 100%;
+      text-align: center;
+      backdrop-filter: blur(10px);
+    }
+    .icon {
+      width: 80px;
+      height: 80px;
+      margin: 0 auto 24px;
+      background: rgba(239, 68, 68, 0.15);
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .icon svg { width: 40px; height: 40px; }
+    h1 { font-size: 22px; font-weight: 700; margin-bottom: 8px; }
+    p { color: #94a3b8; font-size: 15px; line-height: 1.5; margin-bottom: 28px; }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 16px;
+      border: none;
+      border-radius: 12px;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s;
+      margin-bottom: 12px;
+    }
+    .btn-primary {
+      background: #3b82f6;
+      color: white;
+    }
+    .btn-primary:active { background: #2563eb; transform: scale(0.98); }
+    .btn-secondary {
+      background: rgba(255,255,255,0.08);
+      color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .btn-secondary:active { background: rgba(255,255,255,0.12); transform: scale(0.98); }
+    .status {
+      font-size: 13px;
+      color: #64748b;
+      margin-top: 16px;
+    }
+    .spinner {
+      display: none;
+      width: 20px; height: 20px;
+      border: 2px solid rgba(255,255,255,0.2);
+      border-top-color: white;
+      border-radius: 50%;
+      animation: spin 0.7s linear infinite;
+      margin: 0 auto 8px;
+    }
+    .spinner.show { display: block; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#ef4444" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"/>
+        <line x1="12" y1="8" x2="12" y2="12"/>
+        <line x1="12" y1="16" x2="12.01" y2="16"/>
+      </svg>
+    </div>
+    <h1>Sin conexión</h1>
+    <p id="desc">No se pudo conectar al servidor.<br>Verifica tu conexión a internet.</p>
+    
+    <div class="spinner" id="spinner"></div>
+    <button class="btn btn-primary" id="btnRetry" onclick="retry()">🔄 Reintentar</button>
+    <button class="btn btn-secondary" id="btnOffline" onclick="goOffline()">📱 Continuar offline</button>
+    
+    <div class="status" id="status"></div>
+  </div>
+
+  <script>
+    // Producción: VPS con HTTPS
+    var SERVER_URL = 'https://178.238.238.158.sslip.io';
+    var RETRY_COUNT = 0;
+
+    function retry() {
+      document.getElementById('spinner').classList.add('show');
+      document.getElementById('status').textContent = 'Conectando...';
+      document.getElementById('btnRetry').disabled = true;
+      
+      RETRY_COUNT++;
+      
+      // Try to reach the server
+      fetch(SERVER_URL + '/admin', { 
+        method: 'GET',
+        credentials: 'same-origin',
+        redirect: 'follow',
+        signal: AbortSignal.timeout(5000)
+      })
+      .then(function(r) {
+        if (r.ok || r.type === 'opaqueredirect') {
+          window.location.href = SERVER_URL + '/admin';
+        } else {
+          throw new Error('Status: ' + r.status);
+        }
+      })
+      .catch(function() {
+        document.getElementById('spinner').classList.remove('show');
+        document.getElementById('status').textContent = RETRY_COUNT >= 3 
+          ? 'Servidor no disponible. Intenta más tarde.' 
+          : 'Sin respuesta. Reintentando...';
+        document.getElementById('btnRetry').disabled = false;
+        
+        if (RETRY_COUNT < 3) {
+          setTimeout(retry, 2000);
+        }
+      });
+    }
+
+    function goOffline() {
+      document.getElementById('status').textContent = 'Cargando datos locales...';
+      // Try to navigate - the SW might have cached pages
+      window.location.href = SERVER_URL + '/admin';
+    }
+  </script>
+</body>
+</html>

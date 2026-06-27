@@ -3,6 +3,67 @@
 // background-runner plugin lo ejecuta automáticamente según la config en capacitor.config.ts
 
 // ============================================
+// STORE SYNC DATA - Recibe datos de la app y los guarda en CapacitorKV
+// ============================================
+addEventListener('storeSyncData', async (resolve, reject, args) => {
+  console.log('[BackgroundRunner] storeSyncData event fired');
+  
+  try {
+    // Guardar pendingOutbox en CapacitorKV
+    if (args.pendingOutbox) {
+      await CapacitorKV.set({ key: 'pendingOutbox', value: args.pendingOutbox });
+      const items = JSON.parse(args.pendingOutbox);
+      console.log(`[BackgroundRunner] 📦 ${items.length} items guardados en CapacitorKV`);
+    }
+    
+    // Guardar authToken en CapacitorKV
+    if (args.authToken) {
+      await CapacitorKV.set({ key: 'authToken', value: args.authToken });
+      console.log('[BackgroundRunner] 🔑 Token guardado en CapacitorKV');
+    }
+    
+    // Guardar apiUrl en CapacitorKV
+    if (args.apiUrl) {
+      await CapacitorKV.set({ key: 'apiUrl', value: args.apiUrl });
+      console.log('[BackgroundRunner] 🌐 API URL guardada en CapacitorKV');
+    }
+    
+    resolve();
+  } catch (err) {
+    console.error('[BackgroundRunner] Error en storeSyncData:', err);
+    reject(err);
+  }
+});
+
+// ============================================
+// GET SYNC RESULTS - Devuelve los resultados de sync a la app
+// ============================================
+addEventListener('getSyncResults', async (resolve, reject, args) => {
+  console.log('[BackgroundRunner] getSyncResults event fired');
+  
+  try {
+    // Leer resultados de CapacitorKV
+    const resultData = await CapacitorKV.get({ key: 'bgSyncResults' });
+    
+    if (!resultData?.value) {
+      resolve([]);
+      return;
+    }
+    
+    const results = JSON.parse(resultData.value);
+    
+    // Limpiar resultados después de leerlos
+    await CapacitorKV.remove({ key: 'bgSyncResults' });
+    
+    console.log(`[BackgroundRunner] 📋 ${results.length} resultados devueltos a la app`);
+    resolve(results);
+  } catch (err) {
+    console.error('[BackgroundRunner] Error en getSyncResults:', err);
+    reject([]);
+  }
+});
+
+// ============================================
 // SYNC EVENT - Procesa el outbox en background
 // ============================================
 addEventListener('outboxSync', async (resolve, reject) => {
@@ -36,9 +97,9 @@ addEventListener('outboxSync', async (resolve, reject) => {
     
     console.log(`[BackgroundRunner] Procesando ${outboxItems.length} items...`);
     
-    // Obtener API URL - solo funciona si se configura en capacitor.config.ts
-    // (process.env no está disponible en background runner)
-    const apiUrl = 'https://178.238.238.158.sslip.io'; // Hardcoded por ahora
+    // Obtener API URL desde CapacitorKV (lo escribe la app al exportar outbox)
+    const apiUrlData = await CapacitorKV.get({ key: 'apiUrl' });
+    const apiUrl = apiUrlData?.value || 'https://aquatech-crm.onrender.com';
     let processedCount = 0;
     let failedCount = 0;
     const failedItems = [];
@@ -84,6 +145,29 @@ addEventListener('outboxSync', async (resolve, reject) => {
     }
     
     console.log(`[BackgroundRunner] Sync completado: ${processedCount} ok, ${failedCount} fallidos, ${remainingItems.length} pendientes`);
+    
+    // Guardar resultados para que la app los lea al reabrir
+    const syncResults = [];
+    const processedIds = outboxItems
+      .filter(item => !failedItems.some(f => f.id === item.id))
+      .map(item => ({
+        id: item.id,
+        syncId: item.syncId || item.id,
+        success: true,
+        resultId: `bg_${Date.now()}_${item.id}`
+      }));
+    if (processedIds.length > 0) {
+      // Escribir resultados a CapacitorKV para que la app los procese
+      await CapacitorKV.set({
+        key: 'bgSyncResults',
+        value: JSON.stringify(processedIds)
+      });
+    }
+    
+    // Limpiar outbox procesado de CapacitorKV (solo quedan los fallidos)
+    if (failedItems.length === 0) {
+      await CapacitorKV.remove({ key: 'pendingOutbox' });
+    }
     
     // Notificar al usuario si hubo cambios
     if (processedCount > 0) {
