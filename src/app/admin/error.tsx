@@ -15,6 +15,23 @@ export default function AdminError({
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
+    const isChunkError = error && (
+      error.message?.includes('Loading chunk') ||
+      error.message?.includes('loading chunk') ||
+      error.message?.includes('chunk') ||
+      error.name === 'ChunkLoadError'
+    );
+    if (isChunkError) {
+      const lastChunkReload = sessionStorage.getItem('last_chunk_reload');
+      const now = Date.now();
+      if (!lastChunkReload || now - Number(lastChunkReload) > 10000) {
+        sessionStorage.setItem('last_chunk_reload', String(now));
+        console.log('[AdminError] Chunk load error detected! Auto-recovering via full reload...');
+        window.location.reload();
+        return;
+      }
+    }
+
     const checkCacheAndOnline = async () => {
       const offline = typeof navigator !== 'undefined' && !navigator.onLine
       setIsOffline(offline)

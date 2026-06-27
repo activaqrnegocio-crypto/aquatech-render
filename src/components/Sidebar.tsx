@@ -8,6 +8,11 @@ import { hasModuleAccess } from '@/lib/rbac'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
 import { useLiveQuery } from 'dexie-react-hooks'
 import { db } from '@/lib/db'
+
+// Bandera a nivel de módulo para evitar doble-logout.
+// La Sidebar tiene dos botones de logout (sidebar + mobile-nav).
+// En móvil (APK), un solo touch puede disparar ambos casi simultáneamente.
+let logoutInProgress = false
 import { formatToEcuador } from '@/lib/date-utils'
 
 type NavItem = {
@@ -479,6 +484,12 @@ export default memo(function Sidebar() {
   }, [status])
   
   useEffect(() => {
+    // v622: Solo cargar offlineUser si NO estamos en páginas de auth
+    // Si cargamos last_session en login/force-logout, el Sidebar mostraría
+    // el usuario anterior causando el efecto "parece logueado"
+    const currentPath = typeof window !== 'undefined' ? window.location.pathname : ''
+    if (currentPath.includes('/login') || currentPath.includes('/force-logout')) return
+    
     if (status === 'unauthenticated' || (!session && status !== 'loading')) {
       import('@/lib/db').then(({ db }) => {
         db.auth.get('last_session').then(u => {
@@ -489,26 +500,32 @@ export default memo(function Sidebar() {
   }, [session, status])
 
   const handleLogout = async () => {
-    try {
-      // v607: Obtener userId de la sesión ANTES de limpiar
-      const userId = session?.user?.id
-      console.log('[Logout] UserID para invalidar:', userId)
-      
-      // v607: Guardar userId para el force-logout
-      if (userId) {
-        localStorage.setItem('logout_user_id', String(userId))
-      }
-      
-      // v410: Enviar mensaje LOGOUT al Service Worker para limpiar authShadow
-      // Y esperar confirmación antes de continuar
-      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+    // Prevenir doble-ejecución: dos botones en Sidebar pueden disparar
+    // handleLogout casi simultáneamente en dispositivos móviles Android.
+    if (logoutInProgress) {
+      console.log('[Logout] Ya en proceso, ignorando llamada duplicada')
+      return
+    }
+    logoutInProgress = true
+    // v620: Simplificado. Todo el trabajo de limpieza ocurre en /admin/force-logout
+    // para evitar race conditions (ej: borrar localStorage antes de que force-logout lea logout_user_id).
+
+    // 1. Guardar userId ANTES de cualquier limpieza
+    const userId = session?.user?.id
+    if (userId) {
+      localStorage.setItem('logout_user_id', String(userId))
+    }
+    console.log('[Logout] Iniciando logout para userId:', userId)
+
+    // 2. Notificar al Service Worker para que limpie el authShadow inmediatamente
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      try {
         const reg = await navigator.serviceWorker.ready
-        // Enviar mensaje LOGOUT al SW y esperar confirmación
         if (reg.active) {
           reg.active.postMessage('LOGOUT')
-          // Esperar a que el SW confirme que limpió todo
+          // Esperar confirmación del SW (max 1.5s)
           await new Promise((resolve) => {
-            const timeout = setTimeout(resolve, 1000) // Max 1 segundo de espera
+            const timeout = setTimeout(resolve, 1500)
             navigator.serviceWorker.addEventListener('message', function handler(e) {
               if (e.data?.type === 'LOGOUT_COMPLETE') {
                 clearTimeout(timeout)
@@ -518,57 +535,18 @@ export default memo(function Sidebar() {
             })
           })
         }
-        
-        const sub = await reg.pushManager.getSubscription()
-        if (sub) await sub.unsubscribe()
-      }
-      
-      // Limpiar IndexedDB
-      import('dexie').then((m) => {
-        const Dexie = m.default;
-        Dexie.delete('AquatechOfflineDB').catch(() => {})
-      }).catch(() => {})
-      
-      // Limpiar storages
-      localStorage.clear()
-      sessionStorage.clear()
-      
-      // Limpiar TODAS las caches
-      if (typeof window !== 'undefined' && 'caches' in window) {
-        const names = await caches.keys()
-        for (const name of names) {
-          await caches.delete(name)
-        }
-      }
-      
-      // v410: Limpiar cookies de NextAuth explícitamente
-      // Obtener todas las cookies y borrarlas
-      if (typeof document !== 'undefined') {
-        document.cookie.split(';').forEach(function(c) { 
-          document.cookie = c.replace(/^ +/, '').replace(/=.*/, '=;expires=' + new Date().toUTCString() + ';path=/'); 
-        })
-      }
-      
-      // v602: Limpiar Capacitor Preferences
-      try {
-        const { Preferences } = await import('@capacitor/preferences');
-        await Preferences.clear();
-        console.log('[Logout] Preferences cleared');
+        // Desuscribir push notifications
+        const sub = await reg.pushManager.getSubscription().catch(() => null)
+        if (sub) await sub.unsubscribe().catch(() => {})
       } catch (e) {
-        console.log('[Logout] Preferences clear skipped:', e);
+        console.warn('[Logout] SW cleanup error (ignorable):', e)
       }
-      
-      // Llamar signOut de NextAuth
-      await signOut({ redirect: false })
-      
-    } catch (e) {
-      console.warn('Offline logout fallback', e)
     }
-    
-    // Redirigir a force-logout que limpia todo - con cache-buster para evitar cache
-    const timestamp = Date.now()
-    window.location.replace(`/admin/force-logout?t=${timestamp}`)
+
+    // 3. Redirigir a force-logout que centraliza TODA la limpieza
+    window.location.replace(`/admin/force-logout?t=${Date.now()}`)
   }
+
 
   const isActive = (href: string) => {
     if (href === '/admin') return pathname === '/admin'

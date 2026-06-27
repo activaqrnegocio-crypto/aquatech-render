@@ -18,11 +18,16 @@ export async function processOutboxItem(item: OutboxItem, token: string): Promis
     return { success: false, error: 'NEXT_PUBLIC_API_URL not configured' };
   }
 
-  const headers = {
+  const headers: any = {
     'Content-Type': 'application/json',
     'x-sync-id': item.syncId,
-    'Cookie': `next-auth.session-token=${token}`,
   };
+
+  // Only set Cookie header manually if token is a valid NextAuth session token (long string).
+  // Otherwise, omit it so standard WebView credentials/cookies are sent automatically.
+  if (token && token.length > 20) {
+    headers['Cookie'] = `next-auth.session-token=${token}`;
+  }
 
   try {
     switch (item.type) {

@@ -14,13 +14,15 @@ export async function POST(request: Request) {
       // Invalidar sesión en la base de datos
       const { prisma } = await import('@/lib/prisma')
       
-      // Incrementar sessionVersion para invalidar tokens anteriores
-      await prisma.user.update({
-        where: { id: userId },
-        data: { sessionVersion: { increment: 1 } }
-      })
-      
-      console.log('[ForceLogout] Session invalidada para usuario:', userId)
+      // El id en Prisma es Int, pero llega como String desde localStorage
+      const userIdInt = parseInt(userId, 10)
+      if (!isNaN(userIdInt)) {
+        await prisma.user.update({
+          where: { id: userIdInt },
+          data: { sessionVersion: { increment: 1 } }
+        })
+        console.log('[ForceLogout] Session invalidada para usuario:', userIdInt)
+      }
     }
     
     return NextResponse.json({ success: true })

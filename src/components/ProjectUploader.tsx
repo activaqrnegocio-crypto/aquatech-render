@@ -1,7 +1,8 @@
 'use client'
 
-import React, { useState, useRef, useMemo } from 'react'
+import React, { useState, useRef, useMemo, useEffect } from 'react'
 import { compressImage as optimizedCompress, blobToBase64, isCompressibleImage } from '@/lib/image-optimization'
+import { Capacitor } from '@capacitor/core'
 
 // Inline SVG icons to avoid lucide-react webpack bundling issues
 const svgProps = (size: number) => ({
@@ -44,6 +45,169 @@ interface ProjectUploaderProps {
 }
 
 type FilterType = 'ALL' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO' | 'EXPENSE'
+
+// Helper components to render dynamic offline previews from bin File/Blob objects without RAM leaks
+export const SafeImage = ({ file, style, alt, className }: { file: ProjectFile; style?: React.CSSProperties; alt?: string; className?: string }) => {
+  const [src, setSrc] = useState<string>('/placeholder.jpg');
+
+  useEffect(() => {
+    const rawFile = (file as any).file;
+    if (rawFile instanceof File || rawFile instanceof Blob) {
+      const objectUrl = URL.createObjectURL(rawFile);
+      setSrc(objectUrl);
+      return () => {
+        URL.revokeObjectURL(objectUrl);
+      };
+    } else {
+      setSrc(file.url);
+    }
+  }, [file]);
+
+  return <img src={src} alt={alt || file.filename} style={style} className={className} />;
+};
+
+export const SafeVideo = ({ file, style }: { file: ProjectFile; style?: React.CSSProperties }) => {
+  const [src, setSrc] = useState<string>('');
+
+  useEffect(() => {
+    const rawFile = (file as any).file;
+    if (rawFile instanceof File || rawFile instanceof Blob) {
+      const objectUrl = URL.createObjectURL(rawFile);
+      setSrc(objectUrl);
+      return () => {
+        URL.revokeObjectURL(objectUrl);
+      };
+    } else {
+      setSrc(file.url);
+    }
+  }, [file]);
+
+  if (!src) return null;
+
+  return (
+    <video 
+      src={`${src}#t=0.001`} 
+      style={style} 
+      preload="metadata" 
+      muted 
+      playsInline 
+    />
+  );
+};
+
+export const SafeAudio = ({ file, style }: { file: ProjectFile; style?: React.CSSProperties }) => {
+  const [src, setSrc] = useState<string>('');
+
+  useEffect(() => {
+    const rawFile = (file as any).file;
+    if (rawFile instanceof File || rawFile instanceof Blob) {
+      const objectUrl = URL.createObjectURL(rawFile);
+      setSrc(objectUrl);
+      return () => {
+        URL.revokeObjectURL(objectUrl);
+      };
+    } else {
+      setSrc(file.url);
+    }
+  }, [file]);
+
+  if (!src) return null;
+
+  // Convert native file:// URIs so the WebView can load the local audio
+  const audioSrc = Capacitor.isNativePlatform() && src.startsWith('file://')
+    ? Capacitor.convertFileSrc(src)
+    : src;
+
+  return (
+    <audio 
+      src={audioSrc} 
+      controls 
+      style={style} 
+    />
+  );
+};
+
+export const SafeFullScreenVideo = ({ file }: { file: ProjectFile }) => {
+  const [src, setSrc] = useState<string>('');
+
+  useEffect(() => {
+    const rawFile = (file as any).file;
+    if (rawFile instanceof File || rawFile instanceof Blob) {
+      const objectUrl = URL.createObjectURL(rawFile);
+      setSrc(objectUrl);
+      return () => {
+        URL.revokeObjectURL(objectUrl);
+      };
+    } else {
+      setSrc(file.url);
+    }
+  }, [file]);
+
+  if (!src) return null;
+
+  return (
+    <video 
+      src={`${src}#t=0.001`} 
+      controls 
+      autoPlay 
+      playsInline
+      preload="metadata"
+      style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', outline: 'none' }}
+      onClick={(e) => e.stopPropagation()}
+    />
+  );
+};
+
+export const SafeFullScreenAudio = ({ file, onDownload, isDownloading, formatFileName }: { 
+  file: ProjectFile; 
+  onDownload: (file: ProjectFile) => void; 
+  isDownloading: string | null;
+  formatFileName: (name: string) => string;
+}) => {
+  const [src, setSrc] = useState<string>('');
+
+  useEffect(() => {
+    const rawFile = (file as any).file;
+    if (rawFile instanceof File || rawFile instanceof Blob) {
+      const objectUrl = URL.createObjectURL(rawFile);
+      setSrc(objectUrl);
+      return () => {
+        URL.revokeObjectURL(objectUrl);
+      };
+    } else {
+      setSrc(file.url);
+    }
+  }, [file]);
+
+  if (!src) return null;
+
+  // Convert native file:// URIs so the WebView can load the local audio
+  const audioSrc = Capacitor.isNativePlatform() && src.startsWith('file://')
+    ? Capacitor.convertFileSrc(src)
+    : src;
+
+  return (
+    <div 
+      style={{ backgroundColor: 'var(--bg-card)', padding: '40px', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
+        <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
+      </div>
+      <div style={{ textAlign: 'center' }}>
+        <h3 style={{ margin: '0 0 5px 0', fontSize: '1.2rem' }}>{formatFileName(file.filename)}</h3>
+        <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Audio / Grabación</p>
+      </div>
+      <audio 
+        src={audioSrc} 
+        controls autoPlay style={{ width: '100%' }} 
+      />
+      <button onClick={() => onDownload(file)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)', marginTop: '10px' }}>
+        {isDownloading === file.url ? 'Descargando...' : 'Descargar'}
+      </button>
+    </div>
+  );
+};
 
 export default function ProjectUploader({ 
   files, 
@@ -112,43 +276,51 @@ export default function ProjectUploader({
           const isImage = isCompressibleImage(file)
 
           if (!isOnline) {
-            // v354: Large file support for offline mode
-            // Files > 10MB must NOT be converted to base64 (a 500MB video → 667MB string = CRASH)
-            // Instead, pass the raw File object — IndexedDB structured clone preserves it.
-            const OFFLINE_BASE64_LIMIT = 20 * 1024 * 1024; // 20MB
-            const OFFLINE_MAX_SIZE = 1024 * 1024 * 1024; // 1GB (v410: Eliminando límites estúpidos)
+            const OFFLINE_MAX_SIZE = 1024 * 1024 * 1024; // 1GB
             
             if (file.size > OFFLINE_MAX_SIZE) {
               alert(`El archivo "${file.name}" (${(file.size / (1024*1024)).toFixed(0)} MB) es demasiado grande para guardar offline. \n\nLímite Offline: 1GB. \n\nPor favor conéctate a internet para subir archivos más pesados.`);
               continue;
             }
 
-            let previewUrl: string;
+            const { Capacitor } = await import('@capacitor/core')
+            const isNative = Capacitor.isNativePlatform()
+            let previewUrl = ''
+            let localUri = ''
+            let fileToStore: File | Blob = file;
+
             if (isImage) {
-              const blob = await optimizedCompress(file)
-              previewUrl = await blobToBase64(blob)
-            } else if (file.size <= OFFLINE_BASE64_LIMIT) {
-              // Small non-image files: base64 is fine
-              const reader = new FileReader()
-              previewUrl = await new Promise((resolve, reject) => {
-                reader.onload = () => resolve(reader.result as string)
-                reader.onerror = reject
-                reader.readAsDataURL(file)
-              })
-            } else {
-              // v353: Large files (videos/audio 10MB-200MB): use blob URL for preview only.
-              // The raw File object goes to IndexedDB via structured clone (no base64 overhead).
-              previewUrl = URL.createObjectURL(file)
+              try {
+                const compressedBlob = await optimizedCompress(file)
+                const compressedFile = new File([compressedBlob], file.name.replace(/\.[^/.]+$/, "") + ".webp", { type: 'image/webp' })
+                fileToStore = compressedFile
+              } catch (e) {
+                console.warn('[Uploader] Fallback to original image without compression:', e)
+              }
             }
 
-            const localFile: ProjectFile & { file?: File } = {
+            if (isNative) {
+              try {
+                const { saveOfflineFileToNativeStorage } = await import('@/lib/offline-media-helper')
+                localUri = await saveOfflineFileToNativeStorage(fileToStore, fileToStore instanceof File ? fileToStore.name : file.name)
+                previewUrl = Capacitor.convertFileSrc(localUri)
+              } catch (err) {
+                console.error('[Uploader] Native save failed, using fallback object URL:', err)
+                previewUrl = URL.createObjectURL(fileToStore)
+              }
+            } else {
+              previewUrl = URL.createObjectURL(fileToStore)
+            }
+
+            const localFile: ProjectFile & { file?: File | Blob; localUri?: string } = {
               url: previewUrl,
-              filename: file.name,
-              mimeType: file.type,
+              filename: fileToStore instanceof File ? fileToStore.name : file.name,
+              mimeType: fileToStore.type || file.type,
               type: (isImage ? 'IMAGE' : (file.type.startsWith('video/') ? 'VIDEO' : (file.type.startsWith('audio/') ? 'AUDIO' : 'DOCUMENT'))) as any,
               category: defaultCategory,
-              size: file.size,
-              file: file // v353: Raw File object — IndexedDB structured clone preserves it
+              size: fileToStore.size,
+              file: (!localUri) ? fileToStore : undefined,
+              localUri: localUri || undefined
             }
             
             onAddFile(localFile)
@@ -456,15 +628,11 @@ export default function ProjectUploader({
                   const fileName = cleanFilename(file.filename);
 
                   if (realMime.startsWith('image/')) {
-                    return <img src={file.url} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                    return <SafeImage file={file} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
                   } else if (realMime.startsWith('video/')) {
-                    const rawFile = (file as any).file;
-                    const videoSrc = (rawFile instanceof File || rawFile instanceof Blob)
-                      ? URL.createObjectURL(rawFile)
-                      : file.url;
                     return (
                       <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#000' }}>
-                        <video src={`${videoSrc}#t=0.001`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }} preload="metadata" muted playsInline />
+                        <SafeVideo file={file} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }} />
                         <div style={{ position: 'relative', zIndex: 2, background: 'rgba(0,0,0,0.5)', borderRadius: '50%', padding: '4px', display: 'flex' }}>
                           <VideoIcon size={24} />
                         </div>
@@ -477,7 +645,7 @@ export default function ProjectUploader({
                     return (
                       <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '10px', backgroundColor: 'var(--bg-card)' }} onClick={(e) => e.stopPropagation()}>
                         <span style={{ fontSize: '2rem' }}>🎙️</span>
-                        <audio src={file.url} controls style={{ width: '90%', marginTop: '5px', height: '30px' }} />
+                        <SafeAudio file={file} style={{ width: '90%', marginTop: '5px', height: '30px' }} />
                         <span style={{ fontSize: '0.65rem', color: 'var(--text-secondary)', marginTop: '8px' }}>{fileName}</span>
                       </div>
                     );
@@ -517,65 +685,22 @@ export default function ProjectUploader({
             </button>
             
             {selectedFileForPreview.type === 'IMAGE' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('image/')) ? (
-              <img 
-                src={selectedFileForPreview.url} 
-                alt={selectedFileForPreview.filename} 
-                style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }}
-                onClick={(e) => e.stopPropagation()}
-              />
-            ) : selectedFileForPreview.type === 'VIDEO' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('video/')) ? (
-              (() => {
-                // v353fix: If the video URL is a data: URL (offline), use URL.createObjectURL
-                // with the raw File object instead. Data URLs don't support Range requests
-                // needed for video seeking/streaming, so the browser can't play them.
-                const rawFile = (selectedFileForPreview as any).file;
-                const videoSrc = (rawFile instanceof File || rawFile instanceof Blob)
-                  ? URL.createObjectURL(rawFile)
-                  : selectedFileForPreview.url;
-                return (
-              <video 
-                src={`${videoSrc}#t=0.001`} 
-                controls 
-                autoPlay 
-                playsInline
-                preload="metadata"
-                style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', outline: 'none' }}
-                onClick={(e) => e.stopPropagation()}
-                // v353fix: Do NOT revoke blob URL while video is playing!
-                // The old code revoked after 5s which killed playback for videos > 5s.
-                // Blob URLs are garbage-collected when the page/modal closes.
-              />
-                );
-              })()
-            ) : selectedFileForPreview.type === 'AUDIO' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('audio/')) ? (
-              (() => {
-                // v353fix: Create blob URL once for audio, same pattern as video
-                const rawAudioFile = (selectedFileForPreview as any).file;
-                const audioSrc = (rawAudioFile instanceof File || rawAudioFile instanceof Blob)
-                  ? URL.createObjectURL(rawAudioFile)
-                  : selectedFileForPreview.url;
-                return (
-              <div 
-                style={{ backgroundColor: 'var(--bg-card)', padding: '40px', borderRadius: '24px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', width: '100%', maxWidth: '400px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }}
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div style={{ width: '80px', height: '80px', borderRadius: '50%', background: 'var(--primary)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginBottom: '10px' }}>
-                  <svg width="40" height="40" viewBox="0 0 24 24" fill="white"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" x2="12" y1="19" y2="22"/></svg>
-                </div>
-                <div style={{ textAlign: 'center' }}>
-                  <h3 style={{ margin: '0 0 5px 0', fontSize: '1.2rem' }}>{formatFileName(selectedFileForPreview.filename)}</h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Audio / Grabación</p>
-                </div>
-                <audio 
-                  src={audioSrc} 
-                  controls autoPlay style={{ width: '100%' }} 
+              <div onClick={(e) => e.stopPropagation()} style={{ display: 'contents' }}>
+                <SafeImage 
+                  file={selectedFileForPreview} 
+                  alt={selectedFileForPreview.filename} 
+                  style={{ maxWidth: '100%', maxHeight: '100%', objectFit: 'contain', borderRadius: '8px' }}
                 />
-                <button onClick={() => handleDownload(selectedFileForPreview)} className="btn btn-ghost" style={{ width: '100%', border: '1px solid var(--border-color)', marginTop: '10px' }}>
-                  {isDownloading === selectedFileForPreview.url ? 'Descargando...' : 'Descargar'}
-                </button>
               </div>
-                );
-              })()
+            ) : selectedFileForPreview.type === 'VIDEO' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('video/')) ? (
+              <SafeFullScreenVideo file={selectedFileForPreview} />
+            ) : selectedFileForPreview.type === 'AUDIO' || (selectedFileForPreview.type === 'DOCUMENT' && getCleanMimeType(selectedFileForPreview).startsWith('audio/')) ? (
+              <SafeFullScreenAudio 
+                file={selectedFileForPreview} 
+                onDownload={handleDownload} 
+                isDownloading={isDownloading} 
+                formatFileName={formatFileName} 
+              />
             ) : (
               <div 
                 style={{ backgroundColor: 'var(--bg-card)', padding: '30px', borderRadius: '16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '20px', maxWidth: '400px', width: '100%' }}

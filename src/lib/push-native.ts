@@ -124,6 +124,9 @@ export async function registerFCMToken(userId: number): Promise<boolean | false>
         window.location.href = '/admin/proyectos';
       } else if (data.type === 'new-project') {
         window.location.href = '/admin/proyectos/nuevo';
+      } else if (data.type === 'info' || data.type === 'announcement') {
+        // v610: Las notificaciones de campana (info/announcement) NO hacen nada al tocarlas
+        console.log('[PushNative] Notificación de campana, no se navega');
       } else if (url && url.startsWith('/')) {
         // Es una URL relativa
         window.location.href = url;

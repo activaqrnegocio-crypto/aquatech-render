@@ -175,15 +175,25 @@ export async function POST(request: Request) {
       }
     })
 
+    let emailSent = false
+    let emailError: string | undefined
+
     if (email) {
-      await sendWelcomeEmail(email, name, username, password)
+      const emailResult = await sendWelcomeEmail(email, name, username, password)
+      emailSent = emailResult.success
+      if (!emailResult.success) {
+        emailError = typeof emailResult.error === 'string' ? emailResult.error : 'Error de conexión SMTP'
+        console.warn('[Users/POST] Usuario creado pero email falló:', emailError)
+      }
     }
 
     return NextResponse.json({ 
       id: user.id, 
       name: user.name, 
       username: user.username, 
-      role: user.role 
+      role: user.role,
+      emailSent,
+      ...(emailError && { emailError })
     })
   } catch (error: any) {
     console.error('Error creating user:', error)

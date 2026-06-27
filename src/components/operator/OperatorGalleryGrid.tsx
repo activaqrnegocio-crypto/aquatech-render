@@ -1,4 +1,4 @@
-import ProjectUploader from '@/components/ProjectUploader'
+import ProjectUploader, { SafeImage, SafeVideo, SafeAudio } from '@/components/ProjectUploader'
 import { db } from '@/lib/db'
 import { Dispatch, SetStateAction } from 'react'
 import VideoThumbnail from '@/components/VideoThumbnail'
@@ -198,8 +198,8 @@ export default function OperatorGalleryGrid({
                 {/* Thumbnail content */}
                 {realMime.startsWith('image/') ? (
                   <div style={{ width: '100%', height: '100%', position: 'relative' }}>
-                    <img 
-                      src={item.url} 
+                    <SafeImage 
+                      file={item} 
                       alt={fileName} 
                       style={{ width: '100%', height: '100%', objectFit: 'cover', transition: 'transform 0.3s' }} 
                       className="group-hover:scale-110"
@@ -209,11 +209,14 @@ export default function OperatorGalleryGrid({
                     </div>
                   </div>
                 ) : realMime.startsWith('video/') ? (
-                  <VideoThumbnail url={item.url} mime={realMime} filename={fileName} />
+                  <VideoThumbnail url={item.url} mime={realMime} filename={fileName} file={item} />
                 ) : (
                   <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: 'var(--bg-deep)', padding: '10px', position: 'relative' }}>
                     {realMime.startsWith('audio/') ? (
-                      <span style={{ fontSize: '2rem' }}>🎵</span>
+                      <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center' }}>
+                        <span style={{ fontSize: '1.5rem' }}>🎙️</span>
+                        <SafeAudio file={item} style={{ width: '90%', marginTop: '5px', height: '24px' }} />
+                      </div>
                     ) : (
                       <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" strokeWidth="2" style={{ opacity: 0.7 }}><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg>
                     )}

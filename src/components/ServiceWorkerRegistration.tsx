@@ -6,7 +6,7 @@ import { db } from '@/lib/db'
 export default function ServiceWorkerRegistration() {
   useEffect(() => {
     if (!('serviceWorker' in navigator)) return
-    const SW_VERSION = 'v410-offline-fix'; // v376: Fixed TS syntax in SW (any[] → plain JS)
+    const SW_VERSION = 'v422-sync-early-return-fix'; // v422: Fixed early return in native SQLite sync
     const swUrl = `/custom-sw.js?v=${SW_VERSION}`
     console.log(`[App] Solicitando registro de Robot ${SW_VERSION} (Fetch Trigger)...`);
     // v338: NO recargar la página cuando un nuevo SW toma control.

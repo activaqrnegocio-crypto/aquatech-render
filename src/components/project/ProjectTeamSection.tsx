@@ -3,6 +3,7 @@
 import { useState, useEffect } from 'react'
 import { db } from '@/lib/db'
 import { useRouter } from 'next/navigation'
+import { addToOutbox } from '@/lib/storage'
 
 // v406: Sección de Equipo Asignado Autónoma — Máxima velocidad y persistencia garantizada
 interface ProjectTeamSectionProps {
@@ -81,7 +82,7 @@ export default function ProjectTeamSection({
         const payload = { operatorIds: selectedIds }
 
         if (!isOnline) {
-          await db.outbox.add({
+          await addToOutbox({
             projectId: project.id,
             type: 'TEAM_UPDATE',
             payload,
@@ -122,7 +123,7 @@ export default function ProjectTeamSection({
           }
         } catch (e) {
           // Fallback a outbox si falla la red
-          await db.outbox.add({
+          await addToOutbox({
             projectId: project.id,
             type: 'TEAM_UPDATE',
             payload,

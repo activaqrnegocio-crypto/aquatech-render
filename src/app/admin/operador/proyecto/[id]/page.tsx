@@ -36,7 +36,13 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
       include: { project: { select: { id: true, title: true } } }
     }),
     prisma.expense.findMany({
-      where: { projectId, OR: [{ userId }, { isNote: true }] },
+      where: { 
+        projectId,
+        OR: [
+          { userId },
+          { isNote: true }
+        ]
+      },
       orderBy: { createdAt: 'desc' },
       take: 30 // v280: capped for speed
     }),
@@ -60,11 +66,23 @@ export default async function OperatorProjectDetail({ params }: { params: Promis
       take: 150, // v369: Increased to 150 to accommodate large offline bulk syncs of photos without truncating text msgs
       include: { user: { select: { name: true } }, media: true }
     }),
-    prisma.projectView.upsert({
-      where: { userId_projectId: { userId, projectId } },
-      update: { lastSeen: new Date() },
-      create: { userId, projectId, lastSeen: new Date() }
-    })
+    (async () => {
+      try {
+        await prisma.projectView.upsert({
+          where: { userId_projectId: { userId, projectId } },
+          update: { lastSeen: new Date() },
+          create: { userId, projectId, lastSeen: new Date() }
+        })
+      } catch (err) {
+        console.warn('[ProjectView Operator Upsert Race Condition]:', err);
+        try {
+          await prisma.projectView.update({
+            where: { userId_projectId: { userId, projectId } },
+            data: { lastSeen: new Date() }
+          })
+        } catch (_) {}
+      }
+    })()
   ])
 
   // Reverse to maintain chronological order [oldest -> newest] for the UI

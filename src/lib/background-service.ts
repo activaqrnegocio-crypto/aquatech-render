@@ -1,79 +1,121 @@
 // src/lib/background-service.ts
 // Background Runner Service para Android - procesa outbox cuando app está cerrada
+// FASE 3: Puente entre SQLite nativo y el background runner
 
-import { registerPlugin } from '@capacitor/core';
+import { Capacitor } from '@capacitor/core';
+import { BackgroundRunner } from '@capacitor/background-runner';
+import * as nativeStorage from './native-storage';
 
-const BackgroundRunner = registerPlugin('BackgroundRunner') as any;
+const LABEL = 'com.aquatech.crm.background';
+const SYNC_EVENT = 'outboxSync';
+const STORE_EVENT = 'storeSyncData';
+const GET_RESULTS_EVENT = 'getSyncResults';
 
-// Track if we're currently processing to avoid duplicate runs
-let isProcessing = false;
-
-// Configuration for background runner
+// ─── CONFIG ────────────────────────────────────────────────
 export function configureBackgroundRunner(): void {
+  if (!Capacitor.isNativePlatform()) return;
+
   try {
-    BackgroundRunner.register({
-      title: 'Aquatech Sync',
-      desc: 'Sincronizando datos offline',
-      script: backgroundSyncScript,
-      runOnBoot: true,
-      runOnLogin: true,
-      interval: 15 * 60, // 15 minutes minimum
-      autoStart: true,
+    (BackgroundRunner as any).registerBackgroundTask?.({
+      runner: {
+        label: LABEL,
+        src: 'runners/background.js',
+        event: SYNC_EVENT,
+        repeat: true,
+        interval: 15,
+        autoStart: true,
+      }
     });
-    console.log('[BackgroundRunner] Configured successfully');
+    console.log('[BackgroundRunner] ✅ Configurado (cada 15 min)');
   } catch (err) {
     console.warn('[BackgroundRunner] Configuration failed:', err);
   }
 }
 
-// v380: The actual background script that runs when Android wakes the app
-// This runs in a WebView context with limited capabilities.
-// It triggers a sync event that the SW will handle when the app is opened.
-const backgroundSyncScript = `
-var isSyncing = false;
-var lastSyncTime = 0;
-
-async function doSync() {
-  if (isSyncing) {
-    console.log('[Background] Sync already in progress, skipping');
-    return;
-  }
-  
-  isSyncing = true;
+// ─── DISPARAR EVENTO ───────────────────────────────────────
+// Fuerza al background runner a procesar ahora (no esperar 15 min)
+export async function triggerBackgroundSync(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
   try {
-    console.log('[Background] Starting outbox sync check...');
-    
-    // v380: When background runner fires, set a flag in sessionStorage
-    // The SW will detect this when the app opens and trigger sync
-    try {
-      sessionStorage.setItem('bg_sync_pending', Date.now().toString());
-    } catch (e) {
-      console.warn('[Background] Could not set sessionStorage flag');
-    }
-    
-    // v380: Also dispatch a custom event that the main app context can listen to
-    try {
-      window.dispatchEvent(new CustomEvent('background-sync-trigger'));
-    } catch (e) {
-      console.warn('[Background] Could not dispatch event');
-    }
-    
-    // v380: For Android 7+, we can also use navigator.serviceWorker.message
-    // but it requires the SW to be active
-    console.log('[Background] Sync check complete - app will process when opened');
-  } catch (err) {
-    console.error('[Background] Sync error:', err);
-  } finally {
-    isSyncing = false;
+    await BackgroundRunner.dispatchEvent({
+      label: LABEL,
+      event: SYNC_EVENT,
+      details: {}
+    });
+    console.log('[BackgroundRunner] ⚡ Evento sync disparado');
+  } catch {
+    // Si no se puede disparar ahora, el runner lo hará en su intervalo
   }
 }
 
-// v380: Listen for the event from the main app context
-document.addEventListener('resume', function() {
-  console.log('[Background] App resumed, checking pending syncs...');
-  doSync();
-});
+// ─── PUENTE: App → Background Runner ────────────────────
+// Envía los items pendientes del SQLite nativo al background runner
+// via dispatchEvent. El runner los guarda en CapacitorKV internamente.
+export async function syncOutboxToKV(): Promise<void> {
+  if (!Capacitor.isNativePlatform()) return;
+  if (!nativeStorage.isNative()) return;
 
-// v380: Initial sync check when script loads (app just opened from background)
-setTimeout(doSync, 2000);
-`;
+  try {
+    const pending = await nativeStorage.getOutboxPending();
+    const auth = await nativeStorage.getAuthCache();
+
+    if (pending.length === 0) return;
+
+    // Obtener la API URL
+    const apiUrl = typeof window !== 'undefined'
+      ? (window as any).__NEXT_PUBLIC_API_URL || process.env.NEXT_PUBLIC_API_URL
+      : process.env.NEXT_PUBLIC_API_URL;
+
+    // Enviar datos al runner via dispatchEvent
+    await BackgroundRunner.dispatchEvent({
+      label: LABEL,
+      event: STORE_EVENT,
+      details: {
+        pendingOutbox: JSON.stringify(pending),
+        authToken: auth ? JSON.stringify({ token: auth.token, userId: auth.userId }) : null,
+        apiUrl: apiUrl || null
+      }
+    });
+
+    console.log(`[BackgroundRunner] 📤 ${pending.length} items enviados al runner`);
+
+    // Disparar sync ahora mismo (Fire & forget)
+    triggerBackgroundSync().catch(() => {});
+  } catch (err) {
+    console.warn('[BackgroundRunner] Error enviando datos al runner:', err);
+  }
+}
+
+// ─── PUENTE: Background Runner → App (marcar como procesados) ───
+// Pide al background runner los resultados via dispatchEvent
+// y marca los items como procesados en SQLite
+export async function syncKVResultsToSQLite(): Promise<number> {
+  if (!Capacitor.isNativePlatform()) return 0;
+  if (!nativeStorage.isNative()) return 0;
+
+  try {
+    // Pedir resultados al runner via dispatchEvent
+    const results: any = await BackgroundRunner.dispatchEvent({
+      label: LABEL,
+      event: GET_RESULTS_EVENT,
+      details: {}
+    });
+    
+    if (!results || !Array.isArray(results) || results.length === 0) return 0;
+
+    let count = 0;
+    for (const item of results) {
+      if (item.success && item.id) {
+        await nativeStorage.markOutboxProcessed(item.id);
+        await nativeStorage.addSyncLog(item.syncId || item.id, item.resultId || 'bg-sync');
+        count++;
+      }
+    }
+
+    console.log(`[BackgroundRunner] 🔄 ${count} items marcados como synced`);
+    return count;
+  } catch (err) {
+    console.warn('[BackgroundRunner] Error leyendo resultados del runner:', err);
+    return 0;
+  }
+}

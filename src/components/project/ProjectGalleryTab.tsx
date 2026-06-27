@@ -1,5 +1,7 @@
 'use client'
 
+import { Capacitor } from '@capacitor/core'
+
 // v373: Galería de Planos y Referencias — compartida entre Admin y Operador
 interface ProjectGalleryTabProps {
   items: any[]
@@ -125,7 +127,15 @@ export default function ProjectGalleryTab({
                 </div>
               ) : realMime.startsWith('audio/') ? (
                 <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px' }}>
-                  <audio src={item.url} controls style={{ width: '100%', height: '40px' }} />
+                  <audio
+                    src={
+                      typeof Capacitor !== 'undefined' && Capacitor.isNativePlatform && Capacitor.isNativePlatform() && item.url && item.url.startsWith('file://')
+                        ? Capacitor.convertFileSrc(item.url)
+                        : item.url
+                    }
+                    controls
+                    style={{ width: '100%', height: '40px' }}
+                  />
                   <span style={{ fontSize: '0.7rem', color: isEvidence ? '#a855f7' : 'var(--info)', textAlign: 'center', wordBreak: 'break-all' }}>{fileName}</span>
                 </div>
               ) : (

@@ -12,6 +12,7 @@
   "dependencies": {
     "@capacitor-community/sqlite": "^8.1.0",
     "@capacitor/android": "^8.4.0",
+    "@capacitor/app": "^8.1.0",
     "@capacitor/background-runner": "^3.0.0",
     "@capacitor/camera": "^8.2.0",
     "@capacitor/cli": "^8.4.0",
@@ -21,6 +22,7 @@
     "@capacitor/local-notifications": "^8.2.0",
     "@capacitor/preferences": "^8.0.1",
     "@capacitor/push-notifications": "^8.1.1",
+    "@capacitor/share": "^8.0.1",
     "@capgo/capacitor-audio-recorder": "^8.2.1",
     "@ducanh2912/next-pwa": "^10.2.9",
     "@prisma/client": "^6.19.2",
@@ -48,6 +50,7 @@
     "react-dom": "19.2.4",
     "react-leaflet": "^5.0.0",
     "react-markdown": "^10.1.0",
+    "react-window": "^2.2.7",
     "recharts": "^3.8.0",
     "remark-gfm": "^4.0.1",
     "web-push": "^3.6.7",

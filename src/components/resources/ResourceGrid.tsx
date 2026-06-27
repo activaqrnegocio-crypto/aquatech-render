@@ -403,7 +403,32 @@ export default function ResourceGrid({ initialResources, isSuperAdmin }: Resourc
             <div key={res.id} className="resource-card-uniform card animate-fade-in">
               <div className="resource-image-container" onClick={() => setSelectedGallery({ images: getImagesArray(res.imageUrl), index: 0 })}>
                 {isVideo(getImagesArray(res.imageUrl)[0] || '') ? (
-                  <video src={getImagesArray(res.imageUrl)[0]} style={{ width: '100%', height: '100%', objectFit: 'cover' }} muted playsInline preload="metadata" />
+                  <div style={{ width: '100%', height: '100%', position: 'relative', backgroundColor: '#000' }}>
+                    <video
+                      src={getImagesArray(res.imageUrl)[0] + '#t=0.001'}
+                      style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }}
+                      muted
+                      playsInline
+                      preload="metadata"
+                    />
+                    {/* Play badge overlay */}
+                    <div style={{
+                      position: 'absolute', inset: 0,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(0,0,0,0.25)'
+                    }}>
+                      <div style={{
+                        width: '48px', height: '48px', borderRadius: '50%',
+                        background: 'rgba(56,189,248,0.85)', backdropFilter: 'blur(4px)',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        boxShadow: '0 4px 20px rgba(56,189,248,0.5)'
+                      }}>
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="white"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                      </div>
+                    </div>
+                    {/* VIDEO label */}
+                    <div style={{ position: 'absolute', top: '8px', left: '8px', background: 'rgba(0,0,0,0.7)', color: '#38bdf8', padding: '2px 8px', borderRadius: '6px', fontSize: '0.6rem', fontWeight: '800', letterSpacing: '1px', textTransform: 'uppercase' }}>VIDEO</div>
+                  </div>
                 ) : isAudio(getImagesArray(res.imageUrl)[0] || '') ? (
                   <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backgroundColor: '#0d1117' }}>
                     <span style={{ fontSize: '2.5rem' }}>🎵</span>

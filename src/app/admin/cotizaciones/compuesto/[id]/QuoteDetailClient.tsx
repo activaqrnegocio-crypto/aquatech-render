@@ -6,6 +6,10 @@ import { useSession } from 'next-auth/react'
 import { formatDateEcuador } from '@/lib/date-utils'
 import { useState, useMemo, useRef, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
+import { Capacitor } from '@capacitor/core'
+import { Filesystem, Directory } from '@capacitor/filesystem'
+import { Share } from '@capacitor/share'
+import { LocalNotifications } from '@capacitor/local-notifications'
 
 export default function QuoteDetailClient({ quote, projects = [] }: any) {
   const { data: session } = useSession()
@@ -142,7 +146,7 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
     }
   }
   
-  const handleDownloadPDF = () => {
+  const handleDownloadPDF = async () => {
     const clientInfo = {
       name: currentQuote.clientName || currentQuote.client?.name || '',
       ruc: currentQuote.clientRuc || currentQuote.client?.ruc,
@@ -169,8 +173,8 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
       totalAmount: Number(currentQuote.totalAmount)
     }
 
-    generateProfessionalPDF(clientInfo, items, totals, {
-      docType: 'COTIZACIÓN',
+    const opts = {
+      docType: 'COTIZACIÓN' as const,
       docId: currentQuote.id,
       notes: currentQuote.notes,
       sellerName: session?.user?.name || currentQuote.creator?.name || 'Aquatech',
@@ -180,7 +184,66 @@ export default function QuoteDetailClient({ quote, projects = [] }: any) {
         imageBase64: currentQuote.optionalImage || '',
         image2Base64: currentQuote.optionalImage2 || ''
       }
-    })
+    }
+
+    if (Capacitor.isNativePlatform()) {
+      const pdfDoc = generateProfessionalPDF(clientInfo, items, totals, { ...opts, action: 'instance' }) as any
+      if (pdfDoc) {
+        const sanitized = (currentQuote.clientName || 'Cotizacion').replace(/[^a-zA-Z0-9]/g, '_')
+        const fileName = `${sanitized}_Aquatech_${Date.now()}.pdf`
+        try {
+          const base64 = pdfDoc.output('datauristring').split(',')[1]
+          const writeResult = await Filesystem.writeFile({
+            path: fileName,
+            data: base64,
+            directory: Directory.Documents,
+            recursive: true,
+          })
+          console.log('[PDF] Guardado en Documents:', writeResult.uri)
+          
+          try {
+            await LocalNotifications.requestPermissions();
+            await LocalNotifications.schedule({
+              notifications: [
+                {
+                  title: 'Cotización Descargada 📄',
+                  body: `Se guardó ${fileName} en Documentos / Descargas`,
+                  id: Math.floor(Math.random() * 100000),
+                  schedule: { at: new Date(Date.now() + 500) }
+                }
+              ]
+            });
+          } catch (notifErr) {
+            console.error('Error sending local notification:', notifErr);
+          }
+
+          alert(
+            `✅ PDF descargado exitosamente.\n\n` +
+            `📄 Archivo: ${fileName}\n\n` +
+            `📁 Ubicación en el dispositivo:\nCarpeta de Documentos / Descargas`
+          )
+        } catch (saveErr) {
+          console.warn('[PDF Detail] Error guardando en Documents, usando Share:', saveErr)
+          try {
+            const base64 = pdfDoc.output('datauristring').split(',')[1]
+            const writeResult = await Filesystem.writeFile({
+              path: fileName,
+              data: base64,
+              directory: Directory.Cache,
+            })
+            await Share.share({
+              title: 'Cotización Aquatech',
+              files: [writeResult.uri],
+              dialogTitle: 'Abrir o compartir cotización',
+            })
+          } catch (e) {
+            alert('No se pudo descargar ni compartir el PDF.')
+          }
+        }
+      }
+    } else {
+      generateProfessionalPDF(clientInfo, items, totals, opts)
+    }
   }
 
   return (

@@ -5,7 +5,7 @@ import { jsPDF } from 'jspdf'
 import autoTable from 'jspdf-autotable'
 import Link from 'next/link'
 import { useRouter, useSearchParams, usePathname } from 'next/navigation'
-import ProjectUploader, { ProjectFile } from '@/components/ProjectUploader'
+import ProjectUploader, { ProjectFile, SafeImage, SafeAudio } from '@/components/ProjectUploader'
 import { formatToEcuador, ECUADOR_TIMEZONE, getLocalNow, formatDateEcuador, formatTimeEcuador } from '@/lib/date-utils'
 import MediaCapture from '@/components/MediaCapture'
 import { useSession } from 'next-auth/react'
@@ -24,6 +24,7 @@ import ProjectTeamSection from '@/components/project/ProjectTeamSection'
 import ProjectClientInfo from '@/components/project/ProjectClientInfo'
 import ProjectGalleryTab from '@/components/project/ProjectGalleryTab'
 import LightboxPreview from '@/components/project/LightboxPreview'
+import { Capacitor } from '@capacitor/core'
 
 // v373: COMPONENTE BASE UNIFICADO — Admin y Operador comparten el mismo código
 export default function ProjectDetailBase({ 
@@ -366,6 +367,7 @@ export default function ProjectDetailBase({
   const [isSavingExpense, setIsSavingExpense] = useState(false)
   const [expenseImage, setExpenseImage] = useState<string | null>(null)
   const [expenseImagePreview, setExpenseImagePreview] = useState<string | null>(null)
+  const [expenseFile, setExpenseFile] = useState<File | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const masterGallery = useMemo(() => {
@@ -449,6 +451,9 @@ export default function ProjectDetailBase({
       seen.add(uid);
       // Deduplicate by URL too for pending items
       if (item.isPending && combined.some(b => !b.isPending && b.url === item.url)) return false;
+      // v-sync-dedup: Deduplicate by filename — catches the case where sync completed
+      // and the real item is in gallery but the pending item hasn't been removed yet
+      if (item.isPending && item.filename && combined.some(b => !b.isPending && b.filename === item.filename)) return false;
       return true;
     }).sort((a: any, b: any) => {
       const dateA = new Date(a.createdAt || a.date || a.timestamp || 0).getTime()
@@ -527,6 +532,9 @@ export default function ProjectDetailBase({
       if (seen.has(uid)) return false;
       seen.add(uid);
       if (item.isPending && combined.some(b => !b.isPending && b.url === item.url)) return false;
+      // v-sync-dedup: Deduplicate by filename — catches the case where sync completed
+      // and the real item is in gallery but the pending item hasn't been removed yet
+      if (item.isPending && item.filename && combined.some(b => !b.isPending && b.filename === item.filename)) return false;
       return true;
     }).sort((a: any, b: any) => {
       const dateA = new Date(a.createdAt || a.date || a.timestamp || 0).getTime()
@@ -677,11 +685,11 @@ export default function ProjectDetailBase({
 
 
   // --- INCREMENTAL FETCH: gets new messages from server ---
-  const fetchMessages = async (since?: string): Promise<any[]> => {
+  const fetchMessages = async (since?: string, before?: string): Promise<any[]> => {
     try {
-      const url = since 
-        ? `/api/projects/${project?.id}/messages?since=${since}&_t=${Date.now()}`
-        : `/api/projects/${project?.id}/messages?_t=${Date.now()}`
+      let url = `/api/projects/${project?.id}/messages?_t=${Date.now()}`
+      if (since) url += `&since=${since}`
+      if (before) url += `&before=${before}`
         
       const resp = await fetch(url, {
         cache: 'no-store',
@@ -691,7 +699,9 @@ export default function ProjectDetailBase({
         console.error('[ADMIN CHAT SYNC] API error:', resp.status)
         return []
       }
-      const allMsgs = await resp.json()
+      const data = await resp.json()
+      // API puede devolver { messages: [] } o [] directamente
+      const allMsgs = Array.isArray(data) ? data : (data.messages || [])
       const currentUserId = Number(session?.user?.id)
       return (allMsgs || []).map((m: any) => ({
         ...m,
@@ -834,15 +844,13 @@ export default function ProjectDetailBase({
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       try {
         const syncId = `gallery-delete-${project.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-        await db.transaction('rw', db.outbox, async () => {
-          await addToOutbox({
-            type: 'GALLERY_DELETE',
-            projectId: project.id,
-            payload: { galleryId: itemId },
-            timestamp: Date.now(),
-            status: 'pending',
-            syncId
-          })
+        await addToOutbox({
+          type: 'GALLERY_DELETE',
+          projectId: project.id,
+          payload: { galleryId: itemId },
+          timestamp: Date.now(),
+          status: 'pending',
+          syncId
         })
         
         // v277: Immediate UI update in offline mode
@@ -961,15 +969,13 @@ export default function ProjectDetailBase({
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       try {
         const syncId = `project-update-${project.id}-${Date.now()}-${Math.random().toString(36).substring(7)}`;
-        await db.transaction('rw', db.outbox, async () => {
-          await addToOutbox({
-            type: 'PROJECT_UPDATE',
-            projectId: project.id,
-            payload: fichaPayload,
-            timestamp: Date.now(),
-            status: 'pending',
-            syncId
-          })
+        await addToOutbox({
+          type: 'PROJECT_UPDATE',
+          projectId: project.id,
+          payload: fichaPayload,
+          timestamp: Date.now(),
+          status: 'pending',
+          syncId
         })
         setIsEditingFicha(false)
         // Local state update
@@ -1112,15 +1118,13 @@ export default function ProjectDetailBase({
     // Offline support
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       try {
-        await db.transaction('rw', db.outbox, async () => {
-          await addToOutbox({
-            type: 'EXPENSE',
-            projectId: project?.id || 0,
-            payload: expensePayload,
-            timestamp: Date.now(),
-            status: 'pending',
-            syncId
-          })
+        await addToOutbox({
+          type: 'EXPENSE',
+          projectId: project?.id || 0,
+          payload: expensePayload,
+          timestamp: Date.now(),
+          status: 'pending',
+          syncId
         })
         setExpenseForm({
           amount: '',
@@ -1233,6 +1237,9 @@ export default function ProjectDetailBase({
     const incomingFile = (file as any).file;
     const hasIncomingFile = !!(incomingFile && typeof incomingFile === 'object' && typeof incomingFile.size === 'number' && incomingFile.size > 0);
 
+    const { Capacitor } = await import('@capacitor/core');
+    const isNative = Capacitor.isNativePlatform();
+
     if (hasIncomingFile) {
       if (incomingFile.size > OFFLINE_MAX_SIZE) {
         alert(`Archivo demasiado grande (${(incomingFile.size / (1024*1024)).toFixed(0)}MB). Límite: 600MB.`);
@@ -1259,6 +1266,34 @@ export default function ProjectDetailBase({
           processedUrl = '';
         }
       } catch (e) { console.warn("Blob processing failed", e); }
+    }
+
+    // If native platform, use Cache API (like operator) instead of native filesystem
+    let localUri = '';
+    let galleryCacheKey = '';
+    let galleryStorageType = '';
+    if (isNative && (rawFileObject || (typeof file.url === 'string' && file.url.startsWith('blob:')))) {
+      try {
+        const targetBlob = rawFileObject || await (await fetch(file.url as string)).blob();
+        const ext = file.filename?.split('.').pop() || 'jpg';
+        const filename = `gallery_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`;
+        // vFIX-ADMIN-GALLERY: Use prepareFileForOutbox (Cache API) like operator chat does
+        const { prepareFileForOutbox, saveFileToCache } = await import('@/lib/offline-utils');
+        const fileObj = new File([targetBlob], filename, { type: file.mimeType || 'image/jpeg' });
+        const prep = await prepareFileForOutbox(fileObj);
+        if (prep.storageType === 'base64') {
+          galleryCacheKey = `gallery-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+          await saveFileToCache(galleryCacheKey, targetBlob);
+          galleryStorageType = 'cache';
+          processedUrl = prep.data; // base64 for preview
+        } else {
+          galleryCacheKey = prep.cacheKey || '';
+          galleryStorageType = prep.storageType;
+          processedUrl = prep.data;
+        }
+      } catch (err) {
+        console.error('[Gallery Cache Save] Error saving to Cache API:', err);
+      }
     }
 
     // 2. Optimistic UI Update
@@ -1362,12 +1397,12 @@ export default function ProjectDetailBase({
 
       // Exactly like ProjectCreationWizard line 374-379:
       let storedFileData: { buffer: ArrayBuffer | null; type: string; name: string; size: number } | null = null;
-      if (rawFileObject instanceof File && fileSize > 0 && fileSize <= SMALL_FILE_LIMIT) {
+      if (!isNative && rawFileObject instanceof File && fileSize > 0 && fileSize <= SMALL_FILE_LIMIT) {
         storedFileData = { buffer: null, type: fileType, name: fileName, size: fileSize };
       }
 
       // Exactly like ProjectCreationWizard line 411-418: read arrayBuffer for small files
-      if (storedFileData && rawFileObject && fileSize <= SMALL_FILE_LIMIT) {
+      if (!isNative && storedFileData && rawFileObject && fileSize <= SMALL_FILE_LIMIT) {
         try {
           storedFileData.buffer = await rawFileObject.arrayBuffer();
           console.log(`[Gallery] ✅ Small file ArrayBuffer: ${fileName} (${(fileSize/1024/1024).toFixed(1)}MB)`);
@@ -1377,7 +1412,7 @@ export default function ProjectDetailBase({
         }
       }
 
-      if (fileSize > SMALL_FILE_LIMIT) {
+      if (!isNative && fileSize > SMALL_FILE_LIMIT) {
         console.log(`[Gallery] ✅ Large file (${(fileSize/1024/1024).toFixed(0)}MB): using raw File via structured clone (same as Projects)`);
       }
 
@@ -1390,9 +1425,12 @@ export default function ProjectDetailBase({
           filename: file.filename || fileName,
           mimeType: file.mimeType || fileType,
           sizeBytes: fileSize,
-          // v454: SAME as ProjectCreationWizard: raw File + fileData for small files
+          // vFIX: Always keep raw File (works in APK too — same as operator/ProjectCreationWizard)
           file: rawFileObject instanceof File ? rawFileObject : (rawFileObject instanceof Blob ? rawFileObject : null),
           fileData: storedFileData,
+          storageType: galleryStorageType || null,
+          cacheKey: galleryCacheKey || null,
+          localUri: null,
           category
         },
         timestamp: Date.now(),
@@ -1556,10 +1594,12 @@ export default function ProjectDetailBase({
     if (!message.trim() && !customMedia) return
     
     try {
+      const syncId = `temp-chat-${project.id}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
       let payload: any = {
         content: customMedia ? customMedia.transcription : message,
         phaseId: activePhase,
         type: customMedia ? (customMedia.type === 'video' ? 'VIDEO' : 'AUDIO') : 'TEXT',
+        extraData: { syncId }
       }
 
       if (customMedia) {
@@ -1579,15 +1619,14 @@ export default function ProjectDetailBase({
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
          try {
             let offlinePayload = { ...payload }
-            // v262: Transacción atómica
-            await db.transaction('rw', db.outbox, async () => {
-              await addToOutbox({
-                 type: 'MESSAGE',
-                 projectId: project.id,
-                 payload: offlinePayload,
-                 timestamp: Date.now(),
-                 status: 'pending'
-              })
+            // Guardar en outbox directamente (sin db.transaction - es atómico por sí solo)
+            await addToOutbox({
+               type: 'MESSAGE',
+               projectId: project.id,
+               payload: offlinePayload,
+               timestamp: Date.now(),
+               status: 'pending',
+               syncId
             });
             setMessage('')
             setShowMediaCapture(null)
@@ -1602,7 +1641,7 @@ export default function ProjectDetailBase({
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-sync-id': `chat-msg-${project.id}-${Date.now()}` // v262: Idempotency Key
+          'x-sync-id': syncId
         },
         body: JSON.stringify(payload)
       })
@@ -1660,7 +1699,10 @@ export default function ProjectDetailBase({
         content,
         phaseId: activePhase,
         type: ['EXPENSE_LOG', 'NOTE', 'IMAGE', 'VIDEO', 'AUDIO', 'DOCUMENT', 'LOCATION'].includes(type) ? type : 'TEXT',
-        extraData: extraData || {}
+        extraData: {
+          ...(extraData || {}),
+          syncId: tempId
+        }
       }
 
       if (file) {
@@ -1678,13 +1720,39 @@ export default function ProjectDetailBase({
           }
         }
 
+        const { Capacitor } = await import('@capacitor/core');
+        const isNative = Capacitor.isNativePlatform();
+
         if (typeof navigator !== 'undefined' && !navigator.onLine) {
-          // Offline: convert to base64
-          const base64 = await blobToBase64(processedFile);
-          payload.media = {
-            base64,
-            filename: processedName,
-            mimeType: processedMime
+          // vFIX-APK-CACHE: Use prepareFileForOutbox (Cache API for large files, base64 for small)
+          // This stores blobs on DISK (Cache API) instead of RAM or native filesystem,
+          // and makes them accessible to the SW for background sync.
+          try {
+            const { prepareFileForOutbox } = await import('@/lib/offline-utils');
+            // optimizedCompress returns File | Blob, but prepareFileForOutbox expects File
+            const prep = await prepareFileForOutbox(processedFile as File);
+            payload.media = {
+              filename: prep.filename,
+              mimeType: prep.mimeType,
+              storageType: prep.storageType,
+              cacheKey: prep.cacheKey
+            };
+            if (prep.storageType === 'base64') {
+              payload.media.base64 = prep.data;
+              payload.media.fileData = prep.data;
+            } else {
+              // Cache API: SW reads from cacheKey directly, no fileData needed
+              payload.media.fileData = '';
+            }
+          } catch (err) {
+            console.error('[Chat Offline] Error preparing file for outbox, falling back:', err);
+            // Fallback: base64 (works everywhere)
+            const base64 = await blobToBase64(processedFile);
+            payload.media = {
+              base64,
+              filename: processedName,
+              mimeType: processedMime
+            };
           }
         } else {
           // Online: upload to Bunny
@@ -1706,30 +1774,48 @@ export default function ProjectDetailBase({
 
       // v262: Atomic Outbox storage for Chat Unified
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        // v294: Refuerzo de Base64 para el outbox
-        if (extraData?.file && (!payload.media || !payload.media.base64)) {
-           try {
-             const base64 = await blobToBase64(extraData.file);
-             payload.media = {
-               base64,
-               filename: extraData.file.name,
-               mimeType: extraData.file.type
-             };
-           } catch(e) { console.warn('[SW-Fix] Failed final base64 check', e); }
+        const { Capacitor } = await import('@capacitor/core');
+        const isNative = Capacitor.isNativePlatform();
+
+        // vFIX-APK-CACHE: Refuerzo de Cache API / base64 para el outbox
+        if (extraData?.file && (!payload.media || !payload.media.storageType)) {
+          try {
+            const { prepareFileForOutbox } = await import('@/lib/offline-utils');
+            const prep = await prepareFileForOutbox(extraData.file);
+            payload.media = {
+              filename: prep.filename,
+              mimeType: prep.mimeType,
+              storageType: prep.storageType,
+              cacheKey: prep.cacheKey,
+              fileData: prep.data
+            };
+            if (prep.storageType === 'base64') {
+              payload.media.base64 = prep.data;
+            }
+          } catch (e) {
+            console.warn('[SW-Fix] Failed final file prep, fallback base64', e);
+            try {
+              const base64 = await blobToBase64(extraData.file);
+              payload.media = {
+                base64,
+                filename: extraData.file.name,
+                mimeType: extraData.file.type
+              };
+            } catch(e2) { console.warn('[SW-Fix] Failed final base64 too', e2); }
+          }
         }
 
-        await db.transaction('rw', db.outbox, async () => {
-          await addToOutbox({
-             type: 'MESSAGE',
-             projectId: project.id,
-             payload: {
-               ...payload,
-               lat: undefined,
-               lng: undefined,
-             },
-             timestamp: Date.now(),
-             status: 'pending'
-          })
+        await addToOutbox({
+           type: 'MESSAGE',
+           projectId: project.id,
+           payload: {
+             ...payload,
+             lat: undefined,
+             lng: undefined,
+           },
+           timestamp: Date.now(),
+           status: 'pending',
+            syncId: tempId
         });
         return;
       }
@@ -1739,7 +1825,7 @@ export default function ProjectDetailBase({
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
-          'x-sync-id': `chat-unified-${project.id}-${Date.now()}` // Idempotency Key
+          'x-sync-id': tempId
         },
         body: JSON.stringify({
           ...payload,
@@ -1756,15 +1842,14 @@ export default function ProjectDetailBase({
 
       const newMessage = await res.json()
       setChatMessages((prev: any) => {
-        const exists = prev.some((m: any) => m.id === newMessage.id)
-        if (exists) return prev
-        return [...prev, {
+        // Remover temp y agregar mensaje nuevo en UNA SOLA operación
+        const filtered = prev.filter((m: any) => m.id !== tempId && m.id !== newMessage.id)
+        return deduplicateMessages([...filtered, {
           ...newMessage,
           isMe: true,
           userName: session?.user?.name || 'Administrador'
-        }]
+        }])
       })
-      setChatMessages(prev => deduplicateMessages(prev.filter(m => m.id !== tempId)))
 
       // 🔥 REAL-TIME EXPENSE SYNC: If message was an expense, update the expenses list locally
       if (payload.type === 'EXPENSE_LOG' && payload.extraData?.amount) {
@@ -1786,17 +1871,26 @@ export default function ProjectDetailBase({
   }
 
   // --- EXPENSE HANDLERS ---
-  const handleExpenseImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleExpenseImageChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
 
-    // Preview
-    const reader = new FileReader()
-    reader.onloadend = () => {
-      setExpenseImagePreview(reader.result as string)
-      setExpenseImage(reader.result as string)
+    setExpenseFile(file)
+
+    const { Capacitor } = await import('@capacitor/core')
+    if (Capacitor.isNativePlatform()) {
+      const previewUrl = URL.createObjectURL(file)
+      setExpenseImagePreview(previewUrl)
+      setExpenseImage('')
+    } else {
+      // Preview
+      const reader = new FileReader()
+      reader.onloadend = () => {
+        setExpenseImagePreview(reader.result as string)
+        setExpenseImage(reader.result as string)
+      }
+      reader.readAsDataURL(file)
     }
-    reader.readAsDataURL(file)
   }
 
   const handleSaveExpense = async (e: React.FormEvent) => {
@@ -1816,10 +1910,26 @@ export default function ProjectDetailBase({
       }
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        const { Capacitor } = await import('@capacitor/core')
+        const isNative = Capacitor.isNativePlatform()
+
+        let localUri = ''
+        if (isNative && expenseFile) {
+          try {
+            const ext = expenseFile.name?.split('.').pop() || 'jpg'
+            const filename = `receipt_${Date.now()}_${Math.random().toString(36).substring(7)}.${ext}`
+            const { saveOfflineFileToNativeStorage } = await import('@/lib/offline-media-helper')
+            localUri = await saveOfflineFileToNativeStorage(expenseFile, filename)
+            payload.receiptPhoto = Capacitor.convertFileSrc(localUri)
+          } catch (err) {
+            console.error('[Expense Native Save] Error saving native receipt file:', err)
+          }
+        }
+
         await addToOutbox({
           type: 'EXPENSE',
           projectId: project.id,
-          payload: editingExpense ? { ...payload, id: editingExpense.id } : payload,
+          payload: editingExpense ? { ...payload, id: editingExpense.id, localUri } : { ...payload, localUri },
           timestamp: Date.now(),
           status: 'pending'
         })
@@ -1841,6 +1951,7 @@ export default function ProjectDetailBase({
         setEditingExpense(null)
         setExpenseForm({ amount: '', description: '', isNote: false, date: new Date().toISOString().split('T')[0] })
         setExpenseImage(null)
+        setExpenseFile(null)
         return
       }
 
@@ -2751,13 +2862,31 @@ export default function ProjectDetailBase({
                   Especificaciones Técnicas
                 </h4>
                 {!isEditingFicha ? (
-                  <div style={{ padding: '14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', fontSize: '0.9rem', color: 'var(--text)', lineHeight: '1.6', border: '1px solid var(--border-color)', minHeight: '100px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
-                    {(() => {
-                      try { 
-                        const specs = JSON.parse(project?.technicalSpecs || '{}')
-                        return specs.description || project?.specsTranscription || 'Sin especificaciones detalladas.'
-                      } catch { return project.specsTranscription || 'Sin especificaciones detalladas.' }
-                    })()}
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                    <div style={{ padding: '14px', backgroundColor: 'var(--bg-surface)', borderRadius: '8px', fontSize: '0.9rem', color: 'var(--text)', lineHeight: '1.6', border: '1px solid var(--border-color)', minHeight: '100px', whiteSpace: 'pre-wrap', wordBreak: 'break-word', overflowWrap: 'anywhere' }}>
+                      {(() => {
+                        try { 
+                          const specs = JSON.parse(project?.technicalSpecs || '{}')
+                          return specs.description || project?.specsTranscription || 'Sin especificaciones detalladas.'
+                        } catch { return project.specsTranscription || 'Sin especificaciones detalladas.' }
+                      })()}
+                    </div>
+                    {project?.specsAudioUrl && (
+                      <div style={{ padding: '12px 14px', backgroundColor: 'rgba(56, 189, 248, 0.08)', border: '1px solid rgba(56, 189, 248, 0.2)', borderRadius: '12px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                        <div style={{ fontSize: '0.8rem', fontWeight: 'bold', color: 'var(--primary)', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                          🎙️ Nota de voz de especificaciones
+                        </div>
+                        <audio
+                          src={
+                            Capacitor.isNativePlatform() && project.specsAudioUrl.startsWith('file://')
+                              ? Capacitor.convertFileSrc(project.specsAudioUrl)
+                              : project.specsAudioUrl
+                          }
+                          controls
+                          style={{ width: '100%', height: '36px', borderRadius: '8px', outline: 'none' }}
+                        />
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <textarea 
@@ -2938,13 +3067,13 @@ export default function ProjectDetailBase({
                       const fileName = cleanFilename(item.filename);
 
                       if (realMime.startsWith('image/')) {
-                        return <img src={item.url} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                        return <SafeImage file={item} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
                       } else if (realMime.startsWith('video/')) {
-                        return <VideoThumbnail url={item.url} mime={realMime} filename={fileName} />;
+                        return <VideoThumbnail url={item.url} mime={realMime} filename={fileName} file={item} />;
                       } else if (realMime.startsWith('audio/')) {
                         return (
                           <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px' }}>
-                            <audio src={item.url} controls style={{ width: '100%', height: '40px' }} />
+                            <SafeAudio file={item} style={{ width: '100%', height: '40px' }} />
                             <span style={{ fontSize: '0.7rem', color: 'var(--info)', textAlign: 'center', wordBreak: 'break-all' }}>{fileName}</span>
                           </div>
                         );
@@ -3126,13 +3255,13 @@ export default function ProjectDetailBase({
                       const fileName = cleanFilename(item.filename);
 
                       if (realMime.startsWith('image/')) {
-                        return <img src={item.url} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
+                        return <SafeImage file={item} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />;
                       } else if (realMime.startsWith('video/')) {
-                        return <VideoThumbnail url={item.url} mime={realMime} filename={fileName} />;
+                        return <VideoThumbnail url={item.url} mime={realMime} filename={fileName} file={item} />;
                       } else if (realMime.startsWith('audio/')) {
                         return (
                           <div style={{ width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: '10px', padding: '10px' }}>
-                            <audio src={item.url} controls style={{ width: '100%', height: '40px' }} />
+                            <SafeAudio file={item} style={{ width: '100%', height: '40px' }} />
                             <span style={{ fontSize: '0.7rem', color: '#a855f7', textAlign: 'center', wordBreak: 'break-all' }}>{fileName}</span>
                           </div>
                         );

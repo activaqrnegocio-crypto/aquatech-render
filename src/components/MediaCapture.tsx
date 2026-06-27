@@ -2,6 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react'
 import { Capacitor } from '@capacitor/core'
+import { Filesystem, Directory } from '@capacitor/filesystem'
 import { CapacitorAudioRecorder } from '@capgo/capacitor-audio-recorder'
 
 // Inline SVG icons
@@ -221,12 +222,29 @@ export default function MediaCapture({
         // El resultado puede ser string directamente o {value: string}
         const filePath = typeof result === 'string' ? result : (result as any).value
         if (filePath) {
-          // El resultado es un path de archivo, necesitamos crear un Blob
-          const response = await fetch(filePath)
-          const blob = await response.blob()
+          let blob: Blob
+          // fetch() no funciona con file:// en Capacitor WebView
+          // Filesystem.readFile necesita el path SIN prefijo file://
+          try {
+            const cleanPath = filePath.startsWith('file://') ? filePath.replace('file://', '') : filePath
+            const fileResult = await Filesystem.readFile({ path: cleanPath })
+            const base64Data = fileResult.data as string
+            const byteCharacters = atob(base64Data)
+            const byteArray = new Uint8Array(byteCharacters.length)
+            for (let i = 0; i < byteCharacters.length; i++) {
+              byteArray[i] = byteCharacters.charCodeAt(i)
+            }
+            blob = new Blob([byteArray], { type: 'audio/m4a' })
+            console.log('[MediaCapture] Audio leído OK via Filesystem, tamaño:', blob.size, 'bytes')
+          } catch (fsErr) {
+            console.warn('[MediaCapture] Filesystem.readFile falló, intentando fetch:', fsErr)
+            const response = await fetch(Capacitor.convertFileSrc(filePath))
+            blob = await response.blob()
+          }
           
           setMediaBlob(blob)
-          setPreviewUrl(URL.createObjectURL(blob))
+          // Usar convertFileSrc para que el <audio> pueda reproducir el archivo local
+          setPreviewUrl(Capacitor.convertFileSrc(filePath))
           setRecordedDuration(timer)
           
           if (skipTranscription || !navigator.onLine) {

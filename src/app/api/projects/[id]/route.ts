@@ -95,19 +95,12 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       }
     }
 
-    const updated = await prisma.$transaction(async (tx) => {
+    const projectIdNum = Number(id)
+    await prisma.$transaction(async (tx) => {
       const proj = await tx.project.update({
-        where: { id: Number(id) },
+        where: { id: projectIdNum },
         data: allowedFields,
-        include: {
-          client: true,
-          phases: true,
-          team: { include: { user: true } },
-          gallery: true,
-          expenses: { include: { user: true } },
-          chatMessages: { include: { user: true, phase: true, media: true }, orderBy: { createdAt: 'desc' } },
-          dayRecords: { include: { user: true } }
-        }
+        select: { id: true }
       })
 
       // If project becomes ACTIVE, accept the associated quote
@@ -117,8 +110,22 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
           data: { status: 'ACEPTADA' }
         })
       }
-      
-      return proj
+    }, {
+      timeout: 10000 // 10s timeout safety
+    })
+
+    // Fetch the updated project with all includes outside the transaction
+    const updated = await prisma.project.findUnique({
+      where: { id: projectIdNum },
+      include: {
+        client: true,
+        phases: true,
+        team: { include: { user: true } },
+        gallery: true,
+        expenses: { include: { user: true } },
+        chatMessages: { include: { user: true, phase: true, media: true }, orderBy: { createdAt: 'desc' } },
+        dayRecords: { include: { user: true } }
+      }
     })
 
     return NextResponse.json(updated)

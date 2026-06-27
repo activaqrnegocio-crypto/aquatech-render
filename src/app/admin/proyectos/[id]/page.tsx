@@ -59,23 +59,43 @@ export default async function ProyectoDetallePage({ params }: { params: Promise<
     select: { id: true, name: true, phone: true }
   })
 
-  // Mark as seen for this user
-  await prisma.projectView.upsert({
-    where: { 
-      userId_projectId: { 
+  // Mark as seen for this user (safeguarded against parallel upsert race conditions)
+  try {
+    await prisma.projectView.upsert({
+      where: { 
+        userId_projectId: { 
+          userId: Number(session.user.id), 
+          projectId 
+        } 
+      },
+      create: { 
         userId: Number(session.user.id), 
-        projectId 
-      } 
-    },
-    create: { 
-      userId: Number(session.user.id), 
-      projectId,
-      lastSeen: new Date()
-    },
-    update: { 
-      lastSeen: new Date() 
+        projectId,
+        lastSeen: new Date()
+      },
+      update: { 
+        lastSeen: new Date() 
+      }
+    })
+  } catch (err) {
+    console.warn('[ProjectView Upsert Race Condition]:', err);
+    // Fallback: try update directly in case another concurrent request created it
+    try {
+      await prisma.projectView.update({
+        where: {
+          userId_projectId: {
+            userId: Number(session.user.id),
+            projectId
+          }
+        },
+        data: {
+          lastSeen: new Date()
+        }
+      })
+    } catch (fallbackErr) {
+      console.error('[ProjectView Fallback failed]:', fallbackErr);
     }
-  })
+  }
 
   // Serialize to plain JSON using fast serializer
   const serializedProject = deepSerialize(project)

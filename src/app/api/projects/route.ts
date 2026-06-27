@@ -7,6 +7,7 @@ import { isAdmin, isOperator } from '@/lib/rbac'
 import { notifyUser, notifyAdmins } from '@/lib/push'
 import { sendWhatsAppMessage } from '@/lib/whatsapp'
 import { uploadToBunny } from '@/lib/bunny'
+import { revalidatePath } from 'next/cache'
 
 export async function GET(request: Request) {
   try {
@@ -479,6 +480,18 @@ export async function POST(request: Request) {
       `/admin/proyectos/${project?.id}`,
       `new-project-${project?.id}`
     ).catch(e => console.error('Admin notify error:', e));
+
+    // Clear Next.js Router Cache & Server Cache for projects (prevents 404 on redirect)
+    if (project) {
+      try {
+        revalidatePath('/admin/proyectos')
+        revalidatePath(`/admin/proyectos/${project.id}`)
+        revalidatePath('/admin/operador')
+        revalidatePath(`/admin/operador/proyecto/${project.id}`)
+      } catch (revalErr) {
+        console.warn('[POST projects route] Revalidation failed:', revalErr);
+      }
+    }
 
     return NextResponse.json(project, { status: 201 })
   } catch (error: any) {

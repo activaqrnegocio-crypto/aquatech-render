@@ -20,7 +20,9 @@ export default function NativeCameraCapture({ onPhotoCapture, onVideoCapture, on
   const takePhoto = async () => {
     try {
       const photo = await Camera.getPhoto({
-        quality: 90,
+        quality: 75,
+        width: 1280,
+        height: 1280,
         allowEditing: false,
         resultType: CameraResultType.Uri,
         source: CameraSource.Camera,

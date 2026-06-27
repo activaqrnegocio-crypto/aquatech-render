@@ -174,12 +174,23 @@ export default function GlobalSyncWorker() {
         
         // v317: Even if backend filters, we apply local filter for UI consistency (fixes 30/30 vs 12 issue)
         if (!isAdmin) {
-          const userId = Number(u?.id);
-          projectsToProcess = fetchedProjects.filter((p: any) => {
-            const isInTeam = p.team?.some((m: any) => Number(m.userId) === userId);
-            const isCreator = Number(p.createdBy || p.createdById) === userId;
-            return isInTeam || isCreator;
-          });
+          const rawId = u?.id;
+          const userId = Number(rawId);
+          // vFIX: Validar que userId sea un número válido antes de filtrar
+          if (!rawId || isNaN(userId) || userId <= 0) {
+            console.warn('[Sync] No valid userId for filtering, skipping sync');
+            projectsToProcess = [];
+          } else {
+            projectsToProcess = fetchedProjects.filter((p: any) => {
+              const isInTeam = p.team?.some((m: any) => Number(m.userId) === userId);
+              const isCreator = Number(p.createdBy || p.createdById) === userId;
+              const isArchived = p.status === 'ARCHIVADO';
+              return (isInTeam || isCreator) && !isArchived;
+            });
+            // DEBUG: Log filtered project IDs to understand count mismatch
+            console.log(`[Sync DEBUG] UserID=${userId}, API returned ${fetchedProjects.length}, Filtered to ${projectsToProcess.length}`);
+            console.log(`[Sync DEBUG] Filtered IDs:`, projectsToProcess.map((p:any) => p.id).join(','));
+          }
         } else {
           projectsToProcess = fetchedProjects;
         }
@@ -876,7 +887,7 @@ export default function GlobalSyncWorker() {
             (finalPayload.media?.fileData && finalPayload.media.fileData.buffer) ||
             finalPayload.receiptFileData
           );
-          const hasCacheKey = !!(finalPayload.cacheKey);
+          const hasCacheKey = !!(finalPayload.cacheKey || finalPayload.media?.cacheKey);
           const hasBase64 = !!(finalPayload.media?.base64 || 
                             finalPayload.receiptPhoto?.startsWith('data:'));
           const hasBlobUrl = !hasRawFile && !hasBinaryData && !hasCacheKey && !!((typeof finalPayload.media?.url === 'string' && finalPayload.media.url.startsWith('blob:')) ||
@@ -1034,23 +1045,34 @@ export default function GlobalSyncWorker() {
               // PRIORITY 2 — Cache API (v444 items only)
               else if (hasCacheKey) {
                 const { getFileFromCache } = await import('@/lib/offline-utils');
-                const cached = await getFileFromCache(finalPayload.cacheKey);
+                const key = finalPayload.cacheKey || finalPayload.media?.cacheKey;
+                const cached = await getFileFromCache(key);
                 if (!cached || cached.size === 0) {
-                  console.error(`[Sync] Cache API: file not found for key ${finalPayload.cacheKey}`);
+                  console.error(`[Sync] Cache API: file not found for key ${key}`);
                   await db.outbox.update(item.id!, { status: 'failed', failReason: 'FILE_DATA_LOST' });
                   await logSync('error', `Cache perdido: ${item.type} #${item.id}`, item.type);
                   continue;
                 }
                 uploadFile = cached;
-                finalFilename = finalPayload.filename || `sync_${Date.now()}`;
+                finalFilename = finalPayload.filename || finalPayload.media?.filename || `sync_${Date.now()}`;
                 console.log(`[Sync] Using Cache API fallback: ${finalFilename} (${(cached.size/1024/1024).toFixed(1)}MB)`);
+                if (finalPayload.media?.cacheKey) {
+                  try { const { deleteFileFromCache } = await import('@/lib/offline-utils'); await deleteFileFromCache(finalPayload.media.cacheKey); } catch {}
+                  delete finalPayload.media.cacheKey;
+                }
               }
               // PRIORITY 3 — base64 or blob URL
               else {
-                const source = finalPayload.media?.base64 || 
-                               finalPayload.media?.url || 
-                               finalPayload.url || 
-                               finalPayload.receiptPhoto;
+                let source = finalPayload.media?.base64 || 
+                             finalPayload.media?.localUri ||
+                             finalPayload.media?.url || 
+                             finalPayload.url || 
+                             finalPayload.receiptPhoto;
+                
+                if (typeof source === 'string' && source.startsWith('file://')) {
+                  const { Capacitor } = await import('@capacitor/core');
+                  source = Capacitor.convertFileSrc(source);
+                }
                 
                 try {
                   const resB64 = await fetch(source as string);
@@ -1278,10 +1300,47 @@ export default function GlobalSyncWorker() {
                    const f = finalPayload.files[fi];
                    if ((f.fileData && f.fileData.buffer) || (f.file instanceof File || f.file instanceof Blob)) {
                      toUpload.push({ index: fi, f });
+                   } else if (f.url && (f.url.startsWith('file://') || f.url.includes('_capacitor_file_') || f.url.startsWith('capacitor://'))) {
+                     try {
+                       let fetchUrl = f.url;
+                       if (f.url.startsWith('file://')) {
+                         fetchUrl = f.url.replace('file://', 'http://localhost/_capacitor_file_');
+                       }
+                       const res = await fetch(fetchUrl);
+                       const blob = await res.blob();
+                       f.file = blob;
+                       toUpload.push({ index: fi, f });
+                     } catch (err) {
+                       console.error('[Sync] Failed to fetch local file for PROJECT:', f.url, err);
+                     }
                    } else if (f.url && f.url.startsWith('data:')) {
-                     passThrough.push({ index: fi, result: { url: f.url, filename: f.filename, mimeType: f.mimeType, type: f.type, category: f.category, size: f.size } });
-                   } else if (f.url && f.url.startsWith('http')) {
+                     // vFIX-AUDIO: Upload base64 data to Bunny instead of passing through
+                     try {
+                       const res = await fetch(f.url);
+                       const blob = await res.blob();
+                       f.file = blob;
+                       toUpload.push({ index: fi, f });
+                     } catch (err) {
+                       console.error('[Sync] Failed to upload base64 file for PROJECT:', err);
+                       // Fallback: passthrough con la URL original
+                       passThrough.push({ index: fi, result: { url: f.url, filename: f.filename, mimeType: f.mimeType, type: f.type, category: f.category, size: f.size, _isSpecsAudio: f._isSpecsAudio } });
+                     }
+                   } else if (f.url && f.url.startsWith('http') && !f.url.includes('_capacitor_file_')) {
                      passThrough.push({ index: fi, result: f });
+                   } else if (f.cacheKey && !f.url) {
+                     // vFIX-AUDIO: File stored in Cache API (e.g. offline audio recording)
+                     try {
+                       const { getFileFromCache } = await import('@/lib/offline-utils');
+                       const cached = await getFileFromCache(f.cacheKey);
+                       if (cached && cached.size > 0) {
+                         f.file = cached;
+                         toUpload.push({ index: fi, f });
+                       } else {
+                         console.warn('[Sync] Cache API file not found:', f.cacheKey);
+                       }
+                     } catch (err) {
+                       console.error('[Sync] Failed to fetch from Cache API:', f.cacheKey, err);
+                     }
                    }
                  }
 
@@ -1292,17 +1351,19 @@ export default function GlobalSyncWorker() {
                  for (let bi = 0; bi < toUpload.length; bi += UPLOAD_BATCH) {
                    const batch = toUpload.slice(bi, bi + UPLOAD_BATCH);
                    const batchResults = await Promise.all(batch.map(async ({ index: fi, f }) => {
+                     const safeFileName = (f.filename || f.name || f.file?.name || f.fileData?.name || `upload-${Date.now()}.bin`);
                      if (f.fileData && f.fileData.buffer) {
                        const blob = new Blob([f.fileData.buffer], { type: f.fileData.type || f.mimeType || 'application/octet-stream' });
                        const tempFolder = finalPayload.tempId ? `Proyectos/temp/${finalPayload.tempId}` : 'Proyectos/temp';
-                       const uploadResult = await uploadToBunnyClientSide(blob, f.fileData.name || f.filename, tempFolder);
+                       const uploadResult = await uploadToBunnyClientSide(blob, safeFileName, tempFolder);
                        const result = {
                          url: uploadResult.url,
-                         filename: f.filename || f.fileData.name,
+                         filename: safeFileName,
                          mimeType: uploadResult.mimeType,
                          type: uploadResult.type,
                          category: f.category,
-                         size: f.size
+                         size: f.size,
+                         _isSpecsAudio: f._isSpecsAudio
                        };
                        // Memory release
                        f.fileData.buffer = null;
@@ -1310,15 +1371,17 @@ export default function GlobalSyncWorker() {
                        return { index: fi, result };
                      } else {
                        // File or Blob
+                       const safeFileBlob = f.file || f.blob;
                        const tempFolder2 = finalPayload.tempId ? `Proyectos/temp/${finalPayload.tempId}` : 'Proyectos/temp';
-                       const uploadResult = await uploadToBunnyClientSide(f.file, f.filename || f.file.name, tempFolder2);
+                       const uploadResult = await uploadToBunnyClientSide(safeFileBlob, safeFileName, tempFolder2);
                        const result = {
                          url: uploadResult.url,
-                         filename: f.filename || f.file.name,
-                         mimeType: uploadResult.mimeType || f.file.type,
+                         filename: safeFileName,
+                         mimeType: uploadResult.mimeType || safeFileBlob.type,
                          type: uploadResult.type,
                          category: f.category,
-                         size: f.file.size
+                         size: safeFileBlob.size,
+                         _isSpecsAudio: f._isSpecsAudio
                        };
                        f.file = null;
                        return { index: fi, result };
@@ -1334,6 +1397,39 @@ export default function GlobalSyncWorker() {
                  for (const { result } of allResults) {
                    processedFiles.push(result);
                  }
+                  // vFIX-AUDIO: Find specs audio in processed files and set specsAudioUrl
+                  if (!finalPayload.specsAudioUrl) {
+                    const specsAudioFile = allResults.find(({ result }) => result._isSpecsAudio);
+                    if (specsAudioFile && specsAudioFile.result.url && 
+                        (specsAudioFile.result.url.startsWith('http') || specsAudioFile.result.url.startsWith('data:'))) {
+                      finalPayload.specsAudioUrl = specsAudioFile.result.url;
+                      console.log('[Sync] Specs audio URL set from processed files:', finalPayload.specsAudioUrl);
+                    }
+                  }
+                  // Legacy: Upload offline specsAudioUrl file if it is local (file:// etc)
+                  // Only runs if specsAudioUrl is still local (not yet set by the _isSpecsAudio logic above)
+                  if (finalPayload.specsAudioUrl && (
+                    finalPayload.specsAudioUrl.startsWith('file://') ||
+                    finalPayload.specsAudioUrl.startsWith('capacitor://') ||
+                    finalPayload.specsAudioUrl.includes('_capacitor_file_')
+                  )) {
+                    try {
+                      let fetchUrl = finalPayload.specsAudioUrl;
+                      if (finalPayload.specsAudioUrl.startsWith('file://')) {
+                        fetchUrl = finalPayload.specsAudioUrl.replace('file://', 'http://localhost/_capacitor_file_');
+                      }
+                      console.log('[Sync] Fetching local specsAudioUrl to upload to Bunny CDN:', fetchUrl);
+                      const res = await fetch(fetchUrl);
+                      const blob = await res.blob();
+                      const audioFilename = `specs-audio-${Date.now()}.aac`;
+                      const tempFolderAudio = finalPayload.tempId ? `Proyectos/temp/${finalPayload.tempId}` : 'Proyectos/temp';
+                      const uploadResult = await uploadToBunnyClientSide(blob, audioFilename, tempFolderAudio);
+                      finalPayload.specsAudioUrl = uploadResult.url;
+                      console.log('[Sync] Specs audio uploaded successfully:', uploadResult.url);
+                    } catch (audioErr) {
+                      console.error('[Sync] Failed to upload PROJECT specsAudioUrl:', audioErr);
+                    }
+                  }
                  finalPayload.files = processedFiles;
                } catch (err) {
                  console.error('[Sync] Failed to upload PROJECT files:', err);
@@ -1405,6 +1501,18 @@ export default function GlobalSyncWorker() {
                 await db.outbox.delete(item.id!)
                 hasSyncedAnything = true
                 await logSync('success', `✓ Sincronizado: ${item.type} #${item.id}`, item.type, `Proyecto ${item.projectId}`);
+
+                // vFIX-AUDIO: Clean up Cache API files after successful PROJECT sync
+                if (item.type === 'PROJECT' && Array.isArray(finalPayload.files)) {
+                  for (const f of finalPayload.files) {
+                    if (f.cacheKey) {
+                      try {
+                        const { deleteFileFromCache } = await import('@/lib/offline-utils');
+                        await deleteFileFromCache(f.cacheKey);
+                      } catch (e) { /* non-critical */ }
+                    }
+                  }
+                }
 
                 // v400: If this was a new PROJECT creation, update all other pending items 
                 // in outbox that reference the temporary ID (e.g. "pending-123")

@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { db } from '@/lib/db'
 import { generateSyncId } from '@/lib/offline-utils'
+import { addToOutbox } from '@/lib/storage'
 
 /**
  * useProjectActions — Hook compartido para mutaciones (Guardar cambios)
@@ -73,7 +74,7 @@ export function useProjectActions({
         }
       } else {
         // Offline regular project
-        await db.outbox.add({
+        await addToOutbox({
           type: 'PROJECT_UPDATE',
           projectId: project.id,
           payload: payload,
@@ -188,7 +189,7 @@ export function useProjectActions({
               throw new Error('Sync failed')
             }
           } catch (err) {
-            await db.outbox.add({
+            await addToOutbox({
               type: 'TEAM_UPDATE',
               projectId: project.id,
               payload: { operatorIds },
@@ -198,7 +199,7 @@ export function useProjectActions({
             triggerBackgroundSync();
           }
         } else {
-          await db.outbox.add({
+          await addToOutbox({
             type: 'TEAM_UPDATE',
             projectId: project.id,
             payload: { operatorIds },
@@ -239,7 +240,7 @@ export function useProjectActions({
     // Offline support para items del servidor
     if (typeof navigator !== 'undefined' && !navigator.onLine) {
       try {
-        await db.outbox.add({
+        await addToOutbox({
           type: 'GALLERY_DELETE',
           projectId: project.id,
           payload: { galleryId: itemId },

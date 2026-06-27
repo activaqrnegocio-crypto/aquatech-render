@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSession } from 'next-auth/react'
 import Link from 'next/link'
-import ProjectUploader, { ProjectFile } from '@/components/ProjectUploader'
+import ProjectUploader, { ProjectFile, SafeImage, SafeVideo } from '@/components/ProjectUploader'
 import MediaCapture from '@/components/MediaCapture'
 import BudgetBuilder, { BudgetItem } from '@/components/BudgetBuilder'
 import { generateProfessionalPDF } from '@/lib/pdf-generator'
@@ -15,8 +15,13 @@ import { db } from '@/lib/db'
 import { addToOutbox } from '@/lib/storage'
 import CameraCapture from '@/components/camera/CameraCapture'
 import { Capacitor } from '@capacitor/core'
-import { CameraSource } from '@capacitor/camera'
+import CameraCaptureModal from '@/components/CameraCaptureModal'
 import { Geolocation } from '@capacitor/geolocation'
+import { CapacitorAudioRecorder } from '@capgo/capacitor-audio-recorder'
+import { Filesystem } from '@capacitor/filesystem'
+import { saveOfflineFileToNativeStorage } from '@/lib/offline-media-helper'
+import { uploadToBunnyClientSide } from '@/lib/storage-client'
+import { prepareFileForOutbox, saveFileToCache } from '@/lib/offline-utils'
 
 interface ProjectCreationWizardProps {
   panelBase?: string; // e.g. "/admin/proyectos" or "/admin/operador"
@@ -202,13 +207,41 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
   const [isRecordingVoice, setIsRecordingVoice] = useState(false)
   const isRecordingRef = useRef(false)
 
+  // vFIX-AUDIO: Helper to resolve audio format from extension and/or blob MIME type
+  const resolveAudioFormat = (extFromUri: string, blobMime: string): { ext: string; audioMime: string } => {
+    // If blob has a valid audio MIME type, trust it
+    if (blobMime && blobMime.startsWith('audio/')) {
+      const mimeMap: Record<string, string> = {
+        'audio/mp4': 'm4a',
+        'audio/aac': 'aac',
+        'audio/mpeg': 'mp3',
+        'audio/wav': 'wav',
+        'audio/ogg': 'ogg',
+        'audio/3gpp': '3gp',
+        'audio/amr': 'amr',
+        'audio/x-wav': 'wav',
+      };
+      const mimeExt = mimeMap[blobMime] || 'aac';
+      return { ext: mimeExt, audioMime: blobMime };
+    }
+    // Fallback: detect from file extension
+    const ext = extFromUri || 'aac';
+    if (ext === 'm4a') return { ext: 'm4a', audioMime: 'audio/mp4' };
+    if (ext === 'wav' || ext === 'wave') return { ext: 'wav', audioMime: 'audio/wav' };
+    if (ext === 'mp3') return { ext: 'mp3', audioMime: 'audio/mpeg' };
+    if (ext === 'ogg') return { ext: 'ogg', audioMime: 'audio/ogg' };
+    if (ext === '3gp' || ext === '3gpp') return { ext: '3gp', audioMime: 'audio/3gpp' };
+    if (ext === 'amr') return { ext: 'amr', audioMime: 'audio/amr' };
+    // Default: AAC (most common for Capacitor audio recorder)
+    return { ext: 'aac', audioMime: 'audio/aac' };
+  };
+
   // APK Voice Recording Functions
   const startVoiceRecording = async () => {
     // Prevent multiple simultaneous recording attempts using ref
     if (isRecordingRef.current) return;
     
     try {
-      const { CapacitorAudioRecorder } = await import('@capgo/capacitor-audio-recorder');
       const perm = await CapacitorAudioRecorder.requestPermissions();
       if (perm.recordAudio !== 'granted') {
         alert('Permiso de micrófono denegado');
@@ -240,7 +273,6 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
       console.log('[APK] stopVoiceRecording: no enviando, solo parando');
       // If it was recording, force stop anyway (for onTouchCancel case)
       try {
-        const { CapacitorAudioRecorder } = await import('@capgo/capacitor-audio-recorder');
         await CapacitorAudioRecorder.stopRecording();
       } catch (e) {
         // Ignore stop errors
@@ -249,7 +281,6 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
     }
     
     try {
-      const { CapacitorAudioRecorder } = await import('@capgo/capacitor-audio-recorder');
       const result = await CapacitorAudioRecorder.stopRecording();
       console.log('[APK] Audio grabado:', result);
       if (result.uri) {
@@ -258,67 +289,131 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
         const xhr = new XMLHttpRequest();
         xhr.open('GET', uri, true);
         xhr.responseType = 'blob';
-        xhr.onload = () => {
+        xhr.onload = async () => {
           if (xhr.status === 200) {
             const blob = xhr.response;
-            console.log('[APK] Audio blob obtenido:', blob.size, 'bytes');
-            const ext = blob.type.includes('mpeg') ? 'mp3' : blob.type.includes('ogg') ? 'ogg' : 'webm';
+            console.log('[APK] Audio blob obtenido:', blob.size, 'bytes', 'blob.type:', blob.type);
+            const nativeExt = uri.split('.').pop()?.toLowerCase() || '';
+            // vFIX-AUDIO: Use blob.type from XHR when available (more reliable than extension),
+            // and handle .3gp (3GPP format common on Android) correctly.
+            const detectedMime = blob.type || '';
+            const { ext, audioMime } = resolveAudioFormat(nativeExt, detectedMime);
             const filename = `specs-audio-${Date.now()}.${ext}`;
             const isOnline = navigator.onLine;
             if (isOnline) {
-              import('@/lib/storage-client').then(({ uploadToBunnyClientSide }) => {
-                uploadToBunnyClientSide(blob, filename, `Proyectos/temp/${uploadTempId}`).then(uploadResult => {
-                  console.log('[APK] Audio subido:', uploadResult.url);
-                  setProjectData(prev => ({ ...prev, specsAudioUrl: uploadResult.url }));
-                  const fileObj: any = {
-                    id: `audio-${Date.now()}`,
-                    name: filename,
-                    type: 'AUDIO',
-                    url: uploadResult.url,
-                    size: blob.size,
-                    category: 'MASTER',
-                    mimeType: blob.type || 'audio/webm'
-                  };
-                  setUploadedFiles(prev => [...prev, fileObj]);
-                  alert('Audio guardado correctamente');
-                }).catch(err => {
-                  console.error('[APK] Error subiendo audio:', err);
-                });
-              });
-            } else {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const url = reader.result as string;
-                console.log('[APK] Audio offline guardado');
-                setProjectData(prev => ({ ...prev, specsAudioUrl: url }));
+              try {
+                const uploadResult = await uploadToBunnyClientSide(blob, filename, `Proyectos/temp/${uploadTempId}`);
+                console.log('[APK] Audio subido:', uploadResult.url);
+                setProjectData(prev => ({ ...prev, specsAudioUrl: uploadResult.url }));
                 const fileObj: any = {
                   id: `audio-${Date.now()}`,
                   name: filename,
+                  filename: filename,
                   type: 'AUDIO',
-                  url: url,
+                  url: uploadResult.url,
                   size: blob.size,
                   category: 'MASTER',
-                  mimeType: blob.type || 'audio/webm'
+                  mimeType: audioMime,
+                  _isSpecsAudio: true,
+                  storageType: 'url',
+                  cacheKey: ''
                 };
                 setUploadedFiles(prev => [...prev, fileObj]);
                 alert('Audio guardado correctamente');
-              };
-              reader.readAsDataURL(blob);
+              } catch (err) {
+                console.error('[APK] Error subiendo audio:', err);
+              }
+            } else {
+              // vFIX-APK-CACHE: Use Cache API instead of native filesystem
+              // Cache API stores on DISK, accessible from SW for background sync
+              console.log('[APK] Audio offline guardado via Cache API');
+              try {
+                const prep = await prepareFileForOutbox(blob as File);
+                // vFIX-CACHE-AUDIO: Force Cache API for audio files so they survive SQLite storage
+                let audioStorageType = prep.storageType;
+                let audioCacheKey = prep.cacheKey;
+                let audioUrl = prep.storageType === 'base64' ? prep.data : '';
+                if (prep.storageType === 'base64') {
+                  // Save to Cache API manually so SW can read it from SQLite
+                  audioCacheKey = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                  await saveFileToCache(audioCacheKey, blob);
+                  audioStorageType = 'cache';
+                  // Keep base64 URL for offline playback in gallery (survives in Dexie, SQLite strips it)
+                  audioUrl = prep.data;
+                  console.log('[APK] Audio re-stored to Cache API, keeping base64 URL for offline playback');
+                }
+                // Store cache reference — SW will read from Cache API and upload
+                setProjectData(prev => ({ ...prev, 
+                  specsAudioUrl: audioUrl,
+                  _audioCache: audioCacheKey
+                }));
+                const fileObj: any = {
+                  id: `audio-${Date.now()}`,
+                  name: prep.filename || filename,
+                  filename: prep.filename || filename,
+                  type: 'AUDIO',
+                  url: audioUrl,
+                  storageType: audioStorageType,
+                  cacheKey: audioCacheKey,
+                  file: blob,
+                  size: blob.size,
+                  category: 'MASTER',
+                  mimeType: audioMime,
+                  _isSpecsAudio: true
+                };
+                setUploadedFiles(prev => [...prev, fileObj]);
+                alert('Audio guardado correctamente (se sincronizará al tener internet)');
+              } catch (err) {
+                console.error('[APK] Error saving audio via Cache API:', err);
+                // vFIX-CHUNK-FALLBACK: Si prepareFileForOutbox falla (ChunkLoadError),
+                // guardar inline con FileReader como fallback
+                try {
+                  const base64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                  });
+                  setProjectData(prev => ({ ...prev, 
+                    specsAudioUrl: base64,
+                    _audioCache: base64
+                  }));
+                  const fileObj: any = {
+                    id: `audio-${Date.now()}`,
+                    name: `specs-audio-${Date.now()}.webm`,
+                    filename: `specs-audio-${Date.now()}.webm`,
+                    type: 'AUDIO',
+                    url: base64,
+                    storageType: 'base64',
+                    file: blob,
+                    size: blob.size,
+                    category: 'MASTER',
+                    mimeType: audioMime,
+                    _isSpecsAudio: true
+                  };
+                  setUploadedFiles(prev => [...prev, fileObj]);
+                  alert('Audio guardado offline (fallback)');
+                } catch (fallbackErr) {
+                  console.error('[APK] Error saving audio inline fallback:', fallbackErr);
+                  alert('Error al guardar audio offline: ' + err);
+                }
+              }
             }
           } else {
             console.error('[APK] XHR status:', xhr.status);
           }
         };
-        xhr.onerror = async () => {
+          xhr.onerror = async () => {
           console.error('[APK] XHR error, intentando con Filesystem API');
           try {
-            const { Filesystem } = await import('@capacitor/filesystem');
-            const { Capacitor } = await import('@capacitor/core');
-            
             // Read the file using Filesystem API
             const contents = await Filesystem.readFile({ path: uri });
             
-            // Contents is base64 encoded on some platforms, need to convert
+            const nativeExt = uri.split('.').pop()?.toLowerCase() || '';
+            // vFIX-AUDIO: Same fix as XHR path — use resolveAudioFormat helper
+            const { ext, audioMime } = resolveAudioFormat(nativeExt, '');
+            const filename = `specs-audio-${Date.now()}.${ext}`;
+
             let blob: Blob;
             if (typeof contents === 'string') {
               // It's base64 - convert to blob
@@ -327,53 +422,144 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
               for (let i = 0; i < binary.length; i++) {
                 bytes[i] = binary.charCodeAt(i);
               }
-              blob = new Blob([bytes], { type: 'audio/webm' });
+              blob = new Blob([bytes], { type: audioMime });
             } else if ((contents as any).data) {
-              // It's an array with data property
-              blob = new Blob([(contents as any).data], { type: 'audio/webm' });
+              // vFIX-AUDIO: Contents.data is base64 from Filesystem API — decode to binary!
+              const binary = atob((contents as any).data);
+              const bytes = new Uint8Array(binary.length);
+              for (let i = 0; i < binary.length; i++) {
+                bytes[i] = binary.charCodeAt(i);
+              }
+              blob = new Blob([bytes], { type: audioMime });
             } else {
               throw new Error('Unknown format');
             }
             
-            console.log('[APK] Audio blob (Filesystem):', blob.size, 'bytes');
-            const filename = `specs-audio-${Date.now()}.webm`;
             const isOnline = navigator.onLine;
             if (isOnline) {
-              import('@/lib/storage-client').then(({ uploadToBunnyClientSide }) => {
-                uploadToBunnyClientSide(blob, filename, `Proyectos/temp/${uploadTempId}`).then(uploadResult => {
-                  console.log('[APK] Audio subido:', uploadResult.url);
-                  setProjectData(prev => ({ ...prev, specsAudioUrl: uploadResult.url }));
-                  const fileObj: any = {
-                    id: `audio-${Date.now()}`,
-                    name: filename,
-                    type: 'AUDIO',
-                    url: uploadResult.url,
-                    size: blob.size,
-                    category: 'MASTER',
-                    mimeType: blob.type || 'audio/webm'
-                  };
-                  setUploadedFiles(prev => [...prev, fileObj]);
-                  alert('Audio guardado correctamente');
-                });
-              });
-            } else {
-              const reader = new FileReader();
-              reader.onload = () => {
-                const url = reader.result as string;
-                setProjectData(prev => ({ ...prev, specsAudioUrl: url }));
+              try {
+                const uploadResult = await uploadToBunnyClientSide(blob, filename, `Proyectos/temp/${uploadTempId}`);
+                console.log('[APK] Audio subido:', uploadResult.url);
+                setProjectData(prev => ({ ...prev, specsAudioUrl: uploadResult.url }));
                 const fileObj: any = {
                   id: `audio-${Date.now()}`,
                   name: filename,
+                  filename: filename,
                   type: 'AUDIO',
-                  url: url,
+                  url: uploadResult.url,
                   size: blob.size,
                   category: 'MASTER',
-                  mimeType: blob.type || 'audio/webm'
+                  mimeType: audioMime,
+                  _isSpecsAudio: true,
+                  storageType: 'url',
+                  cacheKey: ''
                 };
                 setUploadedFiles(prev => [...prev, fileObj]);
                 alert('Audio guardado correctamente');
-              };
-              reader.readAsDataURL(blob);
+              } catch (err) {
+                console.error('[APK] Error subiendo audio online:', err);
+                // Fallback: guardar offline con Cache API
+                try {
+                  const prep = await prepareFileForOutbox(blob as File);
+                  let audioCacheKey = prep.cacheKey;
+                  let audioUrl = prep.storageType === 'base64' ? prep.data : '';
+                  if (prep.storageType === 'base64') {
+                    audioCacheKey = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                    await saveFileToCache(audioCacheKey, blob);
+                    audioUrl = prep.data;
+                  }
+                  setProjectData(prev => ({ ...prev, specsAudioUrl: audioUrl, _audioCache: audioCacheKey }));
+                  setUploadedFiles(prev => [...prev, {
+                    id: `audio-${Date.now()}`,
+                    name: prep.filename || filename,
+                    filename: prep.filename || filename,
+                    type: 'AUDIO',
+                    url: audioUrl,
+                    storageType: 'cache',
+                    cacheKey: audioCacheKey,
+                    file: blob,
+                    size: blob.size,
+                    category: 'MASTER',
+                    mimeType: audioMime,
+                    _isSpecsAudio: true
+                  }]);
+                  alert('Audio guardado offline (fallback)');
+                } catch (fallbackErr) {
+                  console.error('[APK] Error en fallback offline:', fallbackErr);
+                  alert('Error al guardar audio: ' + err);
+                }
+              }
+            } else {
+              // vFIX-APK-CACHE: Use Cache API instead of native filesystem
+              console.log('[APK] Audio offline guardado via Cache API (Filesystem fallback)');
+              try {
+                // Blob from fetch doesn't have name/lastModified - cast to File
+                const prep = await prepareFileForOutbox(blob as File);
+                // vFIX-CACHE-AUDIO: Force Cache API for audio files so they survive SQLite storage
+                let audioStorageType = prep.storageType;
+                let audioCacheKey = prep.cacheKey;
+                let audioUrl = prep.storageType === 'base64' ? prep.data : '';
+                if (prep.storageType === 'base64') {
+                  audioCacheKey = `audio-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+                  await saveFileToCache(audioCacheKey, blob);
+                  audioStorageType = 'cache';
+                  audioUrl = prep.data;
+                  console.log('[APK] Audio re-stored to Cache API, keeping base64 URL (Filesystem)');
+                }
+                setProjectData(prev => ({ ...prev, 
+                  specsAudioUrl: audioUrl,
+                  _audioCache: audioCacheKey
+                }));
+                const fileObj: any = {
+                  id: `audio-${Date.now()}`,
+                  name: prep.filename || filename,
+                  filename: prep.filename || filename,
+                  type: 'AUDIO',
+                  url: audioUrl,
+                  storageType: audioStorageType,
+                  cacheKey: audioCacheKey,
+                  file: blob,
+                  size: blob.size,
+                  category: 'MASTER',
+                  mimeType: audioMime,
+                  _isSpecsAudio: true
+                };
+                setUploadedFiles(prev => [...prev, fileObj]);
+                alert('Audio guardado correctamente (se sincronizará al tener internet)');
+              } catch (err) {
+                console.error('[APK] Error saving filesystem audio via Cache API:', err);
+                // vFIX-CHUNK-FALLBACK: Fallback inline si prepareFileForOutbox falla
+                try {
+                  const base64 = await new Promise<string>((resolve, reject) => {
+                    const reader = new FileReader();
+                    reader.onload = () => resolve(reader.result as string);
+                    reader.onerror = reject;
+                    reader.readAsDataURL(blob);
+                  });
+                  setProjectData(prev => ({ ...prev, 
+                    specsAudioUrl: base64,
+                    _audioCache: base64
+                  }));
+                  const fileObj: any = {
+                    id: `audio-${Date.now()}`,
+                    name: `specs-audio-${Date.now()}.webm`,
+                    filename: `specs-audio-${Date.now()}.webm`,
+                    type: 'AUDIO',
+                    url: base64,
+                    storageType: 'base64',
+                    file: blob,
+                    size: blob.size,
+                    category: 'MASTER',
+                    mimeType: audioMime,
+                    _isSpecsAudio: true
+                  };
+                  setUploadedFiles(prev => [...prev, fileObj]);
+                  alert('Audio guardado offline (fallback)');
+                } catch (fallbackErr) {
+                  console.error('[APK] Error saving audio inline fallback:', fallbackErr);
+                  alert('Error al guardar audio offline: ' + err);
+                }
+              }
             }
           } catch (fsErr) {
             console.error('[APK] Filesystem API error:', fsErr);
@@ -598,83 +784,21 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
           return;
         }
 
-        // v353: For offline, strip raw File objects from payload before storing
-        // The File objects are preserved in the `file` property of each uploadedFile
-        // and the GlobalSyncWorker/SW will handle uploading them to Bunny during sync.
+        // For offline, keep raw File/Blob objects for structured cloning.
+        // Dexie/IndexedDB preserves the File/Blob objects natively.
+        // Removing the arrayBuffer() conversion prevents WebView processes from crashing due to RAM spikes.
         const offlinePayload = {
           ...payload,
           tempId: uploadTempId,
           files: payload.files.map((f: any) => {
-            // Keep the file reference for sync, but don't try to JSON.stringify it
             const { file, ...rest } = f;
             return {
               ...rest,
-              file: file instanceof File ? file : null, // Keep raw File for structured clone (SW uses it directly)
-              // v353: For small files (<10MB), store binary data for offline sync
-              // v370: Files >= 10MB use structured clone (File object) to avoid RAM crash
-              fileData: (file instanceof File && file.size > 0 && file.size <= SMALL_FILE_LIMIT) ? { 
-                buffer: null, // Will be populated below for small files
-                type: file.type, 
-                name: file.name,
-                size: file.size
-              } : null
+              file: (file instanceof File || file instanceof Blob) ? file : null,
+              fileData: null
             };
           })
         };
-
-        // v370: Only read arrayBuffer for SMALL files (<10MB) to avoid RAM exhaustion.
-        // Large files (>10MB) keep the raw File object via structured clone — IndexedDB
-        // preserves it natively. The Service Worker checks `item.payload.files[i].file`
-        // first, and falls back to fileData.buffer for small files.
-        const SMALL_BATCH_SIZE = 3;
-        let processedCount = 0;
-        
-        for (let i = 0; i < payload.files.length; i++) {
-          const f = payload.files[i] as any;
-          
-          // Only process small files (<10MB) with arrayBuffer
-          if (!(f.file instanceof File) || f.file.size <= 0 || f.file.size > SMALL_FILE_LIMIT) {
-            // Large file: keep blob: URL for preview, raw File for structured clone
-            if (f.file instanceof File && f.file.size > SMALL_FILE_LIMIT) {
-              // Clear base64 URLs for large files (they're too big for the payload)
-              if (offlinePayload.files[i].url?.startsWith('data:')) {
-                offlinePayload.files[i].url = ''; // blob: URL or raw File will be used by SW
-              }
-              // Release blob URL from memory after we've stored the reference
-              if (f.url?.startsWith('blob:')) {
-                // Keep the blob: URL - it will be released when the page unloads
-                // The raw File object in `.file` is what the SW uses for upload
-              }
-            }
-            continue; // Skip arrayBuffer for large files
-          }
-
-          try {
-            // Process in batches of 3 with GC delay between batches
-            offlinePayload.files[i].fileData = {
-              buffer: await f.file.arrayBuffer(),
-              type: f.file.type,
-              name: f.file.name,
-              size: f.file.size
-            };
-            
-            // Clear base64 URL to save space since we have the binary
-            if (offlinePayload.files[i].url?.startsWith('data:')) {
-              offlinePayload.files[i].url = '';
-            }
-            
-            processedCount++;
-            
-            // Every SMALL_BATCH_SIZE files, yield to let the GC breathe
-            // This prevents "Aw, Snap!" crashes on mobile devices
-            if (processedCount % SMALL_BATCH_SIZE === 0) {
-              await new Promise(resolve => setTimeout(resolve, 100));
-            }
-          } catch (e) {
-            console.warn(`[Wizard] Could not read file ${f.filename} for offline storage:`, e);
-            // Fallback: keep the raw File object - SW will handle it
-          }
-        }
 
         await addToOutbox({
           type: 'PROJECT',
@@ -1488,10 +1612,11 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                               }}
                             >
                               {f.type === 'IMAGE' ? (
-                                <img src={f.url} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Preview" />
+                                <SafeImage file={f} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="Preview" />
                               ) : f.type === 'VIDEO' ? (
-                                <div style={{ width: '100%', height: '100%', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                                  <span style={{ fontSize: '1.5rem' }}>🎥</span>
+                                <div style={{ width: '100%', height: '100%', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+                                  <SafeVideo file={f} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                                  <span style={{ fontSize: '1rem', position: 'absolute', bottom: '2px', right: '2px' }}>🎥</span>
                                 </div>
                               ) : f.type === 'AUDIO' ? (
                                 <div style={{ width: '100%', height: '100%', background: 'var(--primary-glow)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -1526,184 +1651,47 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                     )}
 
                     {Capacitor.isNativePlatform() ? (
-                      // APK: Modal Nativo de Foto/Video
+                      // APK: CameraCaptureModal compartido
                       <>
                         {showCameraTypeModal && (
-                          <div className="media-modal-overlay" onClick={() => setShowCameraTypeModal(false)}>
-                            <div className="media-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '320px', textAlign: 'center' }}>
-                              <h3 style={{ marginTop: 0 }}>📷 Seleccionar tipo</h3>
-                              <p style={{ color: '#a0a0a0', marginBottom: '20px' }}>¿Qué deseas capturar?</p>
-                              <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-                                <button
-                                  onClick={async () => {
-                                    setShowCameraTypeModal(false);
-                                    try {
-                                      const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera');
-                                      const media = await Camera.getPhoto({
-                                        quality: 90,
-                                        allowEditing: false,
-                                        resultType: CameraResultType.Uri,
-                                        source: CameraSource.Camera,
-                                      });
-                                      if (media.webPath) {
-                                        const resp = await fetch(media.webPath);
-                                        const blob = await resp.blob();
-                                        const filename = `Foto-${Date.now()}.jpg`;
-                                        let url = '';
-                                        const isOnline = navigator.onLine;
-                                        if (isOnline) {
-                                          const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
-                                          const result = await uploadToBunnyClientSide(blob, filename, `Proyectos/temp/${uploadTempId}`);
-                                          url = result.url;
-                                        } else {
-                                          url = await new Promise((resolve) => {
-                                            const reader = new FileReader();
-                                            reader.onload = () => resolve(reader.result as string);
-                                            reader.readAsDataURL(blob);
-                                          });
-                                        }
-                                        const fileObj: any = {
-                                          id: `capture-${Date.now()}`,
-                                          name: filename,
-                                          type: 'IMAGE',
-                                          url: url,
-                                          size: blob.size,
-                                          category: 'MASTER',
-                                          mimeType: 'image/jpeg'
-                                        };
-                                        setUploadedFiles(prev => [...prev, fileObj]);
-                                      }
-                                    } catch (err) {
-                                      console.error('[APK] Error cámara foto:', err);
-                                      alert('Error: ' + err);
-                                    }
-                                  }}
-                                  style={{
-                                    flex: 1,
-                                    padding: '20px',
-                                    background: 'linear-gradient(135deg, #10b981, #059669)',
-                                    border: 'none',
-                                    borderRadius: '12px',
-                                    color: 'white',
-                                    fontSize: '16px',
-                                    fontWeight: 'bold',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    gap: '8px'
-                                  }}
-                                >
-                                  <span style={{ fontSize: '32px' }}>📷</span>
-                                  <span>Foto</span>
-                                </button>
-                                <button
-                                  onClick={async () => {
-                                    setShowCameraTypeModal(false);
-                                    try {
-                                      const { Camera } = await import('@capacitor/camera');
-                                      const media = await Camera.recordVideo({});
-                                      console.log('[APK] Video grabado:', media);
-                                      if (media.uri) {
-                                        let blob;
-                                        let filename;
-                                        let mimeType;
-                                        let url = '';
-                                        let fileData = null;
-                                        
-                                        try {
-                                          const resp = await fetch(media.uri);
-                                          blob = await resp.blob();
-                                          mimeType = blob.type || 'video/mp4';
-                                          const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-                                          filename = `Video-${Date.now()}.${ext}`;
-                                        } catch (fetchErr) {
-                                          // Offline: leer desde Filesystem API
-                                          console.warn('[APK] Video offline, usando Filesystem API');
-                                          try {
-                                            const { Filesystem } = await import('@capacitor/filesystem');
-                                            const contents = await Filesystem.readFile({ path: media.uri });
-                                            const dataStr = typeof contents === 'string' ? contents : (contents.data ? String(contents.data) : '');
-                                            const binary = atob(dataStr);
-                                            const bytes = new Uint8Array(binary.length);
-                                            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-                                            blob = new Blob([bytes], { type: 'video/mp4' });
-                                            mimeType = 'video/mp4';
-                                            const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-                                            filename = `Video-${Date.now()}.${ext}`;
-                                            // Guardar como base64 para offline
-                                            fileData = { buffer: bytes.buffer, type: mimeType, name: filename };
-                                          } catch (fsErr) {
-                                            console.error('[APK] Error leyendo video:', fsErr);
-                                            alert('Error: ' + fsErr);
-                                            return;
-                                          }
-                                        }
-                                        
-                                        const isOnline = navigator.onLine;
-                                        if (isOnline) {
-                                          const { uploadToBunnyClientSide } = await import('@/lib/storage-client');
-                                          const result = await uploadToBunnyClientSide(blob, filename, `Proyectos/temp/${uploadTempId}`);
-                                          url = result.url;
-                                        } else {
-                                          const reader = new FileReader();
-                                          url = await new Promise((resolve) => {
-                                            reader.onload = () => resolve(reader.result as string);
-                                            reader.readAsDataURL(blob);
-                                          });
-                                        }
-                                        const fileObj: any = {
-                                          id: `capture-${Date.now()}`,
-                                          name: filename,
-                                          type: 'VIDEO',
-                                          url: url,
-                                          size: blob?.size || 0,
-                                          category: 'MASTER',
-                                          mimeType: mimeType,
-                                          fileData: fileData
-                                        };
-                                        setUploadedFiles(prev => [...prev, fileObj]);
-                                      }
-                                    } catch (err) {
-                                      console.error('[APK] Error cámara video:', err);
-                                      alert('Error: ' + err);
-                                    }
-                                  }}
-                                  style={{
-                                    flex: 1,
-                                    padding: '20px',
-                                    background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-                                    border: 'none',
-                                    borderRadius: '12px',
-                                    color: 'white',
-                                    fontSize: '16px',
-                                    fontWeight: 'bold',
-                                    cursor: 'pointer',
-                                    display: 'flex',
-                                    flexDirection: 'column',
-                                    alignItems: 'center',
-                                    gap: '8px'
-                                  }}
-                                >
-                                  <span style={{ fontSize: '32px' }}>🎥</span>
-                                  <span>Video</span>
-                                </button>
-                              </div>
-                              <button
-                                onClick={() => setShowCameraTypeModal(false)}
-                                style={{
-                                  marginTop: '16px',
-                                  background: 'transparent',
-                                  border: 'none',
-                                  color: '#a0a0a0',
-                                  cursor: 'pointer',
-                                  fontSize: '14px'
-                                }}
-                              >
-                                Cancelar
-                              </button>
-                            </div>
-                          </div>
+                          <CameraCaptureModal
+                            onMediaCapture={async (blob, filename, mimeType) => {
+                              const isOnline = navigator.onLine;
+                              const isNative = Capacitor.isNativePlatform();
+                              let url = '';
+                              let localUri = '';
+                              
+                              if (isOnline) {
+                                try {
+                                  const result = await uploadToBunnyClientSide(blob, filename, `Proyectos/temp/${uploadTempId}`);
+                                  url = result.url;
+                                } catch { /* fallback */ }
+                              } else if (isNative) {
+                                try {
+                                  localUri = await saveOfflineFileToNativeStorage(blob, filename);
+                                  url = Capacitor.convertFileSrc(localUri);
+                                } catch (err) {
+                                  console.error('[APK] Error saving camera file offline:', err);
+                                }
+                              }
+                              
+                              setUploadedFiles(prev => [
+                                ...prev,
+                                {
+                                  id: `capture-${Date.now()}`,
+                                  filename,
+                                  type: mimeType.startsWith('video/') ? 'VIDEO' : 'IMAGE',
+                                  url: url || '',
+                                  file: (!url && !localUri) ? blob : undefined,
+                                  localUri: localUri || undefined,
+                                  size: blob.size,
+                                  category: 'MASTER',
+                                  mimeType
+                                } as any
+                              ]);
+                            }}
+                            onClose={() => setShowCameraTypeModal(false)}
+                          />
                         )}
                       </>
                     ) : (
@@ -1720,23 +1708,18 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                                   let filename = `Foto-${Date.now()}.jpg`;
 
                                   if (isOnline) {
-                                    const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
                                     const result = await uploadToBunnyClientSide(blob, filename, `Proyectos/temp/${uploadTempId}`)
                                     url = result.url;
                                     filename = result.filename;
-                                  } else {
-                                    url = await new Promise((resolve) => {
-                                      const reader = new FileReader();
-                                      reader.onload = () => resolve(reader.result as string);
-                                      reader.readAsDataURL(blob);
-                                    });
                                   }
 
                                   const fileObj: any = {
                                      id: `capture-${Date.now()}`,
                                      name: filename,
+                                     filename: filename,
                                      type: 'IMAGE',
-                                     url: url,
+                                     url: url || '',
+                                     file: !url ? blob : undefined,
                                      size: blob.size,
                                      category: 'MASTER',
                                      mimeType: 'image/jpeg'
@@ -1752,31 +1735,24 @@ export default function ProjectCreationWizard({ panelBase = '/admin/proyectos' }
                                   setShowCameraCapture(false)
                                   const isOnline = navigator.onLine;
                                   let url = '';
-                                  // Forzar extensión correcta para videos nativos de Android
-                                  const ext = 'mp4'; // Android casi siempre genera mp4 via Camera plugin
+                                  const ext = 'mp4'; 
                                   let filename = `Video-${Date.now()}.${ext}`;
                                   const videoMimeType = 'video/mp4';
 
                                   if (isOnline) {
-                                    const { uploadToBunnyClientSide } = await import('@/lib/storage-client')
-                                    // Crear blob con tipo correcto
                                     const properBlob = new Blob([blob], { type: videoMimeType });
                                     const result = await uploadToBunnyClientSide(properBlob, filename, `Proyectos/temp/${uploadTempId}`)
                                     url = result.url;
                                     filename = result.filename;
-                                  } else {
-                                    url = await new Promise((resolve) => {
-                                      const reader = new FileReader();
-                                      reader.onload = () => resolve(reader.result as string);
-                                      reader.readAsDataURL(blob);
-                                    });
                                   }
 
                                   const fileObj: any = {
                                      id: `capture-${Date.now()}`,
                                      name: filename,
+                                     filename: filename,
                                      type: 'VIDEO',
-                                     url: url,
+                                     url: url || '',
+                                     file: !url ? blob : undefined,
                                      size: blob.size,
                                      category: 'MASTER',
                                      mimeType: videoMimeType

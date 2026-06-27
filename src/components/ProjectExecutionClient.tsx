@@ -11,6 +11,7 @@ import { useSession } from 'next-auth/react'
 import { formatToEcuador, ECUADOR_TIMEZONE, formatTimeEcuador, formatDateEcuador } from '@/lib/date-utils'
 import { compressImage as optimizedCompress, isCompressibleImage, blobToBase64 } from '@/lib/image-optimization'
 import { prepareFileForOutbox, generateSyncId } from '@/lib/offline-utils'
+import { addToOutbox, getOutboxPending } from '@/lib/storage'
 
 import Link from 'next/link'
 import { useLocalStorage } from '@/hooks/useLocalStorage'
@@ -84,8 +85,13 @@ export default function ProjectExecutionClient({
   const [handleDownloadLoading, setHandleDownloadLoading] = useState<string | null>(null)
   const [isSendingMessage, setIsSendingMessage] = useState(false)
   const [isDownloadingPdf, setIsDownloadingPdf] = useState(false)
+  const [hasMoreMessages, setHasMoreMessages] = useState(true)
   const [recentlySyncedItems, setRecentlySyncedItems] = useState<any[]>([]) // v400: Bridge for disappearing items
   const [optimisticUploads, setOptimisticUploads] = useState<any[]>([]) // v401: Optimistic UI for online uploads
+
+  // States for archiving
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   // v402: Cache availableOperators for offline (mirrors admin pattern)
   const cachedOperators = useLiveQuery(() => db.usersCache.toArray()) || [];
@@ -117,14 +123,45 @@ export default function ProjectExecutionClient({
   const localChatRef = useRef<any[]>([])
   useEffect(() => { localChatRef.current = localChat }, [localChat])
 
-  const fetchMessages = useCallback(async (since?: string) => {
+  const fetchMessages = useCallback(async (since?: string, before?: string) => {
+    console.log('[FETCH] start - before:', before);
     try {
-      const url = `/api/projects/${idFromUrl}/messages${since ? `?since=${encodeURIComponent(since)}` : ''}`
+      let url = `/api/projects/${idFromUrl}/messages?_t=${Date.now()}`
+      const params = new URLSearchParams()
+      if (since) params.set('since', since)
+      if (before) params.set('before', before)
+      if (params.toString()) url += '&' + params.toString()
+      console.log('[FETCH] url:', url);
       const res = await fetch(url)
-      if (res.ok) return await res.json()
-    } catch (e) { console.error('Fetch msgs error:', e) }
+      console.log('[FETCH] status:', res.status);
+      if (res.ok) {
+        const data = await res.json()
+        console.log('[FETCH] got data, messages length:', data.messages?.length ?? 'no messages field');
+        // API puede devolver { messages: [] } o [] directamente
+        return Array.isArray(data) ? data : (data.messages || [])
+      }
+    } catch (e) { console.error('[FETCH] error:', e) }
     return []
   }, [idFromUrl])
+
+  // --- LOAD MORE MESSAGES (Server-side pagination) ---
+  const handleLoadMoreMessages = useCallback(async () => {
+    console.log('[LOAD MORE] Loading 8 more messages...');
+    const oldestMsg = localChat[localChat.length - 1]
+    if (!oldestMsg?.createdAt) return
+    
+    try {
+      const moreMsgs = await fetchMessages(undefined, oldestMsg.createdAt)
+      console.log('[LOAD MORE] Got:', moreMsgs.length);
+      if (moreMsgs.length > 0) {
+        setLocalChat((prev: any[]) => [...prev, ...moreMsgs])
+        console.log('[LOAD MORE] Total now:', localChat.length + moreMsgs.length);
+      }
+      setHasMoreMessages(moreMsgs.length === 8)
+    } catch (err) {
+      console.error('[LOAD MORE] Error:', err)
+    }
+  }, [localChat, fetchMessages])
 
   // v480: Refresh entire project data from API and update localState + Dexie Cache (syncs team, phases, budget, gallery)
   const refreshProject = useCallback(async () => {
@@ -171,6 +208,105 @@ export default function ProjectExecutionClient({
       setHandleDownloadLoading(null)
     }
   }
+
+  const handleStatusChange = async (newStatus: string) => {
+    if (newStatus === 'ARCHIVADO') {
+      setShowArchiveModal(true);
+      return;
+    }
+
+    // Optimistic UI updates
+    setLocalProject((prev: any) => prev ? { ...prev, status: newStatus } : prev);
+
+    try {
+      const numericId = Number(project.id);
+      if (!isNaN(numericId)) {
+        const cached = await db.projectsCache.get(numericId);
+        if (cached) {
+          await db.projectsCache.put({ ...cached, status: newStatus });
+        }
+      }
+    } catch(e) {}
+
+    let success = false;
+    try {
+      if (navigator.onLine) {
+        const res = await fetch(`/api/projects/${project.id}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+        if (res.ok) success = true;
+      }
+    } catch (e) {}
+
+    if (!success) {
+      await addToOutbox({
+        type: 'PROJECT_UPDATE',
+        projectId: Number(project.id),
+        payload: { id: project.id, status: newStatus },
+        timestamp: Date.now(),
+        status: 'pending'
+      });
+      triggerBackgroundSync();
+    }
+  };
+
+  const executeArchive = async () => {
+    setIsArchiving(true);
+    const pId = Number(project.id);
+    try {
+      let success = false;
+      try {
+        if (navigator.onLine) {
+          const res = await fetch(`/api/projects/${pId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'ARCHIVADO' })
+          });
+          if (res.ok) success = true;
+        }
+      } catch (e) {}
+
+      if (!success) {
+        await addToOutbox({
+          type: 'PROJECT_UPDATE',
+          projectId: pId,
+          payload: { id: pId, status: 'ARCHIVADO' },
+          timestamp: Date.now(),
+          status: 'pending'
+        });
+      }
+
+      await db.projectsCache.delete(pId);
+      await db.chatCache.delete(pId);
+      
+      const apptsToDelete = await db.appointmentsCache.where('projectId').equals(pId).toArray();
+      if (apptsToDelete.length > 0) {
+        await db.appointmentsCache.bulkDelete(apptsToDelete.map(a => a.id));
+      }
+
+      try {
+        const saved = localStorage.getItem('last_op_projects_snapshot');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter((p: any) => p.id !== pId);
+            localStorage.setItem('last_op_projects_snapshot', JSON.stringify(filtered));
+          }
+        }
+      } catch (e) {}
+
+      triggerBackgroundSync();
+      router.push('/admin/operador');
+    } catch (err) {
+      console.error('[OpProjectDetail] Archive failed:', err);
+      alert('Error al intentar archivar el proyecto');
+    } finally {
+      setIsArchiving(false);
+      setShowArchiveModal(false);
+    }
+  };
 
   const saveLockRef = useRef(false)
   const [isOnline, setIsOnline] = useState(true)
@@ -308,12 +444,42 @@ export default function ProjectExecutionClient({
 
     if (!localChatInitialized.current) {
       localChatInitialized.current = true
-      fetchMessages().then(msgs => {
-        if (msgs && msgs.length > 0) {
-          setLocalChat(msgs)
-          markAsSeen()
+      fetchMessages().then(async (msgs) => {
+        const chatMessages = msgs || [];
+        
+        // vXXX: Fusionar mensajes pendientes del outbox (no han sido sync)
+        try {
+          const pendingItems = await getOutboxPending();
+          const pendingMessages = pendingItems
+            .filter((item: any) => item.type === 'MESSAGE' && item.payload?.projectId === idFromUrl)
+            .map((item: any) => ({
+              id: `pending-${item.id}`,
+              content: item.payload?.content || '',
+              type: item.payload?.type || 'TEXT',
+              media: item.payload?.media || null,
+              extraData: item.payload?.extraData || null,
+              createdAt: item.timestamp || item.payload?.createdAt || new Date().toISOString(),
+              sequence: item.payload?.sequence || 0,
+              isMe: true,
+              userName: 'Yo',
+              status: 'pending_sync',
+              isPending: true
+            }));
+          
+          if (pendingMessages.length > 0) {
+            console.log(`[Chat] Fusionando ${pendingMessages.length} mensajes pendientes del outbox`);
+            setLocalChat(deduplicateMessages([...pendingMessages, ...chatMessages]));
+            return;
+          }
+        } catch (e) {
+          console.warn('[Chat] Error leyendo outbox pendiente:', e);
         }
-      })
+        
+        if (chatMessages.length > 0) {
+          setLocalChat(chatMessages);
+          markAsSeen();
+        }
+      });
     }
 
         // v365: Counter for periodic full refresh to catch offline-synced messages
@@ -572,40 +738,38 @@ export default function ProjectExecutionClient({
       const filename = item.payload?.filename;
       return !optimisticUploads.some((o: any) => o.isPending && o.filename === filename);
     })
+    // v-sync-dedup: Excluir items pendientes cuyo filename ya está en project.gallery
+    // Esto evita que aparezca el doble durante la ventana de 5s entre el sync
+    // del outbox y el refresco de pendingItems (soluciona el bug de "Pendiente" duplicado)
+    .filter((item: any) => {
+      const filename = item.payload?.filename;
+      if (!filename) return true;
+      const alreadySynced = (project?.gallery || []).some((g: any) =>
+        g.filename === filename ||
+        (g.url && item.payload?.url && g.url === item.payload.url)
+      );
+      return !alreadySynced;
+    })
     .map((item: any) => {
-      // v441: CRITICAL FIX — Detect raw File object for preview
-      let objUrl = '';
+      // Keep raw file references for rendering via Safe components.
+      // We do not call URL.createObjectURL here inside useMemo to prevent memory leaks.
       const p = item.payload || {};
-      
-      // v441: Priority 1 — Raw File object (from structured clone in IndexedDB)
-      const rawFile = p.file;
-      const hasRawFile = !!(rawFile && typeof rawFile === 'object' && 
-        typeof rawFile.size === 'number' && rawFile.size > 0 &&
-        typeof rawFile.slice === 'function');
-
-      if (hasRawFile) {
-        try {
-          objUrl = URL.createObjectURL(rawFile as Blob);
-        } catch(e) { console.warn('[Gallery] Failed to create objectURL from File:', e); }
-      } else if (p.url && !p.url.startsWith('blob:')) {
-        objUrl = p.url;
-      } else if (p.base64 && typeof p.base64 === 'string' && p.base64.startsWith('data:')) {
+      let objUrl = p.url || '';
+      if (objUrl.startsWith('blob:')) objUrl = '';
+      if (p.base64 && typeof p.base64 === 'string' && p.base64.startsWith('data:')) {
         objUrl = p.base64;
-      } else if (p.fileData) {
+      }
+
+      let fileToUse = p.file;
+      // Reconstruct blob from fileData buffer if needed for preview
+      if (!fileToUse && p.fileData?.buffer) {
         try {
-          const data = p.fileData.buffer || p.fileData;
-          const dataSize = data?.byteLength || data?.length || 0;
-          if (dataSize > 5 * 1024 * 1024) {
-            objUrl = '';
-          } else {
-            const blob = new Blob([data], { type: p.mimeType || 'image/jpeg' });
-            objUrl = URL.createObjectURL(blob);
-          }
-        } catch(e) { console.warn("Failed to create preview blob", e); }
+          fileToUse = new Blob([p.fileData.buffer], { type: p.mimeType || 'image/jpeg' });
+        } catch (e) {}
       }
 
       // v335: Si no hay URL válida y es imagen, usar placeholder
-      if (!objUrl && (p.mimeType || '').startsWith('image/')) {
+      if (!objUrl && !fileToUse && (p.mimeType || '').startsWith('image/')) {
         objUrl = '/placeholder-image.png';
       }
 
@@ -614,7 +778,8 @@ export default function ProjectExecutionClient({
       
       return {
         id: `pending-${item.id}`, 
-        url: objUrl || '/placeholder-image.png',
+        url: objUrl,
+        file: fileToUse,
         filename: p.filename || 'Pendiente...', 
         mimeType: p.mimeType || 'image/jpeg',
         category: p.category || 'MASTER', 
@@ -668,26 +833,23 @@ export default function ProjectExecutionClient({
     })))
     const pendingChat = (pendingItems || []).filter((item: any) => item.type === 'MESSAGE' && item.payload?.media).map((item: any) => {
       const m = item.payload.media;
-      let objUrl = '';
-      if (m.url && !m.url.startsWith('blob:')) {
-        objUrl = m.url;
-      } else if (m.base64) {
+      let objUrl = m.url || '';
+      if (objUrl.startsWith('blob:')) objUrl = '';
+      if (m.base64 && typeof m.base64 === 'string' && m.base64.startsWith('data:')) {
         objUrl = m.base64;
-      } else if (m.fileData) {
+      }
+
+      let fileToUse = m.file;
+      if (!fileToUse && m.fileData?.buffer) {
         try {
-          const data = m.fileData.buffer || m.fileData;
-          // v373: Skip blob URL for large files (>5MB) to prevent OOM
-          const dataSize = data?.byteLength || data?.length || 0;
-          if (dataSize <= 5 * 1024 * 1024) {
-            const blob = new Blob([data], { type: m.mimeType || 'image/jpeg' });
-            objUrl = URL.createObjectURL(blob);
-          }
-        } catch(e) {}
+          fileToUse = new Blob([m.fileData.buffer], { type: m.mimeType || 'image/jpeg' });
+        } catch (e) {}
       }
 
       return {
         id: `pending-chat-${item.id}`, 
-        url: objUrl || '/placeholder-image.png',
+        url: objUrl,
+        file: fileToUse,
         filename: m.filename || 'Enviando...', 
         mimeType: m.mimeType || 'image/jpeg',
         isFromChat: true, 
@@ -732,41 +894,35 @@ export default function ProjectExecutionClient({
       const filename = item.payload?.filename;
       return !optimisticUploads.some((o: any) => o.isPending && o.filename === filename);
     })
+    // v-sync-dedup: Excluir items pendientes cuyo filename ya está en project.gallery
+    // Esto evita que aparezca el doble durante la ventana de 5s entre el sync
+    // del outbox y el refresco de pendingItems (soluciona el bug de "Pendiente" duplicado)
+    .filter((item: any) => {
+      const filename = item.payload?.filename;
+      if (!filename) return true;
+      const alreadySynced = existingGallery.some((g: any) =>
+        g.filename === filename ||
+        (g.url && item.payload?.url && g.url === item.payload.url)
+      );
+      return !alreadySynced;
+    })
     .map((item: any) => {
       const p = item.payload || {};
-      let objUrl = '';
-      
-      // v441: Priority 1 — Raw File object (from structured clone in IndexedDB)
-      const rawFile = p.file;
-      const hasRawFile = !!(rawFile && typeof rawFile === 'object' && 
-        typeof rawFile.size === 'number' && rawFile.size > 0 &&
-        typeof rawFile.slice === 'function');
-
-      if (hasRawFile) {
-        try {
-          objUrl = URL.createObjectURL(rawFile as Blob);
-        } catch(e) { console.warn('[Gallery] Failed to create objectURL from File:', e); }
-      } else if (p.url && !p.url.startsWith('blob:')) {
-        objUrl = p.url;
-      } else if (p.base64 && typeof p.base64 === 'string' && p.base64.startsWith('data:')) {
+      let objUrl = p.url || '';
+      if (objUrl.startsWith('blob:')) objUrl = '';
+      if (p.base64 && typeof p.base64 === 'string' && p.base64.startsWith('data:')) {
         objUrl = p.base64;
-      } else if (p.fileData) {
+      }
+
+      let fileToUse = p.file;
+      if (!fileToUse && p.fileData?.buffer) {
         try {
-          const rawData = p.fileData.buffer || p.fileData;
-          const dataSize = rawData?.byteLength || rawData?.length || 0;
-          if (dataSize > 5 * 1024 * 1024) {
-            objUrl = '';
-          } else {
-            const blob = new Blob([rawData], { type: p.mimeType || 'image/jpeg' });
-            objUrl = URL.createObjectURL(blob);
-          }
-        } catch(e) {
-          console.error("[UI] Failed to recreate blob preview:", e);
-        }
+          fileToUse = new Blob([p.fileData.buffer], { type: p.mimeType || 'image/jpeg' });
+        } catch (e) {}
       }
 
       // v335: Si no hay URL válida y es del tipo imagen, usar placeholder con icono de carga
-      if (!objUrl && (p.mimeType || '').startsWith('image/')) {
+      if (!objUrl && !fileToUse && (p.mimeType || '').startsWith('image/')) {
         objUrl = '/placeholder-image.png';
       }
 
@@ -776,7 +932,8 @@ export default function ProjectExecutionClient({
       return {
         id: `pending-ev-${item.id}`, 
         outboxId: item.id, // v373: Keep real outbox ID for discard action
-        url: objUrl || '/placeholder-image.png',
+        url: objUrl,
+        file: fileToUse,
         filename: p.filename || 'Pendiente...', 
         mimeType: p.mimeType || 'image/jpeg',
         category: p.category || 'EVIDENCE', 
@@ -967,7 +1124,7 @@ export default function ProjectExecutionClient({
 
       // Always try local save first if offline, or if online but flaky
       if (!navigator.onLine) {
-        await db.outbox.add({
+        await addToOutbox({
           type,
           projectId: project.id,
           payload,
@@ -991,7 +1148,7 @@ export default function ProjectExecutionClient({
         // v373: Removed revalidateRoute — day record state updated locally
       } catch (err) {
         // Fallback to outbox if fetch fails
-        await db.outbox.add({
+        await addToOutbox({
           type,
           projectId: project.id,
           payload,
@@ -1125,7 +1282,8 @@ export default function ProjectExecutionClient({
                 mimeType: prep.mimeType,
                 type: determinedType,
                 category: 'CHAT',
-                storageType: prep.storageType
+                storageType: prep.storageType,
+                cacheKey: prep.cacheKey
               };
               
               if (prep.storageType === 'base64') {
@@ -1138,18 +1296,16 @@ export default function ProjectExecutionClient({
             }
          }
 
-         // 2. ABRIR LA TRANSACCIÓN Y GUARDAR
-         await db.transaction('rw', db.outbox, async () => {
-           await db.outbox.add({
-              type: 'MESSAGE',
-              projectId: project.id,
-              payload: payload,
-              timestamp: Date.now(),
-              lat: extraData?.lat ?? location?.lat,
-              lng: extraData?.lng ?? location?.lng,
-              status: 'pending',
-              syncId
-           })
+         // 2. GUARDAR EN OUTBOX
+         await addToOutbox({
+            type: 'MESSAGE',
+            projectId: project.id,
+            payload: payload,
+            timestamp: Date.now(),
+            lat: extraData?.lat ?? location?.lat,
+            lng: extraData?.lng ?? location?.lng,
+            status: 'pending',
+            syncId
          });
          
          setLocalChat(prev => prev.map(m => m.id === tempId ? { ...m, status: 'pending_sync' } : m))
@@ -1202,18 +1358,16 @@ export default function ProjectExecutionClient({
            }
          }
 
-         // 2. ABRIR TRANSACCIÓN Y GUARDAR
-         await db.transaction('rw', db.outbox, async () => {
-           await db.outbox.add({
-              type: 'MESSAGE',
-              projectId: project.id,
-              payload: payload,
-              timestamp: Date.now(),
-              lat: extraData?.lat ?? location?.lat,
-              lng: extraData?.lng ?? location?.lng,
-              status: 'pending',
-              syncId
-           })
+         // 2. GUARDAR EN OUTBOX (FALLBACK)
+         await addToOutbox({
+            type: 'MESSAGE',
+            projectId: project.id,
+            payload: payload,
+            timestamp: Date.now(),
+            lat: extraData?.lat ?? location?.lat,
+            lng: extraData?.lng ?? location?.lng,
+            status: 'pending',
+            syncId
          });
          
          setLocalChat(prev => prev.map(m => m.id === tempId ? { ...m, status: 'pending_sync' } : m))
@@ -1365,46 +1519,35 @@ export default function ProjectExecutionClient({
             fileToPrepare = new File([], file.filename, { type: file.mimeType });
           }
 
-          // vXXX: CARBON COPY of Admin's approach (ProjectDetailBase.tsx line 1165-1210)
-          // Store raw File/Blob + ArrayBuffer in IndexedDB via structured clone.
-          // NO Cache API dependency — Cache API is unreliable for large video files.
-          // This is the EXACT same pattern that works for Admin gallery uploads.
-          const SMALL_FILE_LIMIT = 20 * 1024 * 1024; // 20MB
-          const rawSize = fileToPrepare.size || 0;
-          const rawType = (fileToPrepare as any).type || file.mimeType || 'application/octet-stream';
-          const rawName = (fileToPrepare as any).name || file.filename || 'media';
-          
-          // For small files (≤20MB): store ArrayBuffer as backup
-          let fileData: { buffer: ArrayBuffer | null; type: string; name: string; size: number } | null = null;
-          if (rawSize > 0 && rawSize <= SMALL_FILE_LIMIT) {
-            fileData = { buffer: null, type: rawType, name: rawName, size: rawSize };
-            try {
-              fileData.buffer = await fileToPrepare.arrayBuffer();
-              console.log(`[Gallery] ✅ Small file ArrayBuffer saved: ${rawName} (${(rawSize/1024/1024).toFixed(1)}MB)`);
-            } catch (e) {
-              console.warn(`[Gallery] arrayBuffer() failed, keeping raw File only:`, e);
-            }
-          }
+          // vFIX-GALLERY-SYNC: Usar prepareFileForOutbox() — el MISMO patrón que funciona
+          // en chat (ProjectDetailBase.tsx) y proyectos (ProjectCreationWizard.tsx).
+          // Cache API para archivos grandes, base64 inline para pequeños.
+          // Pero ADEMÁS mantener el raw File en IndexedDB como respaldo por si
+          // Cache API falla (Android WebView a veces pierde la cache entre sesiones).
+          const prepResult = await prepareFileForOutbox(fileToPrepare);
+          console.log(`[Gallery] prepareFileForOutbox: ${prepResult.filename} | type=${prepResult.storageType} | size=${(prepResult.size/1024/1024).toFixed(1)}MB`);
 
-          if (rawSize > SMALL_FILE_LIMIT) {
-            console.log(`[Gallery] ✅ Large file (${(rawSize/1024/1024).toFixed(0)}MB): using raw File via structured clone (same as Admin)`);
-          }
-
-          // Build payload — SAME structure as Admin version (ProjectDetailBase.tsx line 1195)
-          galleryPayload.filename = rawName;
-          galleryPayload.mimeType = rawType;
+          galleryPayload.filename = prepResult.filename;
+          galleryPayload.mimeType = prepResult.mimeType;
           galleryPayload.url = ''; // Will be set by sync worker after Bunny upload
-          // Structured clone: raw File/Blob goes into IndexedDB directly
-          // Duck-typing check (not instanceof) for mobile WebView compatibility
+          galleryPayload.fileData = null;
+
+          // Siempre mantener el raw File/Blob en IndexedDB (structured clone) como fallback
           const isFileOrBlob = !!(fileToPrepare && typeof fileToPrepare === 'object' &&
             typeof fileToPrepare.size === 'number' && fileToPrepare.size > 0);
           galleryPayload.file = isFileOrBlob ? fileToPrepare : null;
-          galleryPayload.fileData = fileData;
-          // NO cacheKey — Cache API is unreliable for large video files
-          delete galleryPayload.cacheKey;
-          delete galleryPayload.storageType;
 
-          console.log(`[Gallery] Outbox ready: ${rawName} | file=${!!(galleryPayload.file)} | fileData=${!!(fileData?.buffer)} | size=${(rawSize/1024/1024).toFixed(1)}MB`);
+          if (prepResult.storageType === 'cache') {
+            // Archivo grande (>10MB) → Cache API (el SW lo lee con getBlobFromCache)
+            galleryPayload.storageType = 'cache';
+            galleryPayload.cacheKey = prepResult.cacheKey;
+          } else {
+            // Archivo pequeño (≤10MB) → base64 inline
+            galleryPayload.base64 = prepResult.data;
+            galleryPayload.storageType = 'base64';
+          }
+
+          console.log(`[Gallery] Outbox ready: ${prepResult.filename} | type=${prepResult.storageType} | size=${(prepResult.size/1024/1024).toFixed(1)}MB`);
         } catch (e: any) {
           console.warn('[Gallery] Offline preparation failed:', e);
           if (e?.message?.includes('ARCHIVO_MUY_GRANDE')) {
@@ -1420,19 +1563,34 @@ export default function ProjectExecutionClient({
           delete galleryPayload.storageType;
         }
 
-        await db.transaction('rw', db.outbox, async () => {
-          await db.outbox.add({
-            type: 'GALLERY_UPLOAD',
-            projectId: project.id,
-            payload: galleryPayload,
-            timestamp: Date.now(),
-            lat: location?.lat,
-            lng: location?.lng,
-            status: 'pending',
-            syncId
-          })
-          console.log('[Outbox] Guardado offline:', galleryPayload.filename);
+        await addToOutbox({
+          type: 'GALLERY_UPLOAD',
+          projectId: project.id,
+          payload: galleryPayload,
+          timestamp: Date.now(),
+          lat: location?.lat,
+          lng: location?.lng,
+          status: 'pending',
+          syncId
         })
+        console.log('[Outbox] Guardado offline:', galleryPayload.filename);
+        
+        // vXXX: Mostrar pending en la UI inmediatamente (como en PWA)
+        const optimisticId = `temp-${syncId}`;
+        const previewUrl = (file as any).url || '';
+        const optimisticItem = {
+          id: optimisticId,
+          url: previewUrl,
+          filename: galleryPayload.filename || file.filename || 'Archivo Multimedia',
+          mimeType: galleryPayload.mimeType || file.mimeType,
+          category: galleryPayload.category,
+          isPending: true
+        };
+        setOptimisticUploads(prev => {
+          if (prev.some(i => i.id === optimisticId)) return prev;
+          return [...prev, optimisticItem];
+        });
+        
         setLoading(false)
         triggerBackgroundSync()
         return
@@ -1568,39 +1726,38 @@ export default function ProjectExecutionClient({
           typeof rawFallback.size === 'number' && rawFallback.size > 0);
         
         if (hasFallbackFile) {
-          const SMALL_FILE_LIMIT = 20 * 1024 * 1024; // 20MB
-          const fbSize = rawFallback.size;
-          const fbType = rawFallback.type || file.mimeType || 'application/octet-stream';
-          const fbName = rawFallback.name || file.filename || 'media';
-          
-          fallbackPayload.file = rawFallback; // Structured clone
+          // vFIX-GALLERY-SYNC: Usar prepareFileForOutbox() como el resto del sistema
           fallbackPayload.url = '';
           fallbackPayload.fileData = null;
-          delete fallbackPayload.cacheKey;
-          delete fallbackPayload.storageType;
           
-          // ArrayBuffer backup for small files
-          if (fbSize > 0 && fbSize <= SMALL_FILE_LIMIT) {
-            try {
-              const buf = await rawFallback.arrayBuffer();
-              fallbackPayload.fileData = { buffer: buf, type: fbType, name: fbName, size: fbSize };
-              console.log(`[Gallery] Fallback: ArrayBuffer saved for ${fbName} (${(fbSize/1024/1024).toFixed(1)}MB)`);
-            } catch (e) {
-              console.warn('[Gallery] Fallback: arrayBuffer() failed, keeping raw File only:', e);
+          try {
+            const prepResult = await prepareFileForOutbox(rawFallback);
+            // Mantener raw File como fallback en IndexedDB
+            fallbackPayload.file = rawFallback;
+            if (prepResult.storageType === 'cache') {
+              fallbackPayload.storageType = 'cache';
+              fallbackPayload.cacheKey = prepResult.cacheKey;
+            } else {
+              fallbackPayload.base64 = prepResult.data;
+              fallbackPayload.storageType = 'base64';
             }
+            console.log(`[Gallery] Fallback: prepareFileForOutbox ${prepResult.filename} | ${prepResult.storageType} | ${(prepResult.size/1024/1024).toFixed(1)}MB`);
+          } catch (e) {
+            console.warn('[Gallery] Fallback: prepareFileForOutbox failed, keeping raw File only:', e);
+            fallbackPayload.file = rawFallback;
+            delete fallbackPayload.cacheKey;
+            delete fallbackPayload.storageType;
           }
         }
-        await db.transaction('rw', db.outbox, async () => {
-          await db.outbox.add({
-            type: 'GALLERY_UPLOAD',
-            projectId: project.id,
-            payload: fallbackPayload,
-            timestamp: Date.now(),
-            lat: location?.lat,
-            lng: location?.lng,
-            status: 'pending',
-            syncId
-          })
+        await addToOutbox({
+          type: 'GALLERY_UPLOAD',
+          projectId: project.id,
+          payload: fallbackPayload,
+          timestamp: Date.now(),
+          lat: location?.lat,
+          lng: location?.lng,
+          status: 'pending',
+          syncId
         })
         triggerBackgroundSync();
       }
@@ -1634,7 +1791,8 @@ export default function ProjectExecutionClient({
 
     // Build a set of already-synced messages (from server, numeric IDs) to avoid
     // showing pendingItems entries that were already synced but the outbox entry wasn't cleaned up.
-    // Match by content + type + close timestamp (same logic as deduplicateMessages).
+    // APK FIX: Use 5min window (server may assign different timestamps than local offline time).
+    // Also use content-only match as fallback for when timestamps differ significantly.
     const syncedMessages = cleanlocalChat.filter((m: any) => typeof m.id === 'number' && m.id > 0);
 
     const list = [
@@ -1645,12 +1803,25 @@ export default function ProjectExecutionClient({
           const isChatType = item.type === 'MESSAGE' || item.type === 'EXPENSE';
           const isNotGallery = item.type !== 'GALLERY_UPLOAD' && item.type !== 'MEDIA_UPLOAD';
           if (!isChatType || !isNotGallery) return false;
-          // Skip if this pending item was already synced (already in localChat with numeric ID, same content+type+time)
-          const alreadySynced = syncedMessages.some((sm: any) =>
-            sm.content === (item.payload?.content || '') &&
-            sm.type === (item.payload?.type || '') &&
-            Math.abs(new Date(sm.createdAt).getTime() - (item.timestamp || 0)) < 45000
-          );
+
+          const pendingContent = item.payload?.content || '';
+          const pendingType = item.payload?.type || '';
+          const pendingTs = item.timestamp || 0;
+
+          // APK FIX: 3-tier dedup check
+          const alreadySynced = syncedMessages.some((sm: any) => {
+            const sameContent = sm.content === pendingContent;
+            const sameType = sm.type === pendingType;
+            if (!sameContent || !sameType) return false;
+            // Tier 1: within 5 minutes (covers slow server processing + network delays)
+            const timeDiff = Math.abs(new Date(sm.createdAt).getTime() - pendingTs);
+            if (timeDiff < 5 * 60 * 1000) return true;
+            // Tier 2: content-only match for text messages with no timestamp constraint
+            // (APK: local clock vs server clock can differ when device was offline for hours)
+            if (pendingType === 'TEXT' && pendingContent.trim().length > 0) return true;
+            return false;
+          });
+
           if (alreadySynced) return false;
           return true;
         })
@@ -1957,7 +2128,7 @@ export default function ProjectExecutionClient({
     if (!confirm('¿Seguro que deseas eliminar este gasto?')) return
     try {
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        await db.outbox.add({
+        await addToOutbox({
           type: 'EXPENSE_DELETE',
           projectId: project.id,
           payload: { expenseId },
@@ -1990,7 +2161,7 @@ export default function ProjectExecutionClient({
       }
 
       if (typeof navigator !== 'undefined' && !navigator.onLine) {
-        await db.outbox.add({
+        await addToOutbox({
           type: 'EXPENSE',
           projectId: project.id,
           payload: { ...payload, id: editingExpense.id },
@@ -2112,7 +2283,13 @@ export default function ProjectExecutionClient({
 
         {(!isSmallScreen || activeTab !== 'chat') && (
           <>
-            <OperatorHeader project={project} isOnline={isOnline} mounted={mounted} localClientName={clientName} />
+            <OperatorHeader 
+              project={project} 
+              isOnline={isOnline} 
+              mounted={mounted} 
+              localClientName={clientName} 
+              onStatusChange={handleStatusChange}
+            />
 
             <OperatorFicha 
               project={project} 
@@ -2203,7 +2380,7 @@ export default function ProjectExecutionClient({
               }}>
                 <ProjectChatUnified
                   project={project}
-                  messages={combinedChat} 
+                  messages={localChat} 
                   userId={Number(session?.user?.id) || 0}
                   isSending={isSendingMessage}
                   isOperatorView={true}
@@ -2219,7 +2396,7 @@ export default function ProjectExecutionClient({
                        handleSendMessage(null as any, content, undefined, undefined, extraData, type);
                     }
                   }}
-                />
+                  />
               </div>
             )}
 
@@ -2284,6 +2461,32 @@ export default function ProjectExecutionClient({
         </div>
       </div>
       {/* MODALS SECTION */}
+      {showArchiveModal && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 100000, backdropFilter: 'blur(5px)', padding: '20px' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', padding: '30px', borderRadius: '15px', width: '100%', maxWidth: '450px', border: '1px solid var(--border-color)', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'center' }}>
+            <h3 style={{ fontSize: '1.4rem', marginBottom: '15px', color: 'var(--primary)' }}>¿Archivar Proyecto?</h3>
+            <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', marginBottom: '30px', fontSize: '0.95rem' }}>
+              Estás a punto de archivar <strong>{project?.title}</strong>.<br/>
+              Dejará de aparecer en tu panel de operador. El administrador podrá seguir viéndolo en la sección de archivados.
+            </p>
+            <div style={{ display: 'flex', gap: '15px' }}>
+              <button 
+                onClick={() => setShowArchiveModal(false)} 
+                style={{ flex: 1, padding: '14px', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', color: 'white', cursor: 'pointer', fontWeight: '500' }}
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={executeArchive}
+                disabled={isArchiving}
+                style={{ flex: 1, padding: '14px', borderRadius: '10px', backgroundColor: '#9ca3af', border: 'none', color: '#111827', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                {isArchiving ? 'Archivando...' : 'Archivar'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
       {waForwardMsg && (
         <OperatorWhatsAppModal 
           forwardMsg={waForwardMsg} 

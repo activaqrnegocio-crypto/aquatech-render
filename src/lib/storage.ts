@@ -22,38 +22,164 @@ export async function initStorage(): Promise<void> {
 }
 
 export async function addToOutbox(item: any): Promise<void> {
+  // Generate a stable syncId if not already present
+  const syncId = item.syncId || item.payload?.syncId || `sync-${item.type || 'UNKNOWN'}-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const projectId = item.projectId || item.payload?.projectId || 0;
+
+  // Ensure the payload is an object and has both syncId and projectId
+  let itemPayload = item.payload || item;
+  if (itemPayload && typeof itemPayload === 'object') {
+    itemPayload = {
+      ...itemPayload,
+      syncId,
+      projectId
+    };
+  }
+
+  const normalizedItem = {
+    ...item,
+    syncId,
+    projectId,
+    payload: itemPayload
+  };
+
+  // ─── APK: Guardar en SQLite (native-storage limpia File/Blob internamente) ──
   if (isNativePlatform() && await isSqliteReady()) {
-    await nativeStorage.addToOutbox(item)
-  } else {
+    try {
+      await nativeStorage.addToOutbox(normalizedItem)
+      console.log('[Storage] ✅ SQLite outbox guardado:', normalizedItem.type)
+    } catch (nativeErr) {
+      console.warn('[Storage] SQLite falló:', nativeErr)
+    }
+  }
+
+  // ─── SIEMPRE guardar en Dexie (IndexedDB) ────────────────────────────────
+  // El GlobalSyncWorker lee de Dexie para subir a BunnyCDN.
+  // IMPORTANTE: guardamos el payload ORIGINAL con File/Blob intactos —
+  // IndexedDB usa structured clone y puede almacenar File objects nativamente.
+  // Esto es lo que permite al SW recuperar el archivo y subirlo a Bunny.
+  try {
     await db.outbox.add({
-      type: item.type || 'UNKNOWN',
-      projectId: item.projectId || 0,
-      payload: item.payload || item,
+      type: normalizedItem.type || 'UNKNOWN',
+      projectId: normalizedItem.projectId || 0,
+      payload: normalizedItem.payload,   // payload ORIGINAL (con File/Blob)
       timestamp: Date.now(),
-      status: 'pending'
+      status: 'pending',
+      syncId: syncId
     } as any)
+    console.log('[Storage] ✅ Dexie outbox guardado:', normalizedItem.type)
+  } catch (dexieErr) {
+    console.error('[Storage] Dexie falló al guardar en outbox:', dexieErr)
   }
 }
 
 export async function getOutboxPending(): Promise<any[]> {
-  if (isNativePlatform() && await isSqliteReady()) {
-    return nativeStorage.getOutboxPending()
-  } else {
-    return db.outbox.where('status').equals('pending').toArray() as any
-  }
+  // Always read from Dexie (IndexedDB) for the UI — File/Blob objects survive here.
+  // SQLite is only for the Service Worker (background sync), it strips File/Blob.
+  return db.outbox.where('status').equals('pending').toArray() as any
 }
 
 export async function markOutboxProcessed(id: string): Promise<void> {
+  let resolvedSyncId = id;
+  // v_cleanup: Delete native temporary files associated with this outbox item
+  try {
+    if (isNativePlatform()) {
+      let item = await db.outbox.get(Number(id));
+      if (!item) {
+        const allOutbox = await db.outbox.toArray();
+        item = allOutbox.find((x: any) => String(x.id) === String(id) || String(x.syncId) === String(id));
+      }
+      if (item) {
+        if (item.syncId) {
+          resolvedSyncId = String(item.syncId);
+        }
+        const payload = item.payload;
+        const { deleteOfflineFileFromNativeStorage } = await import('./offline-media-helper');
+        if (payload.media?.localUri) {
+          await deleteOfflineFileFromNativeStorage(payload.media.localUri);
+        }
+        if (payload.localUri) {
+          await deleteOfflineFileFromNativeStorage(payload.localUri);
+        }
+        if (payload.files && Array.isArray(payload.files)) {
+          for (const f of payload.files) {
+            if (f.localUri) {
+              await deleteOfflineFileFromNativeStorage(f.localUri);
+            }
+          }
+        }
+        if (payload.specsAudioUrl && (payload.specsAudioUrl.startsWith('file://') || payload.specsAudioUrl.includes('_capacitor_file_'))) {
+          const localAudioPath = payload.specsAudioUrl.startsWith('http://localhost/_capacitor_file_') 
+            ? payload.specsAudioUrl.replace('http://localhost/_capacitor_file_', 'file://')
+            : payload.specsAudioUrl;
+          if (localAudioPath.startsWith('file://')) {
+            await deleteOfflineFileFromNativeStorage(localAudioPath);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Storage Cleanup] Failed to delete native offline files:', err);
+  }
+
   if (isNativePlatform() && await isSqliteReady()) {
-    await nativeStorage.markOutboxProcessed(id)
+    // APK: Marcar en SQLite nativa
+    await nativeStorage.markOutboxProcessed(resolvedSyncId)
+    // APK: TAMBIÉN marcar en IndexedDB para que el SW no lo procese de nuevo
+    try { await db.outbox.update(Number(id), { status: 'synced' } as any) } catch (e) {}
   } else {
     await db.outbox.update(Number(id), { status: 'synced' } as any)
   }
 }
 
 export async function removeFromOutbox(id: string): Promise<void> {
+  let resolvedSyncId = id;
+  // v_cleanup: Delete native temporary files associated with this outbox item
+  try {
+    if (isNativePlatform()) {
+      let item = await db.outbox.get(Number(id));
+      if (!item) {
+        const allOutbox = await db.outbox.toArray();
+        item = allOutbox.find((x: any) => String(x.id) === String(id) || String(x.syncId) === String(id));
+      }
+      if (item) {
+        if (item.syncId) {
+          resolvedSyncId = String(item.syncId);
+        }
+        const payload = item.payload;
+        const { deleteOfflineFileFromNativeStorage } = await import('./offline-media-helper');
+        if (payload.media?.localUri) {
+          await deleteOfflineFileFromNativeStorage(payload.media.localUri);
+        }
+        if (payload.localUri) {
+          await deleteOfflineFileFromNativeStorage(payload.localUri);
+        }
+        if (payload.files && Array.isArray(payload.files)) {
+          for (const f of payload.files) {
+            if (f.localUri) {
+              await deleteOfflineFileFromNativeStorage(f.localUri);
+            }
+          }
+        }
+        if (payload.specsAudioUrl && (payload.specsAudioUrl.startsWith('file://') || payload.specsAudioUrl.includes('_capacitor_file_'))) {
+          const localAudioPath = payload.specsAudioUrl.startsWith('http://localhost/_capacitor_file_') 
+            ? payload.specsAudioUrl.replace('http://localhost/_capacitor_file_', 'file://')
+            : payload.specsAudioUrl;
+          if (localAudioPath.startsWith('file://')) {
+            await deleteOfflineFileFromNativeStorage(localAudioPath);
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[Storage Cleanup] Failed to delete native offline files on remove:', err);
+  }
+
   if (isNativePlatform() && await isSqliteReady()) {
-    await nativeStorage.removeFromOutbox(id)
+    // APK: Eliminar de SQLite nativa
+    await nativeStorage.removeFromOutbox(resolvedSyncId)
+    // APK: TAMBIÉN eliminar de IndexedDB para mantener consistencia
+    try { await db.outbox.delete(Number(id)) } catch (e) {}
   } else {
     await db.outbox.delete(Number(id))
   }
@@ -73,6 +199,8 @@ export async function incrementOutboxRetries(id: string): Promise<void> {
 export async function clearProcessedOutbox(): Promise<void> {
   if (isNativePlatform() && await isSqliteReady()) {
     await nativeStorage.clearProcessedOutbox()
+    // APK: TAMBIÉN limpiar IndexedDB
+    try { await db.outbox.where('status').equals('synced').delete() } catch (e) {}
   } else {
     await db.outbox.where('status').equals('synced').delete()
   }

@@ -5,9 +5,10 @@ const config: CapacitorConfig = {
   appName: 'Aquatech CRM',
   webDir: '.next',
   
-  // PRODUCTION - apuntando a Vercel
+  // LOCAL - para pruebas con npm run start (mantener comentado para producción)
+  // PRODUCCIÓN - APK carga la UI desde el VPS
   server: {
-    url: 'https://apk-ten-pi.vercel.app',
+    url: 'https://178.238.238.158.sslip.io',
     cleartext: false,
     appStartPath: '/admin',
   },
@@ -15,7 +16,7 @@ const config: CapacitorConfig = {
   android: {
     allowMixedContent: true,
     captureInput: true,
-    webContentsDebuggingEnabled: true,
+    webContentsDebuggingEnabled: false,
     backgroundColor: '#036BB2',
   },
   
@@ -34,6 +35,16 @@ const config: CapacitorConfig = {
     // v451: Plugin nativo para SharedPreferences
     NativePreferences: {
       // No necesita configuración
+    },
+
+    // FASE 3: Background Runner para sync offline
+    BackgroundRunner: {
+      label: 'com.aquatech.crm.background',
+      src: 'runners/background.js',
+      event: 'outboxSync',
+      repeat: true,
+      interval: 15, // minutos
+      autoStart: true,
     },
   },
 };

@@ -167,7 +167,33 @@ export default function DashboardClient({
           timestamp: Date.now()
         }
         await db.dashboardCache.put(dashboardData)
-      } 
+      } else if (!navigator.onLine && !cached) {
+        // v-offline-fix: Si estamos offline y no hay cache del dashboard guardada,
+        // poblar proyectos usando la cache global db.projectsCache para no mostrar pantalla vacia.
+        try {
+          const cachedProjects = await db.projectsCache.orderBy('lastAccessedAt').reverse().limit(10).toArray()
+          if (cachedProjects.length > 0) {
+            const mappedProjects = cachedProjects.map((p: any) => ({
+              id: p.id,
+              title: p.title || 'Proyecto',
+              type: p.type || 'OTRO',
+              status: p.status || 'ACTIVO',
+              clientName: p.clientName || p.client?.name || 'Sin cliente',
+              phasesTotal: p.phases?.length || 0,
+              phasesCompleted: p.phases?.filter((ph: any) => ph.status === 'COMPLETADA').length || 0,
+              teamMembers: p.team?.map((t: any) => t.user?.name || 'Operador') || [],
+              expenseCount: p.expenses?.length || 0,
+              estimatedBudget: Number(p.estimatedBudget || 0),
+              realCost: Number(p.realCost || 0),
+              estimatedDays: Number(p.estimatedDays || 0),
+              phases: p.phases || []
+            }))
+            setActiveProjects(mappedProjects)
+          }
+        } catch (e) {
+          console.error('[Dashboard] Error cargando proyectos huérfanos en offline:', e)
+        }
+      }
     }
     handleCache()
   }, [initialStats, initialExpenses, initialMessages, initialProjects, initialTeam])

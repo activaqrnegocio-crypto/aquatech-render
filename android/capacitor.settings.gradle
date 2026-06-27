@@ -5,6 +5,9 @@ project(':capacitor-android').projectDir = new File('../node_modules/@capacitor/
 include ':capacitor-community-sqlite'
 project(':capacitor-community-sqlite').projectDir = new File('../node_modules/@capacitor-community/sqlite/android')
 
+include ':capacitor-app'
+project(':capacitor-app').projectDir = new File('../node_modules/@capacitor/app/android')
+
 include ':capacitor-background-runner'
 project(':capacitor-background-runner').projectDir = new File('../node_modules/@capacitor/background-runner/android')
 
@@ -25,6 +28,9 @@ project(':capacitor-preferences').projectDir = new File('../node_modules/@capaci
 
 include ':capacitor-push-notifications'
 project(':capacitor-push-notifications').projectDir = new File('../node_modules/@capacitor/push-notifications/android')
+
+include ':capacitor-share'
+project(':capacitor-share').projectDir = new File('../node_modules/@capacitor/share/android')
 
 include ':capgo-capacitor-audio-recorder'
 project(':capgo-capacitor-audio-recorder').projectDir = new File('../node_modules/@capgo/capacitor-audio-recorder/android')

@@ -61,6 +61,7 @@ const config: NextConfig = {
     serverActions: {
       bodySizeLimit: '200mb',
     },
+    proxyClientMaxBodySize: '200mb',
     staleTimes: {
       dynamic: 300,  // v338→v2: 5 min freshness — evita refetch al navegar entre pestañas
       static: 1800,  // 30 min para estático

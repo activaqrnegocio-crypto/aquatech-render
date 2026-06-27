@@ -1,14 +1,23 @@
 import nodemailer from 'nodemailer'
 
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST,
-  port: Number(process.env.EMAIL_PORT) || 465,
-  secure: process.env.EMAIL_SECURE === 'true',
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASS,
-  },
-})
+function createTransporter() {
+  return nodemailer.createTransport({
+    host: process.env.EMAIL_HOST,
+    port: Number(process.env.EMAIL_PORT) || 465,
+    secure: process.env.EMAIL_SECURE !== 'false', // true por defecto para 465
+    auth: {
+      user: process.env.EMAIL_USER,
+      pass: process.env.EMAIL_PASS,
+    },
+    tls: {
+      // Tolerar certificados de dominio propio (self-signed o cadena incompleta)
+      rejectUnauthorized: false,
+    },
+    connectionTimeout: 10000, // 10s timeout
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  })
+}
 
 export async function sendWelcomeEmail(to: string, name: string, username: string, password: string) {
   const loginUrl = `${process.env.NEXTAUTH_URL}/admin/login`
@@ -58,11 +67,12 @@ export async function sendWelcomeEmail(to: string, name: string, username: strin
   }
 
   try {
+    const transporter = createTransporter()
     const info = await transporter.sendMail(mailOptions)
-    console.log('Email enviado: %s', info.messageId)
+    console.log('[Mail] Email enviado OK:', info.messageId)
     return { success: true, messageId: info.messageId }
-  } catch (error) {
-    console.error('Error enviando email:', error)
-    return { success: false, error }
+  } catch (error: any) {
+    console.error('[Mail] Error enviando email a', to, '\nCódigo:', error.code, '\nRespuesta SMTP:', error.response || error.message)
+    return { success: false, error: error.message || 'Error desconocido' }
   }
 }

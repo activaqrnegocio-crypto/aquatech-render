@@ -23,31 +23,48 @@ import { useState, useEffect, useRef } from 'react'
 import { getAndClearPendingNav, checkPendingNav, parseProjectChatUrl, initPushRouteListener, clearPendingNavFile, clearPendingNavAfterUse } from '@/lib/pending-nav'
 
 export default function AdminLayoutClient({ children }: { children: React.ReactNode }) {
-  const { data: session } = useSession()
+  const { data: session, status } = useSession()
   const pathname = usePathname()
   const router = useRouter()
   const [isNavigating, setIsNavigating] = useState(false)
 
-  // v605: Verificar si hubo logout forzado
+  // v621: force_logout_pending ya no se usa (centralizado en force-logout page)
+  // Mantenemos la verificación por compatibilidad con versiones anteriores
   useEffect(() => {
     const forceLogout = localStorage.getItem('force_logout_pending')
     if (forceLogout === '1') {
-      console.log('[AdminLayout] Force logout detectado, redirigiendo...')
+      console.log('[AdminLayout] Force logout legacy detectado, redirigiendo...')
       localStorage.removeItem('force_logout_pending')
-      // Redirigir a force-logout
       window.location.replace('/admin/force-logout')
     }
   }, [])
 
+  // v622: Redirect inmediato cuando la sesión es inválida en páginas protegidas
+  // Esto elimina el efecto "parece logueado" al reabrir la app después del logout.
+  // Sin esto, la UI autenticada se muestra durante ~2s mientras NextAuth verifica.
+  useEffect(() => {
+    if (status === 'unauthenticated') {
+      const currentPath = window.location.pathname
+      if (!currentPath.includes('/login') && !currentPath.includes('/force-logout')) {
+        console.log('[AdminLayout] Sesión inválida, redirigiendo a login...')
+        window.location.replace('/admin/login?expired=1')
+      }
+    }
+  }, [status])
+
   // v423: USAR REF para evitar race conditions
   const pendingNavRef = useRef(false);
   
-  // Función para procesar navegación pendiente
-
-// v455: Delay inicial MAYOR para cold start (8 segundos para esperar cold start completo)
-  // Función para procesar navegación con reintentos
-  // Espera hasta que la sesión esté lista (para cold start)
+  // Función para procesar navegación pendiente  // v621: Delay reducido para cold start (2s en lugar de 8s)
+  // Se salta si no hay sesión activa (login/logout no necesitan pending nav)
   async function processPendingNav(retries = 12, delayMs = 1000) {
+    // v621: NO procesar si estamos en login o force-logout
+    const currentPath = window.location.pathname
+    if (currentPath.includes('/login') || currentPath.includes('/force-logout')) {
+      console.log('[PendingNav] En página de auth, omitiendo pending nav');
+      return;
+    }
+
     // v600: VERIFICAR SI HAY DATOS PENDIENTES antes de procesar
     // Esto evita ejecuciones innecesarias cuando no hay nada que procesar
     const hasPending = await checkPendingNav();
@@ -71,15 +88,35 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
       
       console.log('[PendingNav] Intento', attempt, 'de', retries);
       
-      // v455: Delay inicial mayor para cold start (8 segundos para esperar cold start completo)
+      // v621: Delay para cold start - reducido de 8s -> 2s pero con espera de sesión
       if (attempt === 1) {
-console.log('[PendingNav] Esperando inicialización cold start (8s)...');
-        await new Promise(r => setTimeout(r, 8000));
+        console.log('[PendingNav] Esperando inicialización cold start (2s)...');
+        await new Promise(r => setTimeout(r, 2000));
         
-        // También esperar sesión si no está lista
+        // v621: Verificar si nos redirigieron a auth page DURANTE el delay
+        const pathNow = window.location.pathname
+        if (pathNow.includes('/login') || pathNow.includes('/force-logout')) {
+          console.log('[PendingNav] Redirigido a auth page durante delay, cancelando');
+          return;
+        }
+        
+        // v621: Si no hay sesión, esperar hasta 6s más (notificaciones en cold start lento)
         if (!session) {
-          console.log('[PendingNav] Esperando sesión...');
-          await new Promise(r => setTimeout(r, 2000));
+          console.log('[PendingNav] Sin sesión, esperando hasta 6s para cold start...');
+          for (let wait = 0; wait < 6; wait++) {
+            await new Promise(r => setTimeout(r, 1000));
+            const pathCheck = window.location.pathname
+            if (pathCheck.includes('/login') || pathCheck.includes('/force-logout')) {
+              console.log('[PendingNav] Redirigido a auth page en espera, cancelando');
+              return;
+            }
+            if (session) break; // sesión cargó!
+          }
+          // Si después de 8s totales sigue sin sesión, cancelar
+          if (!session) {
+            console.log('[PendingNav] Sin sesión tras 8s, cancelando pending nav');
+            return;
+          }
         }
       }
       
@@ -98,14 +135,28 @@ console.log('[PendingNav] Esperando inicialización cold start (8s)...');
       // MARCAR INMEDIATAMENTE (v456 - evitar reintentos que sobrescriben)
       (window as any).__pendingNavDone = true;
       pendingNavRef.current = true; // v456: Marcar ref también
-      console.log('[PendingNav] URL recibida:', pending.url);
+      
+      // v624: Si la URL es absoluta (ej: http://192.168.100.43:3443/admin/...), extraer solo el pathname
+      // Esto evita que Capacitor/Android intente abrirla en Chrome como una URL externa.
+      let rawUrl = pending.url;
+      if (rawUrl.startsWith('http://') || rawUrl.startsWith('https://')) {
+        try {
+          const parsedUrl = new URL(rawUrl);
+          rawUrl = parsedUrl.pathname + parsedUrl.search + parsedUrl.hash;
+          console.log('[PendingNav] URL absoluta convertida a relativa:', rawUrl);
+        } catch (e) {
+          console.error('[PendingNav] Error parsing absolute URL:', e);
+        }
+      }
+      
+      console.log('[PendingNav] URL recibida:', rawUrl);
 
       // Extraer projectId
       let projectId = '';
-      if (pending.url.includes('URL_PROJECT_CHAT:')) {
-        projectId = pending.url.replace('URL_PROJECT_CHAT:', '').split(':')[0];
-      } else if (pending.url.includes('URL_PROJECT:')) {
-        projectId = pending.url.replace('URL_PROJECT:', '');
+      if (rawUrl.includes('URL_PROJECT_CHAT:')) {
+        projectId = rawUrl.replace('URL_PROJECT_CHAT:', '').split(':')[0];
+      } else if (rawUrl.includes('URL_PROJECT:')) {
+        projectId = rawUrl.replace('URL_PROJECT:', '');
       }
       
       // OBTENER ROL DEL USUARIO para navegar correctamente
@@ -129,7 +180,7 @@ console.log('[PendingNav] Esperando inicialización cold start (8s)...');
       // Navegar según el rol del usuario
       // v457: Usar window.location.href en cold start, router.replace() en app ya abierta
       if (projectId) {
-        const targetPath = userRole === 'OPERATOR' || userRole === 'SUBCONTRATISTA'
+        const targetPath = userRole === 'OPERATOR' || userRole === 'OPERADOR' || userRole === 'SUBCONTRATISTA'
           ? `/admin/operador/proyecto/${projectId}?view=CHAT`
           : `/admin/proyectos/${projectId}?view=CHAT`;
         
@@ -272,6 +323,19 @@ console.log('[PendingNav] Esperando inicialización cold start (8s)...');
 
   if (isLoginPage) {
     return <main>{children}</main>
+  }
+
+  // Si la sesión está cargando o no está autenticada, no mostramos el layout de administración
+  // para evitar parpadeos visuales molestos de roles anteriores antes del redirect.
+  // v623: Permitir que /admin/force-logout pase de largo para evitar loops o interferir con la desautenticación.
+  const isAuthOrForceLogout = isLoginPage || pathname === '/admin/force-logout'
+  if (!isAuthOrForceLogout && (status === 'loading' || status === 'unauthenticated')) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-deep)' }}>
+        <div style={{ width: '32px', height: '32px', border: '3px solid rgba(255,255,255,0.2)', borderTop: '3px solid #38bdf8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </div>
+    )
   }
 
   return (

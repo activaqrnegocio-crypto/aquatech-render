@@ -84,8 +84,11 @@ export default function LoginPage() {
       setError('Credenciales incorrectas')
       setLoading(false)
     } else {
-      // Redirigir a /admin - el rol se guardará cuando se cargue el layout
-      window.location.href = '/admin'
+      // WebView/Capacitor: dar 600ms para que el CookieManager guarde la cookie HttpOnly
+      // antes de navegar a la página protegida. Esto evita ser expulsado en el primer intento.
+      setTimeout(() => {
+        window.location.href = '/admin'
+      }, 600)
     }
   }
 
@@ -172,10 +175,6 @@ export default function LoginPage() {
             )}
           </button>
         </form>
-
-        <p className="login-footer">
-          © 2026 Aquatech Loja — Todos los derechos reservados
-        </p>
       </div>
 
       <style>{`

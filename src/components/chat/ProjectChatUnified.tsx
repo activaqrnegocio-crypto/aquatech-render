@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useState, useEffect, useRef, useMemo } from 'react'
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { Capacitor } from '@capacitor/core'
 import { Geolocation } from '@capacitor/geolocation'
 import { formatTimeEcuador, formatDateEcuador } from '@/lib/date-utils'
@@ -8,6 +8,8 @@ import MediaCapture from '@/components/MediaCapture'
 import VideoThumbnail from '@/components/VideoThumbnail'
 import CameraCapture from '@/components/camera/CameraCapture'
 import NativeCameraCapture from '@/components/NativeCameraCapture'
+import CameraCaptureModal from '@/components/CameraCaptureModal'
+import { CapacitorAudioRecorder } from '@capgo/capacitor-audio-recorder'
 
 // --- SVGs for WhatsApp Icons ---
 const svgProps = (size: number) => ({
@@ -91,6 +93,13 @@ export default function ProjectChatUnified({
   const messagesEndRef = useRef<HTMLDivElement>(null)
   const chatBodyRef = useRef<HTMLDivElement>(null)
   const sendLockRef = useRef(false)
+  const loadMoreTriggerRef = useRef<HTMLDivElement>(null)
+
+  // --- PAGINATION STATE (Tipo WhatsApp) ---
+  const [displayedMessageCount, setDisplayedMessageCount] = useState(5)
+  const [hasMoreMessages, setHasMoreMessages] = useState(true)
+  const [isLoadingMore, setIsLoadingMore] = useState(false)
+  const [initialScrollDone, setInitialScrollDone] = useState(false)
 
   const [autoScroll, setAutoScroll] = useState(true)
   const [showNewMsgBtn, setShowNewMsgBtn] = useState(false)
@@ -164,28 +173,93 @@ export default function ProjectChatUnified({
     return allMedia.filter(m => m.type === filesFilter)
   }, [allMedia, filesFilter])
 
-  // Scroll logic
+  // --- INTERSECTION OBSERVER for Lazy Loading ---
+  // Usar ref para evitar múltiples cargas
+  const isLoadingRef = useRef(false);
+  
   useEffect(() => {
+    const el = loadMoreTriggerRef.current;
+    if (!el) return;
+    
+    let observer: IntersectionObserver | null = null;
+    
+    // Función para cargar más mensajes
+    const loadMore = () => {
+      if (isLoadingRef.current || !hasMoreMessages) return;
+      
+      const chatEl = chatBodyRef.current;
+      if (!chatEl) return;
+      
+      // Guardar posición del scroll ANTES de agregar mensajes
+      const oldScrollHeight = chatEl.scrollHeight;
+      const oldScrollTop = chatEl.scrollTop;
+      
+      isLoadingRef.current = true;
+      setIsLoadingMore(true);
+      setDisplayedMessageCount(prev => prev + 5);
+      
+      // Después de render, ajustar scroll para mantener posición visual
+      requestAnimationFrame(() => {
+        if (chatBodyRef.current) {
+          const newScrollHeight = chatBodyRef.current.scrollHeight;
+          const heightDelta = newScrollHeight - oldScrollHeight;
+          chatBodyRef.current.scrollTop = oldScrollTop + heightDelta;
+        }
+        setTimeout(() => {
+          isLoadingRef.current = false;
+          setIsLoadingMore(false);
+        }, 300);
+      });
+    };
+    
+    observer = new IntersectionObserver(loadMore, { threshold: 1.0 });
+    observer.observe(el);
+    
+    return () => {
+      if (observer) observer.disconnect();
+    };
+  }, [hasMoreMessages]);
+
+  // Scroll logic - Auto-scroll a últimos mensajes al cargar
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
     const el = chatBodyRef.current;
     if (!el) return;
+    el.scrollTo({ top: el.scrollHeight, behavior });
+  }, []);
 
-    const lastMessage = messages[messages.length - 1];
-    const isMe = lastMessage && (Number(lastMessage.userId) === Number(userId) || lastMessage.isMe);
+  // Auto-scroll al fondo al montar (con reintentos hasta que el DOM esté listo)
+  useEffect(() => {
+    if (initialScrollDone) return;
     
-    // Solo scrolleamos si autoScroll está activo o si YO acabo de enviar un mensaje
-    if (autoScroll || isMe) {
-      setTimeout(() => {
-        el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' });
-      }, 50); // Small delay to ensure DOM is updated
-      if (isMe) {
-        setAutoScroll(true);
-        setShowNewMsgBtn(false);
+    let attempts = 0;
+    const maxAttempts = 10;
+    const tryScroll = () => {
+      const el = chatBodyRef.current;
+      if (el && el.scrollHeight > 0) {
+        el.scrollTop = el.scrollHeight;
+        setInitialScrollDone(true);
+      } else if (attempts < maxAttempts) {
+        attempts++;
+        setTimeout(tryScroll, 100);
+      } else {
+        setInitialScrollDone(true);
       }
-    } else {
-      // Si hay mensajes nuevos y no estamos en autoScroll, mostramos el botón
-      setShowNewMsgBtn(true);
+    };
+    
+    // Primer intento con requestAnimationFrame
+    requestAnimationFrame(tryScroll);
+  }, [initialScrollDone]);
+
+  // Cuando llegan mensajes nuevos, scrollear al fondo si el usuario está cerca del final
+  useEffect(() => {
+    if (!initialScrollDone) return;
+    const el = chatBodyRef.current;
+    if (!el || messages.length === 0) return;
+    const isNearBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 200;
+    if (isNearBottom) {
+      requestAnimationFrame(() => scrollToBottom('smooth'));
     }
-  }, [messages.length, userId]);
+  }, [messages.length, initialScrollDone, scrollToBottom]);
 
 
 
@@ -204,7 +278,6 @@ export default function ProjectChatUnified({
     if (isRecordingVoice || isRecordingRef.current) return;
     
     try {
-      const { CapacitorAudioRecorder } = await import('@capgo/capacitor-audio-recorder');
       const perm = await CapacitorAudioRecorder.requestPermissions();
       if (perm.recordAudio !== 'granted') {
         alert('Permiso de micrófono denegado');
@@ -243,14 +316,12 @@ export default function ProjectChatUnified({
     if (!send || !wasRecording) {
       // Cancel - discard recording
       try {
-        const { CapacitorAudioRecorder } = await import('@capgo/capacitor-audio-recorder');
         await CapacitorAudioRecorder.stopRecording();
       } catch {}
       return;
     }
     
     try {
-      const { CapacitorAudioRecorder } = await import('@capgo/capacitor-audio-recorder');
       const result = await CapacitorAudioRecorder.stopRecording();
       console.log('[APK] stopRecording result:', JSON.stringify(result));
       
@@ -537,6 +608,16 @@ export default function ProjectChatUnified({
     return searchMatch && phaseMatch;
   });
 
+  // --- PAGINATION: Only show displayedMessageCount messages ---
+  const displayedMessages = filteredMessages.slice(-displayedMessageCount);
+  const totalFiltered = filteredMessages.length;
+  const moreCount = totalFiltered - displayedMessages.length;
+  const canLoadMore = moreCount > 0;
+
+  // Actualizar estado hasMoreMessages cuando cambien los mensajes
+  useEffect(() => {
+    setHasMoreMessages(canLoadMore);
+  }, [canLoadMore, displayedMessageCount]);
 
   return (
     <div className="whatsapp-chat-container">
@@ -627,7 +708,13 @@ export default function ProjectChatUnified({
         }}
       >
         <div className="date-badge">HOY</div>
-        {filteredMessages.map((msg, idx, filteredArray) => {
+        
+        <div ref={loadMoreTriggerRef} style={{ height: '1px' }}>
+          {isLoadingMore && <div style={{ textAlign: 'center', padding: '10px', color: 'var(--text-muted)' }}>Cargando mensajes...</div>}
+          {!canLoadMore && moreCount > 0 && <div style={{ textAlign: 'center', padding: '10px', color: 'var(--text-muted)', fontSize: '0.8rem' }}>📜 {moreCount} mensajes anteriores</div>}
+        </div>
+
+        {displayedMessages.map((msg, idx, filteredArray) => {
           const isMe = Number(msg.userId) === Number(userId) || msg.isMe;
           const showPointer = idx === 0 || filteredArray[idx-1]?.userId !== msg.userId;
 
@@ -758,20 +845,40 @@ export default function ProjectChatUnified({
                   {mediaArray.length > 0 && !isExpense && mediaArray.map((m: any, mIdx: number) => (
                     <div key={m.id || mIdx} className="media-attachment-container">
                      {(m.mimeType?.startsWith('image/') || m.type === 'IMAGE' || (!m.mimeType && m.url?.match(/\.(jpg|jpeg|png|gif|webp)$/i))) && (
-                       <div className="media-preview">
-                         <img src={m.url} alt="Media" onClick={() => window.open(m.url, '_blank')} />
+                       <div className="media-preview" style={{ aspectRatio: '4/3', backgroundColor: 'rgba(0,0,0,0.05)', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer' }}>
+                         <img 
+                            src={
+                              Capacitor.isNativePlatform() && m.url && m.url.startsWith('file://')
+                                ? Capacitor.convertFileSrc(m.url)
+                                : m.url
+                            } 
+                            alt="Media" 
+                            onClick={() => setSelectedPreviewMedia(m)} 
+                            loading="lazy" 
+                            style={{ width: '100%', height: '100%', objectFit: 'cover' }} 
+                          />
                        </div>
                      )}
                      
                      {(m.mimeType?.startsWith('video/') || m.type === 'VIDEO' || (!m.mimeType && m.url?.match(/\.(mp4|mov|webm)$/i))) && (
-                       <div className="media-preview video">
-                         <video src={Capacitor.isNativePlatform() ? Capacitor.convertFileSrc(m.url) : m.url + '#t=0.001'} controls preload="metadata" />
+                       <div className="media-preview video" style={{ aspectRatio: '4/3', borderRadius: '8px', overflow: 'hidden', cursor: 'pointer', position: 'relative' }}
+                         onClick={() => setSelectedPreviewMedia(m)}
+                       >
+                         <VideoThumbnail url={m.url} mime={m.mimeType || 'video/mp4'} filename="" />
                        </div>
                      )}
                      
                      {(m.mimeType?.startsWith('audio/') || m.type === 'AUDIO') && (
                        <div className="audio-bubble">
-                         <audio src={Capacitor.isNativePlatform() ? Capacitor.convertFileSrc(m.url) : m.url} controls style={{ height: '32px', width: '220px' }} />
+                         <audio
+                            src={
+                              Capacitor.isNativePlatform() && m.url && m.url.startsWith('file://')
+                                ? Capacitor.convertFileSrc(m.url)
+                                : m.url
+                            }
+                            controls
+                            style={{ height: '32px', width: '220px' }}
+                          />
                        </div>
                      )}
 
@@ -846,11 +953,12 @@ export default function ProjectChatUnified({
                             src={mediaObj.url} 
                             style={{ 
                               width: '100%', 
-                              maxHeight: '280px', 
+                              aspectRatio: '4/3',
                               objectFit: 'contain',
                               display: 'block'
                             }} 
                             alt="Recibo" 
+                            loading="lazy"
                           />
                         </div>
                       )}
@@ -1141,13 +1249,21 @@ export default function ProjectChatUnified({
 
             {selectedPreviewMedia.mimeType?.startsWith('image/') || selectedPreviewMedia.type === 'IMAGES' ? (
               <img 
-                src={selectedPreviewMedia.url} 
+                src={
+                  Capacitor.isNativePlatform() && selectedPreviewMedia.url && selectedPreviewMedia.url.startsWith('file://')
+                    ? Capacitor.convertFileSrc(selectedPreviewMedia.url)
+                    : selectedPreviewMedia.url
+                } 
                 alt="Preview" 
                 style={{ maxWidth: '100%', maxHeight: '85vh', objectFit: 'contain', borderRadius: '12px', boxShadow: '0 20px 50px rgba(0,0,0,0.5)' }} 
               />
             ) : selectedPreviewMedia.mimeType?.startsWith('video/') || selectedPreviewMedia.type === 'VIDEOS' ? (
               <video 
-                src={`${selectedPreviewMedia.url}#t=0.001`} 
+                src={
+                  Capacitor.isNativePlatform() && selectedPreviewMedia.url && selectedPreviewMedia.url.startsWith('file://')
+                    ? `${Capacitor.convertFileSrc(selectedPreviewMedia.url)}#t=0.001`
+                    : `${selectedPreviewMedia.url}#t=0.001`
+                } 
                 controls 
                 autoPlay 
                 playsInline
@@ -1174,7 +1290,16 @@ export default function ProjectChatUnified({
                   <h3 style={{ margin: '0 0 5px 0', fontSize: '1.1rem', color: 'white' }}>{selectedPreviewMedia.filename || 'Nota de Voz'}</h3>
                   <p style={{ color: '#8696a0', fontSize: '0.8rem', margin: 0 }}>Audio / Mensaje de Voz</p>
                 </div>
-                <audio src={selectedPreviewMedia.url} controls autoPlay style={{ width: '100%' }} />
+                <audio 
+                  src={
+                    Capacitor.isNativePlatform() && selectedPreviewMedia.url && selectedPreviewMedia.url.startsWith('file://')
+                      ? Capacitor.convertFileSrc(selectedPreviewMedia.url)
+                      : selectedPreviewMedia.url
+                  } 
+                  controls 
+                  autoPlay 
+                  style={{ width: '100%' }} 
+                />
               </div>
             ) : (
               <div style={{ 
@@ -1258,6 +1383,7 @@ export default function ProjectChatUnified({
               }}
               mode="audio"
               placeholder="Grabando nota de voz..."
+              skipTranscription={true}
             />
           </div>
         </div>
@@ -1266,7 +1392,7 @@ export default function ProjectChatUnified({
       {/* --- PWA: Camera modal (photo/video) --- */}
       {showPwaCamera && !Capacitor.isNativePlatform() && (
         <div className="media-modal-overlay">
-          <div className="media-modal-content" style={{ position: 'relative' }}>
+          <div className="media-modal-content" style={{ position: 'relative', maxWidth: '400px' }}>
             <button 
               onClick={() => setShowPwaCamera(false)}
               style={{
@@ -1283,23 +1409,135 @@ export default function ProjectChatUnified({
             >
               ✕
             </button>
-            <MediaCapture
-              onCapture={(blob, type, transcription) => {
-                console.log('[PWA Camera] Captured:', type, 'size:', blob.size, 'transcription:', transcription);
-                if (type === 'photo') {
-                  const ext = blob.type.includes('jpeg') || blob.type.includes('jpg') ? 'jpg' : 'webp';
-                  const mediaFile = new File([blob], `photo_${Date.now()}.${ext}`, { type: blob.type });
-                  onSendMessage(`📷 Foto`, 'IMAGE', { file: mediaFile });
-                } else if (type === 'video') {
-                  const ext = blob.type.includes('mp4') ? 'mp4' : 'webm';
-                  const mediaFile = new File([blob], `video_${Date.now()}.${ext}`, { type: blob.type });
-                  onSendMessage(`🎥 Video (${Math.floor(blob.size / 1024)}KB)`, 'VIDEO', { file: mediaFile });
-                }
-                setShowPwaCamera(false);
-              }}
-              mode="video"
-              placeholder="Capturando..."
-            />
+            
+            {/* Selector de tipo: Foto o Video */}
+            <div style={{ 
+              display: 'flex', 
+              justifyContent: 'center', 
+              gap: '12px', 
+              marginBottom: '15px',
+              padding: '10px',
+              backgroundColor: 'rgba(255,255,255,0.05)',
+              borderRadius: '12px'
+            }}>
+              <button
+                onClick={() => {
+                  // Usar input de archivo para capturar foto
+                  const input = document.createElement('input');
+                  input.type = 'file';
+                  input.accept = 'image/*';
+                  input.capture = 'environment';
+                  input.style.display = 'none';
+                  document.body.appendChild(input);
+                  input.onchange = (e: any) => {
+                    const file = e.target.files?.[0];
+                    if (file) {
+                      const mediaFile = new File([file], `photo_${Date.now()}.jpg`, { type: file.type });
+                      onSendMessage(`📷 Foto`, 'IMAGE', { file: mediaFile });
+                      setShowPwaCamera(false);
+                    }
+                    document.body.removeChild(input);
+                  };
+                  input.click();
+                }}
+                style={{
+                  flex: 1,
+                  padding: '15px 20px',
+                  background: 'linear-gradient(135deg, #10b981, #059669)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  color: 'white',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 12px rgba(16, 185, 129, 0.3)'
+                }}
+              >
+                <span style={{ fontSize: '28px' }}>📷</span>
+                <span>Foto</span>
+              </button>
+              
+              <button
+                onClick={() => {
+                  // Usar MediaCapture para video
+                  const videoEl = document.createElement('video');
+                  videoEl.style.cssText = 'position:fixed;top:0;left:0;width:100%;height:100%;object-fit:cover;z-index:9999;background:#000;';
+                  document.body.appendChild(videoEl);
+                  
+                  navigator.mediaDevices.getUserMedia({ video: true, audio: true })
+                    .then(stream => {
+                      videoEl.srcObject = stream;
+                      videoEl.play();
+                      
+                      const options = { mimeType: 'video/webm;codecs=vp9,opus' };
+                      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                        options.mimeType = 'video/webm;codecs=vp8,opus';
+                      }
+                      if (!MediaRecorder.isTypeSupported(options.mimeType)) {
+                        options.mimeType = 'video/webm';
+                      }
+                      
+                      const mediaRecorder = new MediaRecorder(stream, options);
+                      const chunks: Blob[] = [];
+                      
+                      mediaRecorder.ondataavailable = (e) => {
+                        if (e.data.size > 0) chunks.push(e.data);
+                      };
+                      
+                      mediaRecorder.onstop = () => {
+                        stream.getTracks().forEach(track => track.stop());
+                        document.body.removeChild(videoEl);
+                        
+                        const blob = new Blob(chunks, { type: 'video/webm' });
+                        const mediaFile = new File([blob], `video_${Date.now()}.webm`, { type: 'video/webm' });
+                        onSendMessage(`🎥 Video (${Math.floor(blob.size / 1024)}KB)`, 'VIDEO', { file: mediaFile });
+                        setShowPwaCamera(false);
+                      };
+                      
+                      // Botón de detener
+                      const stopBtn = document.createElement('button');
+                      stopBtn.textContent = '⏹️ Detener';
+                      stopBtn.style.cssText = 'position:fixed;bottom:30px;left:50%;transform:translateX(-50%);padding:15px 30px;font-size:18px;background:#e53935;color:white;border:none;border-radius:30px;cursor:pointer;z-index:10000;box-shadow:0 4px 15px rgba(0,0,0,0.3);';
+                      document.body.appendChild(stopBtn);
+                      
+                      stopBtn.onclick = () => {
+                        mediaRecorder.stop();
+                        document.body.removeChild(stopBtn);
+                      };
+                      
+                      mediaRecorder.start();
+                    })
+                    .catch(err => {
+                      console.error('[PWA] Error acceso cámara:', err);
+                      document.body.removeChild(videoEl);
+                      alert('No se pudo acceder a la cámara: ' + err.message);
+                    });
+                }}
+                style={{
+                  flex: 1,
+                  padding: '15px 20px',
+                  background: 'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+                  border: 'none',
+                  borderRadius: '12px',
+                  color: 'white',
+                  fontSize: '14px',
+                  fontWeight: 'bold',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '6px',
+                  boxShadow: '0 4px 12px rgba(139, 92, 246, 0.3)'
+                }}
+              >
+                <span style={{ fontSize: '28px' }}>🎥</span>
+                <span>Video</span>
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -1645,140 +1883,15 @@ export default function ProjectChatUnified({
         </div>
       )}
 
-      {/* --- APK CAMERA TYPE MODAL --- */}
+      {/* --- APK CAMERA CAPTURE MODAL (compartido) --- */}
       {showCameraTypeModal && (
-        <div className="media-modal-overlay" onClick={() => setShowCameraTypeModal(false)}>
-          <div className="media-modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '320px', textAlign: 'center' }}>
-            <h3 style={{ marginTop: 0 }}>📷 Seleccionar tipo</h3>
-            <p style={{ color: '#a0a0a0', marginBottom: '20px' }}>¿Qué deseas capturar?</p>
-            <div style={{ display: 'flex', gap: '12px', justifyContent: 'center' }}>
-              <button
-                onClick={async () => {
-                  setShowCameraTypeModal(false);
-                  try {
-                    const { Camera, CameraResultType, CameraSource } = await import('@capacitor/camera');
-                    const media = await Camera.getPhoto({
-                      quality: 90,
-                      allowEditing: false,
-                      resultType: CameraResultType.Uri,
-                      source: CameraSource.Camera,
-                    });
-                    // v382: Use webPath for Uri result type ( Capacitor Camera )
-                    const path = (media as any).uri || (media as any).webPath;
-                    if (path) {
-                      const resp = await fetch(path);
-                      const blob = await resp.blob();
-                      // APK: Enviar foto directamente al chat
-                      const mediaFile = new File([blob], `photo_${Date.now()}.jpg`, { type: 'image/jpeg' });
-                      onSendMessage('📷 Foto', 'IMAGE', { file: mediaFile });
-                    }
-                  } catch (err) {
-                    console.error('[APK] Error cámara foto:', err);
-                    alert('Error: ' + err);
-                  }
-                }}
-                style={{
-                  flex: 1,
-                  padding: '20px',
-                  background: 'linear-gradient(135deg, #10b981, #059669)',
-                  border: 'none',
-                  borderRadius: '12px',
-                  color: 'white',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                <span style={{ fontSize: '32px' }}>📷</span>
-                <span>Foto</span>
-              </button>
-              <button
-                onClick={async () => {
-                  setShowCameraTypeModal(false);
-                  try {
-                    const { Camera } = await import('@capacitor/camera');
-                    const media = await Camera.recordVideo({});
-                    console.log('[APK] Video grabado:', media);
-                    if (media.uri) {
-                      let blob;
-                      let filename;
-                      let mimeType;
-                      let fileData = null;
-                      
-                      try {
-                        const resp = await fetch(media.uri);
-                        blob = await resp.blob();
-                        mimeType = blob.type || 'video/mp4';
-                        filename = `video_${Date.now()}.mp4`;
-                      } catch (fetchErr) {
-                        // Offline: leer desde Filesystem API
-                        console.warn('[APK] Video offline, usando Filesystem API');
-                        try {
-                          const { Filesystem } = await import('@capacitor/filesystem');
-                          const contents = await Filesystem.readFile({ path: media.uri });
-                          const dataStr = typeof contents === 'string' ? contents : (contents.data ? String(contents.data) : '');
-                          const binary = atob(dataStr);
-                          const bytes = new Uint8Array(binary.length);
-                          for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-                          blob = new Blob([bytes], { type: 'video/mp4' });
-                          mimeType = 'video/mp4';
-                          filename = `video_${Date.now()}.mp4`;
-                          fileData = { buffer: bytes.buffer, type: mimeType, name: filename };
-                        } catch (fsErr) {
-                          console.error('[APK] Error leyendo video:', fsErr);
-                          alert('Error: ' + fsErr);
-                          return;
-                        }
-                      }
-                      
-                      // APK: Enviar video directamente al chat
-                      const mediaFile = new File([blob], filename, { type: mimeType });
-                      onSendMessage('🎥 Video', 'VIDEO', { file: mediaFile, fileData });
-                    }
-                  } catch (err) {
-                    console.error('[APK] Error cámara video:', err);
-                    alert('Error: ' + err);
-                  }
-                }}
-                style={{
-                  flex: 1,
-                  padding: '20px',
-                  background: 'linear-gradient(135deg, #3b82f6, #2563eb)',
-                  border: 'none',
-                  borderRadius: '12px',
-                  color: 'white',
-                  fontSize: '16px',
-                  fontWeight: 'bold',
-                  cursor: 'pointer',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '8px'
-                }}
-              >
-                <span style={{ fontSize: '32px' }}>🎥</span>
-                <span>Video</span>
-              </button>
-            </div>
-            <button
-              onClick={() => setShowCameraTypeModal(false)}
-              style={{
-                marginTop: '16px',
-                background: 'transparent',
-                border: 'none',
-                color: '#a0a0a0',
-                cursor: 'pointer',
-                fontSize: '14px'
-              }}
-            >
-              Cancelar
-            </button>
-          </div>
-        </div>
+        <CameraCaptureModal
+          onMediaCapture={(blob, filename, mimeType) => {
+            const mediaFile = new File([blob], filename, { type: mimeType });
+            onSendMessage(mimeType.startsWith('video/') ? '🎥 Video' : '📷 Foto', mimeType.startsWith('video/') ? 'VIDEO' : 'IMAGE', { file: mediaFile });
+          }}
+          onClose={() => setShowCameraTypeModal(false)}
+        />
       )}
       
       <style jsx>{`

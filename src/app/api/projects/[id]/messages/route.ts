@@ -5,6 +5,14 @@ import { NextResponse } from 'next/server'
 import { uploadToBunny } from '@/lib/bunny'
 import { notifyProjectTeam } from '@/lib/push'
 
+export const config = {
+  api: {
+    bodyParser: {
+      sizeLimit: '100mb',
+    },
+  },
+}
+
 export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     const { id } = await params
@@ -28,12 +36,18 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
 
     const { searchParams } = new URL(req.url)
     const since = searchParams.get('since')
+    const limit = parseInt(searchParams.get('limit') || '50')
+    const before = searchParams.get('before') // Para paginación hacia atrás (mensajes más antiguos)
+    const order = searchParams.get('order') || 'asc' // 'asc' o 'desc' para mensajes recientes
+
+    const whereClause: any = {
+      projectId: Number(id),
+      ...(since ? { createdAt: { gt: new Date(since) } } : {}),
+      ...(before ? { createdAt: { lt: new Date(before) } } : {})
+    }
 
     const messages = await prisma.chatMessage.findMany({
-      where: {
-        projectId: Number(id),
-        ...(since ? { createdAt: { gt: new Date(since) } } : {})
-      },
+      where: whereClause,
       include: {
         user: {
           select: {
@@ -45,10 +59,19 @@ export async function GET(req: Request, { params }: { params: Promise<{ id: stri
         },
         media: true
       },
-      orderBy: { createdAt: 'asc' }
+      orderBy: { createdAt: order === 'desc' ? 'desc' : 'asc' },
+      take: limit
     })
 
-    return NextResponse.json(messages)
+    // Si es orden descendente, invertimos para que el primero sea el más antiguo (para paginación)
+    const orderedMessages = order === 'desc' ? [...messages].reverse() : messages
+
+    return NextResponse.json({
+      messages: orderedMessages,
+      hasMore: messages.length === limit,
+      oldestTimestamp: orderedMessages.length > 0 ? orderedMessages[0].createdAt.toISOString() : null,
+      newestTimestamp: messages.length > 0 ? messages[messages.length - 1].createdAt.toISOString() : null
+    })
   } catch (error) {
     console.error('[API Messages GET ERROR]:', error)
     return NextResponse.json({ error: 'Error fetching messages' }, { status: 500 })
@@ -87,10 +110,14 @@ export async function POST(req: Request, { params }: { params: Promise<{ id: str
           // and allow this request to proceed/hijack.
           if (existing && existing.createdAt < new Date(Date.now() - 120000)) {
             console.warn(`[Idempotency] Hijacking stalled syncLog for ${syncId}`);
-            await prisma.syncLog.update({
-              where: { syncId },
-              data: { createdAt: new Date() } // Update timestamp to hold it for another cycle
-            }).catch(() => {}); // Ignore if already updated
+            // Verify it still exists before updating
+            const current = await prisma.syncLog.findUnique({ where: { syncId } });
+            if (current) {
+              await prisma.syncLog.update({
+                where: { syncId },
+                data: { createdAt: new Date() } // Update timestamp to hold it for another cycle
+              });
+            }
           } else {
             // Still pending from the first request — tell client to retry
             return NextResponse.json({ success: true, isDuplicate: true, id: 0 });

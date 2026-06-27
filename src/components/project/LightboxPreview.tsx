@@ -1,5 +1,9 @@
 'use client'
 
+import { useState, useEffect } from 'react'
+import { Capacitor } from '@capacitor/core'
+import { SafeImage, SafeFullScreenVideo, SafeFullScreenAudio } from '@/components/ProjectUploader'
+
 // v373: Modal Lightbox — compartido Admin y Operador
 // v440: Fixed video controls being covered by info card on mobile
 interface LightboxPreviewProps {
@@ -30,6 +34,24 @@ function cleanFilename(name: string) {
 }
 
 export default function LightboxPreview({ item, isSmallScreen, onClose }: LightboxPreviewProps) {
+  const [previewSrc, setPreviewSrc] = useState<string>('')
+
+  useEffect(() => {
+    const rawFile = item?.file || (item as any).file;
+    let objectUrl = '';
+    if (rawFile instanceof File || rawFile instanceof Blob) {
+      objectUrl = URL.createObjectURL(rawFile);
+      setPreviewSrc(objectUrl);
+    } else {
+      setPreviewSrc(item.url || '');
+    }
+    return () => {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    };
+  }, [item]);
+
   const previewMime = getCleanType(item)
   const fileName = cleanFilename(item.filename)
   const isImage = previewMime.startsWith('image/')
@@ -120,13 +142,11 @@ export default function LightboxPreview({ item, isSmallScreen, onClose }: Lightb
           display: 'flex', 
           alignItems: 'center', 
           justifyContent: 'center', 
-          // v440: REMOVED overflow:hidden — it was clipping video controls on some browsers
-          // v440: REMOVED paddingBottom for video — info card is now at top on mobile
           minHeight: 0
         }}>
           {isImage ? (
             <img 
-              src={item.url} 
+              src={previewSrc} 
               alt={fileName} 
               style={{ 
                 maxWidth: '100%', 
@@ -138,7 +158,7 @@ export default function LightboxPreview({ item, isSmallScreen, onClose }: Lightb
             />
           ) : isVideo ? (
             <video 
-              src={item.url}
+              src={previewSrc}
               controls 
               autoPlay 
               playsInline
@@ -170,7 +190,16 @@ export default function LightboxPreview({ item, isSmallScreen, onClose }: Lightb
               backdropFilter: 'blur(20px)'
             }}>
               <div style={{ fontSize: '5rem', marginBottom: '30px', filter: 'drop-shadow(0 0 20px var(--primary))' }}>🎙️</div>
-              <audio src={item.url} controls autoPlay style={{ width: '100%' }} />
+              <audio
+                src={
+                  Capacitor.isNativePlatform() && previewSrc && previewSrc.startsWith('file://')
+                    ? Capacitor.convertFileSrc(previewSrc)
+                    : previewSrc
+                }
+                controls
+                autoPlay
+                style={{ width: '100%' }}
+              />
             </div>
           ) : (
             <div style={{ 
@@ -187,7 +216,7 @@ export default function LightboxPreview({ item, isSmallScreen, onClose }: Lightb
             </div>
           )}
         </div>
-
+ 
         {/* Info Card — TOP on mobile+video, BOTTOM otherwise */}
         <div style={{ 
           position: isSmallScreen ? 'absolute' : 'relative',
@@ -221,7 +250,7 @@ export default function LightboxPreview({ item, isSmallScreen, onClose }: Lightb
           </div>
           <div style={{ display: 'flex', gap: '8px', flexShrink: 0 }}>
             <button 
-              onClick={() => window.open(item.url, '_blank')} 
+              onClick={() => window.open(previewSrc, '_blank')} 
               className="btn btn-ghost" 
               style={{ 
                 fontSize: '0.75rem', 
@@ -235,7 +264,7 @@ export default function LightboxPreview({ item, isSmallScreen, onClose }: Lightb
               }}
             >Abrir</button>
             <a 
-              href={item.url} 
+              href={previewSrc} 
               download={fileName} 
               className="btn btn-primary" 
               style={{ 

@@ -8,6 +8,10 @@ import { generateProfessionalPDF } from '@/lib/pdf-generator'
 import { useSession } from 'next-auth/react'
 import { db } from '@/lib/db'
 import { addToOutbox } from '@/lib/storage'
+import { Capacitor } from '@capacitor/core'
+import { Filesystem, Directory } from '@capacitor/filesystem'
+import { Share } from '@capacitor/share'
+import { LocalNotifications } from '@capacitor/local-notifications'
 
 interface QuoteFormProps {
   clients: any[]
@@ -229,62 +233,35 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
     setCalculations(newCalculations)
   }, [])
 
-  const generatePreviewPDF = () => {
-    if ((clientMode === 'NEW' || clientMode === 'CF') && !clientData.name && clientMode !== 'CF') {
-       alert("Ingresa al menos el nombre del cliente para previsualizar.");
-       return;
-    }
-
-    const clientInfo = {
-      name: clientMode === 'CF' ? 'CONSUMIDOR FINAL' : clientData.name || 'Cliente Nuevo',
-      ruc: clientMode === 'CF' ? '9999999999999' : clientData.ruc,
-      address: clientData.address,
-      phone: clientData.phone,
-      date: new Date()
-    }
-    
-    const pdfTotals = {
-      subtotal: Number(calculations.totalBudget || 0),
-      subtotal0: Number(calculations.subtotal0 || 0),
-      subtotal15: Number(calculations.subtotal15 || 0),
-      discountTotal: Number(calculations.discountTotal || 0),
-      ivaAmount: Number(calculations.ivaAmount || 0),
-      totalAmount: Number(calculations.grandTotal || 0)
-    }
-
-    const formattedItems = calculations.processed.map((p: any) => ({
-      ...p,
-      unitPrice: p.estimatedCost, 
-      description: p.name,
-      total: p.lineTotal,
-      discountPct: p.discountPct || 0
-    }))
-
-    const result = generateProfessionalPDF(clientInfo, formattedItems, pdfTotals, {
-      docType: 'COTIZACIÓN',
-      docId: initialQuote?.id ? String(initialQuote.id) : 'VISTA-PREVIA',
-      notes: notes,
-      sellerName: session?.user?.name || 'Aquatech',
-      action: 'preview',
-      optionalSection: {
-        title: optionalTitle,
-        description: optionalDescription,
-        imageBase64: optionalImageBase64,
-        image2Base64: optionalImage2Base64
+  // Genera el PDF como instancia jsPDF y lo abre nativamente (APK) o en nueva pestaña (web)
+  const openPDFNative = async (pdfDoc: any, fileName: string) => {
+    try {
+      const base64 = pdfDoc.output('datauristring').split(',')[1]
+      // Escribe al directorio de cache del dispositivo
+      const writeResult = await Filesystem.writeFile({
+        path: fileName,
+        data: base64,
+        directory: Directory.Cache,
+      })
+      // Abre el PDF con el visor nativo (Adobe, Drive, etc.)
+      await Share.share({
+        title: 'Cotización Aquatech',
+        files: [writeResult.uri],
+        dialogTitle: 'Abrir o compartir cotización',
+      })
+    } catch (err: any) {
+      console.error('[PDF APK] Error abriendo PDF:', err)
+      // Fallback: intentar data URI
+      try {
+        const dataUri = pdfDoc.output('datauristring')
+        window.open(dataUri, '_blank')
+      } catch (e) {
+        alert('No se pudo abrir el PDF. Por favor instala un visor de PDF (Adobe Acrobat, etc.).')
       }
-    })
-
-    if (typeof result === 'string') {
-      window.open(result, '_blank')
     }
   }
 
-  const downloadPDFManual = () => {
-    if ((clientMode === 'NEW' || clientMode === 'CF') && !clientData.name && clientMode !== 'CF') {
-       alert("Ingresa al menos el nombre del cliente para descargar.");
-       return;
-    }
-
+  const buildPdfDoc = (docId: string) => {
     const clientInfo = {
       name: clientMode === 'CF' ? 'CONSUMIDOR FINAL' : clientData.name || 'Cliente Nuevo',
       ruc: clientMode === 'CF' ? '9999999999999' : clientData.ruc,
@@ -292,7 +269,6 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
       phone: clientData.phone,
       date: new Date()
     }
-    
     const pdfTotals = {
       subtotal: Number(calculations.totalBudget || 0),
       subtotal0: Number(calculations.subtotal0 || 0),
@@ -301,28 +277,106 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
       ivaAmount: Number(calculations.ivaAmount || 0),
       totalAmount: Number(calculations.grandTotal || 0)
     }
-
     const formattedItems = calculations.processed.map((p: any) => ({
       ...p,
-      unitPrice: p.estimatedCost, 
+      unitPrice: p.estimatedCost,
       description: p.name,
       total: p.lineTotal,
       discountPct: p.discountPct || 0
     }))
+    return { clientInfo, pdfTotals, formattedItems }
+  }
 
-    generateProfessionalPDF(clientInfo, formattedItems, pdfTotals, {
-      docType: 'COTIZACIÓN',
-      docId: initialQuote?.id ? String(initialQuote.id) : 'PENDIENTE',
-      notes: notes,
+  const generatePreviewPDF = async () => {
+    if ((clientMode === 'NEW' || clientMode === 'CF') && !clientData.name && clientMode !== 'CF') {
+       alert('Ingresa al menos el nombre del cliente para previsualizar.');
+       return;
+    }
+    const { clientInfo, pdfTotals, formattedItems } = buildPdfDoc(initialQuote?.id ? String(initialQuote.id) : 'VISTA-PREVIA')
+    const opts = {
+      docType: 'COTIZACIÓN' as 'COTIZACIÓN' | 'PRESUPUESTO',
+      docId: initialQuote?.id ? String(initialQuote.id) : 'VISTA-PREVIA',
+      notes,
       sellerName: session?.user?.name || 'Aquatech',
-      action: 'save', // Direct download
-      optionalSection: {
-        title: optionalTitle,
-        description: optionalDescription,
-        imageBase64: optionalImageBase64,
-        image2Base64: optionalImage2Base64
+      optionalSection: { title: optionalTitle, description: optionalDescription, imageBase64: optionalImageBase64, image2Base64: optionalImage2Base64 }
+    }
+
+    if (Capacitor.isNativePlatform()) {
+      // APK: escribir al filesystem nativo y abrir con visor del dispositivo
+      const pdfDoc = generateProfessionalPDF(clientInfo, formattedItems, pdfTotals, { ...opts, action: 'instance' }) as any
+      if (pdfDoc) {
+        const fileName = `Cotizacion_${(clientData.name || 'preview').replace(/\s+/g, '_')}_${Date.now()}.pdf`
+        await openPDFNative(pdfDoc, fileName)
       }
-    })
+    } else {
+      // Web/PWA: abrir blob URL en nueva pestaña
+      const result = generateProfessionalPDF(clientInfo, formattedItems, pdfTotals, { ...opts, action: 'preview' })
+      if (typeof result === 'string') window.open(result, '_blank')
+    }
+  }
+
+  const downloadPDFManual = async () => {
+    if ((clientMode === 'NEW' || clientMode === 'CF') && !clientData.name && clientMode !== 'CF') {
+       alert('Ingresa al menos el nombre del cliente para descargar.');
+       return;
+    }
+    const { clientInfo, pdfTotals, formattedItems } = buildPdfDoc(initialQuote?.id ? String(initialQuote.id) : 'PENDIENTE')
+    const opts = {
+      docType: 'COTIZACIÓN' as 'COTIZACIÓN' | 'PRESUPUESTO',
+      docId: initialQuote?.id ? String(initialQuote.id) : 'PENDIENTE',
+      notes,
+      sellerName: session?.user?.name || 'Aquatech',
+      optionalSection: { title: optionalTitle, description: optionalDescription, imageBase64: optionalImageBase64, image2Base64: optionalImage2Base64 }
+    }
+
+    if (Capacitor.isNativePlatform()) {
+      // APK: guardar en almacenamiento externo visible del dispositivo (Carpeta Documentos/Descargas)
+      const pdfDoc = generateProfessionalPDF(clientInfo, formattedItems, pdfTotals, { ...opts, action: 'instance' }) as any
+      if (pdfDoc) {
+        const sanitized = (clientData.name || 'Cotizacion').replace(/[^a-zA-Z0-9]/g, '_')
+        const fileName = `${sanitized}_Aquatech_${Date.now()}.pdf`
+        try {
+          const base64 = pdfDoc.output('datauristring').split(',')[1]
+          // Directory.Documents = Carpeta de Documentos/Descargas visible al usuario
+          const writeResult = await Filesystem.writeFile({
+            path: fileName,
+            data: base64,
+            directory: Directory.Documents,
+            recursive: true,
+          })
+          console.log('[PDF] Guardado en:', writeResult.uri)
+          
+          try {
+            await LocalNotifications.requestPermissions();
+            await LocalNotifications.schedule({
+              notifications: [
+                {
+                  title: 'Cotización Descargada 📄',
+                  body: `Se guardó ${fileName} en Documentos / Descargas`,
+                  id: Math.floor(Math.random() * 100000),
+                  schedule: { at: new Date(Date.now() + 500) }
+                }
+              ]
+            });
+          } catch (notifErr) {
+            console.error('Error sending local notification:', notifErr);
+          }
+
+          alert(
+            `✅ PDF descargado exitosamente.\n\n` +
+            `📄 Archivo: ${fileName}\n\n` +
+            `📁 Ubicación en el dispositivo:\nCarpeta de Documentos / Descargas`
+          )
+        } catch (saveErr) {
+          console.warn('[PDF] Error guardando en Documents, usando Share:', saveErr)
+          // Fallback: guardar en cache y compartir
+          await openPDFNative(pdfDoc, fileName)
+        }
+      }
+    } else {
+      // Web/PWA: descarga directa via jsPDF save
+      generateProfessionalPDF(clientInfo, formattedItems, pdfTotals, { ...opts, action: 'save' })
+    }
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -623,9 +677,11 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
         <div className="card shadow-sm" style={{ padding: '25px', borderRadius: '16px' }}>
           <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px', flexWrap: 'wrap', gap: '10px' }}>
             <label style={{ margin: 0, fontWeight: 'bold' }}>Notas / Términos de Referencia</label>
-            <div style={{ display: 'flex', gap: '10px' }}>
-              <MediaCapture mode="audio" onCapture={(b: Blob, t: string, text: string) => setNotes((prev: string) => (prev ? prev + ' ' + text : text))} />
-            </div>
+            {!Capacitor.isNativePlatform() && (
+              <div style={{ display: 'flex', gap: '10px' }}>
+                <MediaCapture mode="audio" onCapture={(b: Blob, t: string, text: string) => setNotes((prev: string) => (prev ? prev + ' ' + text : text))} />
+              </div>
+            )}
           </div>
           <textarea className="form-input" style={{ height: '100px' }} value={notes} onChange={e => setNotes(e.target.value)} placeholder="Términos comerciales, validez, tiempos de entrega..."></textarea>
         </div>
@@ -709,7 +765,7 @@ export default function QuoteFormClient({ clients, materials, projects = [], pre
           <div style={{ display: 'flex', flexDirection: 'column', gap: '10px', marginTop: '25px' }}>
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
               <button type="button" onClick={generatePreviewPDF} className="btn btn-secondary" style={{ width: '100%', padding: '12px', fontSize: '0.85rem', fontWeight: 'bold' }}>
-                Vista Previa
+                {Capacitor.isNativePlatform() ? 'Compartir' : 'Vista Previa'}
               </button>
               <button type="button" onClick={downloadPDFManual} className="btn" style={{ width: '100%', padding: '12px', fontSize: '0.85rem', fontWeight: 'bold', backgroundColor: '#10b981', color: 'white' }}>
                 Descargar PDF

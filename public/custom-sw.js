@@ -1,4 +1,4 @@
-﻿const SW_VERSION = 'v410-offline-fix';
+const SW_VERSION = 'v429-fix-admin-gallery-cache';
 const VERSION = SW_VERSION;
 const STATIC_CACHE = `aquatech-static-${SW_VERSION}`;
 const PAGES_CACHE  = `aquatech-pages-${SW_VERSION}`;
@@ -119,9 +119,10 @@ self.addEventListener('install', event => {
         const CRITICAL_URLS = [
           '/admin/proyectos/offline-shell',
           '/admin/operador/proyecto/offline-shell',
-          // vXXX: These are the BASE pages that APK fallback tries to serve
+          // vFIX-CHUNK: Critical pages for offline navigation
           '/admin',
           '/admin/operador',
+          '/admin/operador/nuevo',
           '/offline.html',
           '/favicon.ico',
           '/logo.jpg'
@@ -130,7 +131,7 @@ self.addEventListener('install', event => {
         // 1. First, ENSURE critical shells are cached. If this fails, the SW is useless offline.
         for (const url of CRITICAL_URLS) {
           try {
-            const response = await fetch(url, { cache: 'reload' });
+            const response = await fetch(url, { cache: 'reload', credentials: 'same-origin' });
             if (response.ok) {
               await cache.put(url, response.clone());
               // Auto-extract assets for critical shells immediately
@@ -148,7 +149,7 @@ self.addEventListener('install', event => {
         for (const url of PRE_CACHE) {
           if (CRITICAL_URLS.includes(url)) continue;
           try {
-            const response = await fetch(url);
+            const response = await fetch(url, { credentials: 'same-origin' });
             if (response.ok) {
               await cache.put(url, response);
             }
@@ -163,13 +164,15 @@ self.addEventListener('install', event => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     Promise.all([
-      self.registration.getNotifications().then(notifications => {
-        notifications.forEach(notification => {
-          if (notification.tag === 'sync-progress' || notification.tag === 'sync-status') {
-            notification.close();
-          }
-        });
-      }),
+      self.registration.getNotifications
+        ? self.registration.getNotifications().then(notifications => {
+            notifications.forEach(notification => {
+              if (notification.tag === 'sync-progress' || notification.tag === 'sync-status') {
+                notification.close();
+              }
+            });
+          }).catch(() => {})
+        : Promise.resolve(),
       clients.claim()
     ])
   );
@@ -289,18 +292,36 @@ self.addEventListener('activate', (event) => {
   console.log('[SW] Activating...');
   // DON'T delete any caches — they must survive across SW updates
   // (especially when the update happens while the user is offline)
-  // Old versioned caches (aquatech-*-v42, etc.) can be cleaned up safely
+  // v423: Clean up ALL old caches (both old v-numbered and old version-string named)
   event.waitUntil(
     caches.keys().then(keys =>
       Promise.all(
         keys
-          .filter(key => key.startsWith('aquatech-') && key.match(/-v\d+$/) && !key.includes(VERSION))
+          .filter(key => key.startsWith('aquatech-') && !key.includes(VERSION))
           .map(key => {
-            console.log('[SW] Removing old versioned cache:', key);
+            console.log('[SW] Removing old cache:', key);
             return caches.delete(key);
           })
       )
-    ).then(() => self.clients.claim())
+    ).then(() => {
+      // vFIX-OFFLINE-SYNC: Pre-cachear storage config al activar el SW
+      // para que esté disponible aunque el usuario se vaya offline inmediatamente.
+      return fetch('/api/storage/config', { credentials: 'same-origin' }).then(resp => {
+        if (resp.ok) {
+          return resp.json().then(config => {
+            return caches.open('aquatech-config-cache').then(cache => {
+              return cache.put('/api/storage/config', new Response(JSON.stringify(config), {
+                headers: { 'Content-Type': 'application/json' }
+              })).then(() => {
+                console.log('[SW] ✅ Storage config pre-cached during activation');
+              });
+            });
+          });
+        }
+      }).catch(err => {
+        console.warn('[SW] Could not pre-cache storage config (non-fatal):', err.message);
+      });
+    }).then(() => self.clients.claim())
   );
 });
 
@@ -706,7 +727,7 @@ async function navigationHandler(request) {
     if (urlObj.searchParams.has('nocache') || urlObj.searchParams.has('t')) {
       console.log('[SW v410] Cache bypass for:', request.url);
       // Continue to network fetch
-    } else if (isAndroidNative) {
+    } else if (isAndroidNative && !navigator.onLine) {
       // Try exact URL match in cache first
       let cached = await caches.match(request.url, { ignoreVary: true, ignoreSearch: true });
       if (isValidHTMLResponse(cached)) {
@@ -1360,11 +1381,14 @@ self.addEventListener('message', (event) => {
     });
   }
 
-  // v410: Handle logout - clear authShadow from IndexedDB
+  // v622: Handle logout - clear authShadow + session caches but PRESERVE app shell
+  // CRITICAL: Do NOT delete STATIC_CACHE or ASSETS_CACHE - those contain the JS/CSS
+  // needed to load the app. Deleting them causes React hydration error #418 and 
+  // an infinite reload loop on next app open.
   if (event.data === 'LOGOUT') {
-    console.log('[SW]收到LOGOUT消息，清理认证数据');
+    console.log('[SW] Recibido LOGOUT - limpiando sesión sin borrar shell de la app');
     Promise.all([
-      // Clear IndexedDB authShadow
+      // 1. Clear IndexedDB authShadow
       new Promise((resolve) => {
         const request = indexedDB.open('AquatechOfflineDB');
         request.onerror = () => resolve(null);
@@ -1384,15 +1408,22 @@ self.addEventListener('message', (event) => {
           }
         };
       }),
-      // Clear ALL caches (v605 - fix logout persistence)
-      caches.keys().then(keys => 
-        Promise.all(keys.map(k => {
-          console.log('[SW] Deleting cache:', k);
-          return caches.delete(k);
-        }))
-      )
+      // 2. SOLO borrar caches de páginas/RSC (contienen HTML con sesión)
+      // PRESERVAR: STATIC_CACHE (JS/CSS del app shell), ASSETS_CACHE (fuentes/imágenes)
+      // BORRAR:    PAGES_CACHE (HTML de páginas admin), RSC_CACHE (React Server Components)
+      caches.keys().then(keys => {
+        const toDelete = keys.filter(k => 
+          k.includes('pages') || k.includes('rsc') || k.includes('auth') || k.includes('session')
+        );
+        const toKeep = keys.filter(k => 
+          k.includes('static') || k.includes('assets') || k.includes('fonts')
+        );
+        console.log('[SW] Logout: borrando caches de sesión:', toDelete);
+        console.log('[SW] Logout: preservando app shell:', toKeep);
+        return Promise.all(toDelete.map(k => caches.delete(k)));
+      })
     ]).then(() => {
-      console.log('[SW] Logout cleanup complete');
+      console.log('[SW] Logout cleanup complete - app shell preserved');
       event.source?.postMessage({ type: 'LOGOUT_COMPLETE' });
     });
     return;
@@ -1665,19 +1696,23 @@ async function getNativePendingItems() {
         reject(new Error('Native SQLite timeout'));
       }, 8000);
       
-      // Send message to native context (main app window)
-      // The native-storage.ts in the app context listens for this and responds
-      window.postMessage({ type: 'SW_NATIVE_SYNC_REQUEST', timestamp: Date.now() }, '*');
+      // v412: Usar clients.matchAll() en lugar de window.postMessage()
+      // Service Worker NO tiene window - usar API correcta de SW
+      self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(clients => {
+        for (const client of clients) {
+          client.postMessage({ type: 'SW_NATIVE_SYNC_REQUEST', timestamp: Date.now() });
+        }
+      });
       
-      // Listen for response
+      // Listen for response from app via self.onmessage
       const handler = (event) => {
         if (event.data?.type === 'SW_NATIVE_SYNC_RESPONSE') {
           clearTimeout(timeout);
-          window.removeEventListener('message', handler);
+          self.removeEventListener('message', handler);
           resolve(event.data.items || []);
         }
       };
-      window.addEventListener('message', handler);
+      self.addEventListener('message', handler);
     });
     
     console.log(`[SW] APK: Got ${pending?.length || 0} items from native SQLite`);
@@ -1693,15 +1728,45 @@ async function markNativeItemProcessed(id) {
   if (!isAndroidNative) return;
   
   try {
-    window.postMessage({ type: 'SW_NATIVE_MARK_PROCESSED', id, timestamp: Date.now() }, '*');
+    const clients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+    for (const client of clients) {
+      client.postMessage({ type: 'SW_NATIVE_MARK_PROCESSED', id, timestamp: Date.now() });
+    }
   } catch (e) {
     console.warn('[SW] APK: Failed to mark item as processed in SQLite:', e.message);
+  }
+  
+  // APK: TAMBIÉN marcar como synced en IndexedDB para que el poller no lo encuentre de nuevo
+  try {
+    const db = await openAquatechDB();
+    const tx = db.transaction(['outbox'], 'readwrite');
+    const store = tx.objectStore('outbox');
+    const getReq = store.getAll();
+    getReq.onsuccess = () => {
+      const items = getReq.result || [];
+      for (const item of items) {
+        if (String(item.id) === String(id) || item.syncId === id || String(item.syncId) === String(id)) {
+          item.status = 'synced';
+          store.put(item);
+          console.log(`[SW] IndexedDB outbox item marked synced: ${id}`);
+        }
+      }
+    };
+  } catch (e) {
+    // IndexedDB puede no estar disponible - no es crítico
   }
 }
 
 // v380: Process a single outbox item (used by APK native sync)
 async function processOutboxItemSync(item) {
   try {
+    if (item && typeof item.payload === 'string') {
+      try {
+        item.payload = JSON.parse(item.payload);
+      } catch (e) {
+        console.warn('[SW] Failed to parse item.payload in processOutboxItemSync:', e);
+      }
+    }
     // Get auth from IndexedDB
     const auth = await getAuthFromIndexedDB();
     if (!auth) {
@@ -1717,13 +1782,114 @@ async function processOutboxItemSync(item) {
     const headers = {
       'Content-Type': 'application/json',
       'x-sync-id': syncId,
-      'Cookie': `next-auth.session-token=${token}`,
     };
+
+    // Only set Cookie header manually if token is a valid NextAuth session token (long string).
+    // Otherwise, omit it so standard WebView credentials are sent automatically.
+    if (token && token.length > 20) {
+      headers['Cookie'] = `next-auth.session-token=${token}`;
+    }
 
     // Process based on type
     switch (item.type) {
       case 'MESSAGE': {
         const { projectId, ...msgPayload } = item.payload;
+        
+        // v421-fix: Upload media to Bunny CDN before sending.
+        // Covers: local file:// paths, base64/data: URIs, ArrayBuffers,
+        // AND Cache API entries (storageType='cache') used for large videos >10MB.
+        if (msgPayload.media) {
+          const isCacheStorage = msgPayload.media.storageType === 'cache' && !!msgPayload.media.cacheKey;
+          const mediaSource = msgPayload.media.fileData || msgPayload.media.base64 || msgPayload.media.localUri || msgPayload.media.url;
+          const isLocalFile = typeof mediaSource === 'string' && (
+            mediaSource.startsWith('file://') ||
+            mediaSource.startsWith('capacitor://') ||
+            mediaSource.includes('_capacitor_file_') ||
+            mediaSource.startsWith('data:') ||
+            mediaSource.startsWith('blob:')
+          );
+          // KEY FIX: include isCacheStorage so large videos stored in Cache API are uploaded
+          if (isCacheStorage || isLocalFile || mediaSource instanceof ArrayBuffer) {
+            console.log('[SW v421] Chat media upload triggered. isCacheStorage:', isCacheStorage, 'cacheKey:', msgPayload.media.cacheKey);
+            try {
+              const configResp = await fetchWithTimeout(new Request(`${baseUrl}/api/storage/config`, { credentials: 'same-origin' }), 8000);
+              if (configResp.ok) {
+                const storeCfg = await configResp.json();
+                let blob;
+                // PRIORITY 1: Cache API (large files >10MB — the most common case for videos)
+                if (isCacheStorage) {
+                  try {
+                    const cache = await caches.open('aquatech-offline-media');
+                    const response = await cache.match(`/aquatech-offline-media/${msgPayload.media.cacheKey}`);
+                    if (response) {
+                      blob = await response.blob();
+                      console.log('[SW v421] Got blob from Cache API, size:', blob.size);
+                      // Clean up cache entry
+                      await cache.delete(`/aquatech-offline-media/${msgPayload.media.cacheKey}`);
+                    } else {
+                      console.warn('[SW v421] Cache API miss for key:', msgPayload.media.cacheKey);
+                    }
+                  } catch (cacheErr) {
+                    console.warn('[SW APK] Failed to read media from cache:', cacheErr);
+                  }
+                }
+                // PRIORITY 2: ArrayBuffer
+                if (!blob && mediaSource instanceof ArrayBuffer) {
+                  blob = new Blob([mediaSource], { type: msgPayload.media.mimeType || 'application/octet-stream' });
+                }
+                // PRIORITY 3: base64/data: URI
+                if (!blob && typeof mediaSource === 'string' && mediaSource.startsWith('data:')) {
+                  const parts = mediaSource.split(';base64,');
+                  const contentType = parts[0].split(':')[1];
+                  const raw = atob(parts[1]);
+                  const arr = new Uint8Array(raw.length);
+                  for (let i = 0; i < raw.length; ++i) arr[i] = raw.charCodeAt(i);
+                  blob = new Blob([arr], { type: contentType });
+                }
+                // PRIORITY 4: fetch from file:// or other URL
+                if (!blob && typeof mediaSource === 'string' && mediaSource) {
+                  let fetchUrl = mediaSource;
+                  if (mediaSource.startsWith('file://')) {
+                    fetchUrl = mediaSource.replace('file://', 'http://localhost/_capacitor_file_');
+                  }
+                  try {
+                    const fr = await fetchWithTimeout(new Request(fetchUrl), 30000);
+                    blob = await fr.blob();
+                  } catch (fetchErr) {
+                    console.warn('[SW v421] Could not fetch mediaSource:', fetchUrl, fetchErr);
+                  }
+                }
+                if (blob && blob.size > 0) {
+                  const ts = Date.now();
+                  const safeName = (msgPayload.media.filename || `chat_${ts}`).replace(/[^a-zA-Z0-9.-]/g, '_');
+                  const pId = item.projectId || projectId;
+                  const folderPath = `Proyectos/${pId}/Chat`;
+                  const uploadRes = await fetchWithTimeout(new Request(`https://${storeCfg.storageHost}/${storeCfg.storageZone}/${folderPath}/${ts}-${safeName}`, {
+                    method: 'PUT',
+                    headers: { 'AccessKey': storeCfg.accessKey, 'Content-Type': blob.type || msgPayload.media.mimeType || 'application/octet-stream' },
+                    body: blob
+                  }), 300000); // 5 min for large videos
+                  if (uploadRes.ok) {
+                    msgPayload.media.url = `${storeCfg.pullZoneUrl}/${folderPath}/${ts}-${safeName}`;
+                    delete msgPayload.media.fileData;
+                    delete msgPayload.media.base64;
+                    delete msgPayload.media.localUri;
+                    delete msgPayload.media.cacheKey;
+                    delete msgPayload.media.storageType;
+                    console.log('[SW v421] Chat file uploaded OK:', msgPayload.media.url);
+                  } else {
+                    console.warn('[SW v421] Bunny upload failed:', uploadRes.status);
+                  }
+                } else {
+                  console.warn('[SW v421] No blob obtained for chat media — message will be sent without file.');
+                }
+              }
+            } catch (uploadErr) {
+              console.warn('[SW APK] Chat media upload failed, continuing:', uploadErr.message);
+            }
+          }
+        }
+        
         const res = await fetchWithTimeout(
           new Request(`${baseUrl}/api/projects/${projectId}/messages`, {
             method: 'POST',
@@ -1836,7 +2002,12 @@ async function processOutboxItemSync(item) {
       
       case 'GALLERY_DELETE': {
         const projectId = item.payload?.projectId || item.projectId || 0;
-        const galleryId = item.payload?.galleryId;
+        // vFIX-DELETE: galleryId puede venir en distintas ubicaciones
+        const galleryId = item.payload?.galleryId || item.payload?.id || item.galleryId;
+        if (!galleryId) {
+          console.warn(`[SW] GALLERY_DELETE item ${item.id} missing galleryId, skipping`);
+          return { success: false, error: 'Missing galleryId' };
+        }
         const res = await fetchWithTimeout(
           new Request(`${baseUrl}/api/projects/${projectId}/gallery/${galleryId}`, {
             method: 'DELETE',
@@ -2018,6 +2189,19 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
         // Process items directly (SQLite items already have id, type, payload, createdAt)
         // Use the same sync logic but without IndexedDB
         for (const item of nativeItems) {
+          if (typeof item.payload === 'string') {
+            try {
+              item.payload = JSON.parse(item.payload);
+            } catch (e) {
+              console.warn('[SW] Failed to parse native item payload:', e);
+            }
+          }
+          if (item.type === 'GALLERY_UPLOAD' || item.type === 'MEDIA_UPLOAD' || item.type === 'PROJECT' || (item.type === 'MESSAGE' && item.payload?.media)) {
+            // Ignorar subidas de fotos/videos, proyectos y mensajes con adjuntos desde SQLite nativo en el SW.
+            // Dado que SQLite nativo no almacena el binario del archivo (File/Blob se eliminan para evitar OOM),
+            // el SW no puede subirlos desde aquí. Estos se procesan vía IndexedDB (Dexie) / GlobalSyncWorker.
+            continue;
+          }
           try {
             // Process via fetch (same as normal sync flow)
             const result = await processOutboxItemSync(item);
@@ -2034,12 +2218,12 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
         }
         
         console.log(`[SW] APK: Finished processing ${nativeItems.length} items from SQLite`);
-        isSyncingGlobal = false;
-        return;
+        // Fall through to IndexedDB processing to sync files/messages with media stored in IndexedDB
       } else {
-        console.log('[SW] APK mode: No pending items in SQLite');
-        isSyncingGlobal = false;
-        return;
+        console.log('[SW] APK mode: No pending items in SQLite, falling back to IndexedDB...');
+        // NO return - fall through to IndexedDB processing below
+        // Esto permite procesar items que se guardaron en IndexedDB
+        // (por ejemplo, si SQLite no estaba lista en el momento del guardado)
       }
     } catch (e) {
       console.warn('[SW] APK mode: Native sync failed, falling back to IndexedDB:', e.message);
@@ -2144,20 +2328,10 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
 
     const pendingItems = toSync;
 
-    // vXXX: GALLERY_UPLOAD items are ALWAYS handled by GlobalSyncWorker (main thread).
-    // The SW cannot handle raw File/Blob objects from IndexedDB structured clone.
-    // If the SW tries, it sends url='' to the API → 400 Bad Request → infinite loop.
-    // This caused years of video sync failures offline→online.
-    {
-      const alwaysSkipped = new Set(['GALLERY_UPLOAD']);
-      const filtered = pendingItems.filter(i => !alwaysSkipped.has(i.type));
-      const skipped = pendingItems.length - filtered.length;
-      if (skipped > 0) {
-        console.log(`[SW vXXX] Skipping ${skipped} GALLERY_UPLOAD items (GlobalSyncWorker handles them)`);
-      }
-      pendingItems.length = 0;
-      pendingItems.push(...filtered);
-    }
+    // vFIX-FINAL: Let SW process ALL items. Items using Cache API (storageType === 'cache')
+    // or base64 work fine in SW. For items with native paths, uploadMediaSW has fallback
+    // that tries to fetch them. GALLERY_UPLOAD items also pass through since the SW can
+    // handle them when they use Cache API storage.
 
     // v372: When page is visible, skip heavy media items — GlobalSyncWorker handles them.
     // This prevents double Bunny uploads and race conditions.
@@ -2235,25 +2409,53 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
     }
 
     // v278: Pre-fetch storage config once per cycle for better performance
+    // vFIX-OFFLINE-SYNC: Cachear storageConfig en Cache API para que persista
+    // aunque el fetch falle (offline → online transition).
+    const CONFIG_CACHE = 'aquatech-config-cache';
+    const CONFIG_URL = '/api/storage/config';
     let storageConfig = null;
     let configFailedPermanently = false;
     try {
       // v318: Use explicit signal for config fetch
-      const configResp = await fetchWithTimeout(new Request('/api/storage/config', { 
+      const configResp = await fetchWithTimeout(new Request(CONFIG_URL, { 
         credentials: 'same-origin',
         signal: abortController.signal 
       }), 10000);
       
       if (configResp.ok) {
         storageConfig = await configResp.json();
+        // Cachear config exitosamente obtenida
+        try {
+          const cache = await caches.open(CONFIG_CACHE);
+          await cache.put(CONFIG_URL, new Response(JSON.stringify(storageConfig), {
+            headers: { 'Content-Type': 'application/json' }
+          }));
+        } catch (cacheErr) {
+          console.warn('[SW] Failed to cache storage config:', cacheErr.message);
+        }
       } else if (configResp.status === 401 || configResp.status === 403) {
         console.warn('[SW] Auth error fetching config — aborting sync cycle');
+        // Limpiar cache si hay error de auth
+        try { await caches.delete(CONFIG_CACHE); } catch(e) {}
         isSyncingGlobal = false;
         resolve();
         return;
       }
     } catch (e) {
-      console.warn('[SW] Could not pre-fetch storage config (Network issue?)');
+      console.warn('[SW] Could not pre-fetch storage config (Network issue?) — trying cache...');
+      // Intentar leer config desde cache (útil en transición offline→online)
+      try {
+        const cache = await caches.open(CONFIG_CACHE);
+        const cachedResp = await cache.match(CONFIG_URL);
+        if (cachedResp) {
+          storageConfig = await cachedResp.json();
+          console.log('[SW] ✅ Storage config loaded from cache');
+        } else {
+          console.warn('[SW] No cached storage config available');
+        }
+      } catch (cacheErr) {
+        console.warn('[SW] Cache read failed:', cacheErr.message);
+      }
     }
 
     let processedCount = 0;
@@ -2388,8 +2590,19 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
           if (retry.ok) {
             storageConfig = await retry.json();
             retryOk = true;
+            // Cachear config exitosamente obtenida
+            try {
+              const cache = await caches.open(CONFIG_CACHE);
+              await cache.put(CONFIG_URL, new Response(JSON.stringify(storageConfig), {
+                headers: { 'Content-Type': 'application/json' }
+              }));
+            } catch (cacheErr) {
+              console.warn('[SW] Failed to cache storage config:', cacheErr.message);
+            }
           } else if (retry.status === 401 || retry.status === 403) {
             console.warn('[SW] Auth error during config retry — aborting sync');
+            // Limpiar cache si hay error de auth
+            try { await caches.delete(CONFIG_CACHE); } catch(e) {}
             // Reset this item to pending and stop cycle
             await new Promise(r => {
                try {
@@ -2404,6 +2617,19 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
           }
         } catch(e) {
           console.warn('[SW] Emergency config retry failed (Offline?)');
+          // Intentar leer desde cache
+          if (!storageConfig) {
+            try {
+              const cache = await caches.open(CONFIG_CACHE);
+              const cachedResp = await cache.match(CONFIG_URL);
+              if (cachedResp) {
+                storageConfig = await cachedResp.json();
+                console.log('[SW] ✅ Storage config loaded from cache (emergency retry)');
+              }
+            } catch (cacheErr) {
+              console.warn('[SW] Cache read failed:', cacheErr.message);
+            }
+          }
         }
         
         if (!storageConfig) {
@@ -2441,7 +2667,13 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
           } else if (item.type === 'GALLERY_UPLOAD') {
             endpoint = `/api/projects/${item.projectId}/gallery`;
           } else if (item.type === 'GALLERY_DELETE') {
-            endpoint = `/api/projects/${item.projectId}/gallery/${item.payload.galleryId}`;
+            // vFIX-DELETE: galleryId puede venir en distintas ubicaciones
+            const gId = item.payload?.galleryId || item.payload?.id || item.galleryId;
+            if (!gId) {
+              console.warn(`[SW] GALLERY_DELETE item ${item.id} missing galleryId, skipping`);
+              continue;
+            }
+            endpoint = `/api/projects/${item.projectId}/gallery/${gId}`;
             method = 'DELETE';
           } else if (item.type === 'EXPENSE') {
             endpoint = `/api/projects/${item.projectId}/expenses`;
@@ -2469,7 +2701,42 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
             if (!config) return item.payload;
             
             // v316: Copia profunda del payload para trabajar
+            // vFIX-OFFLINE-SYNC: JSON.stringify DESTRUYE ArrayBuffer, File y Blob.
+            // structuredClone() no existe en Android WebView antiguo.
+            // Solución: preservar referencias a datos binarios ANTES del JSON.parse
+            // y restaurarlas DESPUÉS.
+            const _preserve = (obj) => {
+              const saved = [];
+              const walk = (o, path) => {
+                if (!o || typeof o !== 'object') return;
+                if (o instanceof ArrayBuffer || o instanceof Blob || o instanceof File) {
+                  saved.push({ path: [...path], value: o });
+                  return;
+                }
+                if (Array.isArray(o)) {
+                  o.forEach((item, i) => walk(item, [...path, i]));
+                } else {
+                  for (const k of Object.keys(o)) {
+                    walk(o[k], [...path, k]);
+                  }
+                }
+              };
+              walk(obj, []);
+              return saved;
+            };
+            const _restore = (target, saved) => {
+              for (const { path, value } of saved) {
+                let t = target;
+                for (let i = 0; i < path.length - 1; i++) {
+                  if (t[path[i]] === undefined || t[path[i]] === null) t[path[i]] = {};
+                  t = t[path[i]];
+                }
+                t[path[path.length - 1]] = value;
+              }
+            };
+            const _savedBinaries = _preserve(item.payload);
             let payload = JSON.parse(JSON.stringify(item.payload));
+            _restore(payload, _savedBinaries);
             let needsDbUpdate = false;
 
             // Función para actualizar el item en outbox si cambiamos algo (evita re-subidas)
@@ -2498,16 +2765,25 @@ async function _internalProcessOutbox(isForced = false, specificType = null) {
                   const uInt8Array = new Uint8Array(raw.length);
                   for (let i = 0; i < raw.length; ++i) { uInt8Array[i] = raw.charCodeAt(i); }
                   blob = new Blob([uInt8Array], { type: contentType });
-                } else if (typeof source === 'string' && source.startsWith('blob:')) {
+                } else if (typeof source === 'string' && (source.startsWith('blob:') || source.startsWith('file://') || source.startsWith('capacitor://') || source.includes('_capacitor_file_'))) {
                   try {
-                    const res = await fetchWithTimeout(new Request(source), 5000);
+                    let fetchUrl = source;
+                    if (source.startsWith('file://')) {
+                      // On Android, convert file:/// to localhost WebView path so it is fetchable
+                      fetchUrl = source.replace('file://', 'http://localhost/_capacitor_file_');
+                    }
+                    const res = await fetchWithTimeout(new Request(fetchUrl), 10000);
                     blob = await res.blob();
                   } catch(e) {
-                    throw new Error(`Failed to fetch blob source: ${e.message}`);
+                    throw new Error(`Failed to fetch local native file source: ${e.message}`);
                   }
                 } else {
-                  // If it's already a URL, return it
-                  if (typeof source === 'string' && (source.startsWith('http') || source.includes('bunny'))) {
+                  // If it's already a Bunny/CDN URL, return it (avoid re-uploading)
+                  if (typeof source === 'string' && 
+                      (source.startsWith('http') || source.includes('bunny')) && 
+                      !source.includes('_capacitor_file_') && 
+                      !source.includes('localhost') &&
+                      !source.startsWith('file://')) {
                     return source;
                   }
                   throw new Error(`Unsupported media source type: ${typeof source}`);
@@ -2682,15 +2958,57 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
               return null;
             };
 
+            // Shared helper: read blob from Cache API (accessible from SW)
+            const getBlobFromCache = async (cacheKey) => {
+              if (!cacheKey) return null;
+              try {
+                const cache = await caches.open('aquatech-offline-media');
+                const response = await cache.match(`/aquatech-offline-media/${cacheKey}`);
+                if (response) {
+                  const blob = await response.blob();
+                  // vFIX: NO borrar la cache al leer — si el sync falla y reintenta,
+                  // el blob ya no existiría. La cache se limpia naturalmente.
+                  return blob;
+                }
+              } catch(e) {
+                console.warn('[SW] Cache API read failed:', e);
+              }
+              return null;
+            };
+
             // 1. Handle MESSAGE / MEDIA_UPLOAD
             if (item.type === 'MESSAGE' || item.type === 'MEDIA_UPLOAD') {
               if (payload.media) {
-                const source = payload.media.fileData || payload.media.base64 || payload.media.url;
-                if (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:')))) {
-                  payload.media.url = await uploadMediaSW(source, payload.media.filename, payload.media.mimeType, 'messages');
-                  delete payload.media.fileData;
-                  delete payload.media.base64;
-                  await persistProgress(); // v316: Persistir URL para no repetir upload si falla el API
+                // vFIX-CACHE-APK: If media is stored in Cache API, read from there first
+                if (payload.media.storageType === 'cache' && payload.media.cacheKey) {
+                  const blob = await getBlobFromCache(payload.media.cacheKey);
+                  if (blob) {
+                    payload.media.url = await uploadMediaSW(blob, payload.media.filename, payload.media.mimeType, 'messages');
+                    delete payload.media.fileData;
+                    delete payload.media.cacheKey;
+                    await persistProgress();
+                  } else {
+                    console.warn('[SW] Cache API blob not found for MESSAGE media, skipping upload');
+                  }
+                } else {
+                  const source = payload.media.fileData || payload.media.base64 || payload.media.localUri || payload.media.url;
+                  // v420: Also upload native Capacitor file paths (localUri) and capacitor:// or file:// URLs
+                  const isLocalNativeFile = typeof source === 'string' && (
+                    source.startsWith('file://') ||
+                    source.startsWith('capacitor://') ||
+                    source.includes('_capacitor_file_') ||
+                    source.includes('localhost') ||
+                    source.startsWith('blob:')
+                  );
+                  const needsUpload = source instanceof ArrayBuffer || 
+                    (typeof source === 'string' && (source.startsWith('data:') || isLocalNativeFile));
+                  if (needsUpload) {
+                    payload.media.url = await uploadMediaSW(source, payload.media.filename, payload.media.mimeType, 'messages');
+                    delete payload.media.fileData;
+                    delete payload.media.base64;
+                    delete payload.media.localUri;
+                    await persistProgress(); // v316: Persistir URL para no repetir upload si falla el API
+                  }
                 }
               }
             }
@@ -2707,48 +3025,144 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
 
             // 3. Handle GALLERY_UPLOAD
             if (item.type === 'GALLERY_UPLOAD') {
-              const source = payload.fileData || payload.url;
-              if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
-                // v316: Use 'gallery' subfolder to trigger specialized path logic
-                payload.url = await uploadMediaSW(source, payload.filename || 'gallery_item.jpg', payload.mimeType, 'gallery');
-                delete payload.fileData;
-                await persistProgress();
+              // vFIX-GALLERY: fileData can be { buffer, type, name, size } (small files)
+              // or raw ArrayBuffer, or data: string, or blob: URL, or stored File via structured clone
+              // OR storageType='cache' con cacheKey (via prepareFileForOutbox)
+              
+              // Try Cache API first (like MESSAGE handler)
+              if (payload.storageType === 'cache' && payload.cacheKey) {
+                const blob = await getBlobFromCache(payload.cacheKey);
+                if (blob) {
+                  payload.url = await uploadMediaSW(blob, payload.filename || 'gallery_item.jpg', payload.mimeType, 'gallery');
+                  delete payload.fileData;
+                  delete payload.file;
+                  delete payload.cacheKey;
+                  delete payload.storageType;
+                  await persistProgress();
+                } else {
+                  console.warn('[SW] Cache API blob not found for GALLERY_UPLOAD, trying other sources');
+                }
+              }
+              
+              // Only try other sources if we still don't have a URL
+              if (!payload.url) {
+                let source = payload.fileData || payload.file || payload.base64 || null;
+                // If fileData is an object with buffer, extract the buffer
+                if (source && typeof source === 'object' && !(source instanceof ArrayBuffer) && !(source instanceof Blob) && !(source instanceof File)) {
+                  if (source.buffer instanceof ArrayBuffer) {
+                    source = source.buffer;
+                  } else if (source.buffer && source.buffer.buffer instanceof ArrayBuffer) {
+                    source = source.buffer.buffer;
+                  } else if (source instanceof File || source instanceof Blob) {
+                    // Keep as-is
+                  } else {
+                    // buffer was corrupted by JSON serialization — try payload.file as fallback
+                    source = payload.file || null;
+                  }
+                }
+                // Also handle raw File/Blob from IndexedDB structured clone
+                if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))) || source instanceof Blob || source instanceof File)) {
+                  // v316: Use 'gallery' subfolder to trigger specialized path logic
+                  payload.url = await uploadMediaSW(source, payload.filename || 'gallery_item.jpg', payload.mimeType, 'gallery');
+                  delete payload.fileData;
+                  delete payload.file;
+                  await persistProgress();
+                }
               }
             }
 
-            // v352: Process media for PROJECT creation — image + ALL attached files (videos, fotos, docs)
-            // Cada archivo se sube individualmente a Bunny CDN para evitar payloads JSON enormes.
-            // v352fix: Priorizar el File crudo (item.payload.files[i].file) sobre base64.
-            // El File crudo sobrevive structured clone de IndexedDB y evita la decodificación
-            // de base64 (atob + loop charCodeAt de millones de iteraciones que corrompe videos grandes).
             if (item.type === 'PROJECT') {
-              // 1. Main project image
-              if (payload.image || payload.fileData) {
+              // 1. Main project image — via Cache API (cacheKey in _imageCache) or legacy paths
+              if (payload._imageCache) {
+                const blob = await getBlobFromCache(payload._imageCache);
+                if (blob) {
+                  payload.image = await uploadMediaSW(blob, 'project_image.jpg', payload.mimeType || 'image/jpeg', 'projects');
+                  delete payload._imageCache;
+                  await persistProgress();
+                }
+              } else if (payload.image || payload.fileData) {
                 const source = payload.fileData || payload.image;
-                if (source && (source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
+                const isLocal = typeof source === 'string' && (
+                  source.startsWith('file://') ||
+                  source.startsWith('capacitor://') ||
+                  source.includes('_capacitor_file_') ||
+                  source.startsWith('data:') ||
+                  source.startsWith('blob:')
+                );
+                if (source && (source instanceof ArrayBuffer || isLocal)) {
                   payload.image = await uploadMediaSW(source, payload.filename || 'project_image.jpg', payload.mimeType, 'projects');
                   delete payload.fileData;
                   await persistProgress();
                 }
               }
-              // 2. All attached files (ProjectFile[]) — one by one to Bunny CDN
+              // 1.1 specsAudioUrl (Specs Voice Recording) — via Cache API or legacy paths
+              if (payload._audioCache) {
+                const blob = await getBlobFromCache(payload._audioCache);
+                if (blob) {
+                  payload.specsAudioUrl = await uploadMediaSW(blob, `specs-audio-${Date.now()}.aac`, 'audio/aac', 'projects');
+                  delete payload._audioCache;
+                  await persistProgress();
+                }
+              } else if (payload.specsAudioUrl) {
+                const source = payload.specsAudioUrl;
+                const isLocal = typeof source === 'string' && (
+                  source.startsWith('file://') ||
+                  source.startsWith('capacitor://') ||
+                  source.includes('_capacitor_file_') ||
+                  source.startsWith('data:') ||
+                  source.startsWith('blob:')
+                );
+                if (isLocal) {
+                  payload.specsAudioUrl = await uploadMediaSW(source, `specs-audio-${Date.now()}.aac`, 'audio/aac', 'projects');
+                  await persistProgress();
+                }
+              }
+              // 2. All attached files (ProjectFile[]) — via Cache API, Blob structured clone, or legacy paths
               if (payload.files && Array.isArray(payload.files)) {
                 for (let fi = 0; fi < payload.files.length; fi++) {
                   const f = payload.files[fi];
+                  // vFIX-APK-CACHE: Cache API first (disk, no RAM spike)
+                  if (f.storageType === 'cache' && f.cacheKey) {
+                    const blob = await getBlobFromCache(f.cacheKey);
+                    if (blob) {
+                      f.url = await uploadMediaSW(blob, f.filename || f.name || 'project_file.jpg', f.mimeType, 'projects');
+                      delete f.storageType;
+                      delete f.cacheKey;
+                      delete f.fileData;
+                      delete f.localUri;
+                      await persistProgress();
+                      continue;
+                    }
+                  }
                   // v352fix: Use raw File from original payload (survives IDB structured clone)
-                  // instead of base64 → atob → Uint8Array → Blob (which is slow and can corrupt large files).
                   const originalFile = item.payload?.files?.[fi]?.file;
                   const isRawFile = originalFile instanceof File || originalFile instanceof Blob;
-                  const source = isRawFile ? originalFile : (f.fileData || f.url);
-                  if (source && (isRawFile || source instanceof ArrayBuffer || (typeof source === 'string' && (source.startsWith('data:') || source.startsWith('blob:'))))) {
+                  const source = isRawFile ? originalFile : (f.localUri || f.url);
+                  const isLocal = isRawFile || (typeof source === 'string' && (
+                    source.startsWith('file://') ||
+                    source.startsWith('capacitor://') ||
+                    source.includes('_capacitor_file_') ||
+                    source.startsWith('data:') ||
+                    source.startsWith('blob:')
+                  ));
+                  if (source && (isRawFile || source instanceof ArrayBuffer || isLocal)) {
                     f.url = await uploadMediaSW(source, f.filename || f.name || 'project_file.jpg', f.mimeType, 'projects');
                     delete f.fileData;
+                    delete f.localUri;
                     // v352fix: Remove raw File from original payload to save IDB space
                     if (isRawFile && item.payload?.files?.[fi]) {
                       delete item.payload.files[fi].file;
                     }
                     await persistProgress();
                   }
+                }
+              }
+              // vFIX-AUDIO: After uploading all PROJECT files, find specs audio and set specsAudioUrl
+              if (payload.files && Array.isArray(payload.files)) {
+                const specsAudioFile = payload.files.find(f => f._isSpecsAudio && f.url && f.url.startsWith('http'));
+                if (specsAudioFile && specsAudioFile.url) {
+                  payload.specsAudioUrl = specsAudioFile.url;
+                  console.log('[SW] Specs audio URL set from files:', payload.specsAudioUrl);
                 }
               }
             }
@@ -2866,6 +3280,22 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
             }
           }
 
+          // vFIX-AUDIO: Clean client-only fields from PROJECT payloads before sending
+          if (item.type === 'PROJECT') {
+            if (Array.isArray(finalPayload.files)) {
+              finalPayload.files = finalPayload.files.map(f => {
+                const clean = { ...f, url: f.url || '' };
+                delete clean._isSpecsAudio;
+                delete clean.storageType;
+                delete clean.cacheKey;
+                delete clean.file;
+                delete clean.fileData;
+                delete clean.localUri;
+                return clean;
+              });
+            }
+          }
+
           if (endpoint) {
             // v286: Use fetchWithTimeout for main sync request
             const res = await fetchWithTimeout(new Request(endpoint, {
@@ -2973,11 +3403,11 @@ const uploadInChunksSW = async (blob, filename, subfolder = 'uploads', mimeType 
                   // v372: Also send GALLERY_SYNCED for gallery refresh
                   if (item.type === 'GALLERY_UPLOAD') {
                     const galleryResp = resData || {};
-                    c.postMessage({
+                    clients.forEach(c => c.postMessage({
                       type: 'GALLERY_SYNCED',
                       projectId: item.projectId,
                       galleryItem: galleryResp
-                    });
+                    }));
                   }
                 });
             } else {

@@ -181,6 +181,20 @@ export default function TeamPage() {
       setShowModal(false)
       resetForm()
       fetchUsers()
+
+      // Avisar al admin si el email de bienvenida falló (el usuario SÍ fue creado)
+      if (data.emailError || data.emailSent === false) {
+        setTimeout(() => {
+          alert(
+            `✅ Miembro "${formData.name}" creado exitosamente.\n\n` +
+            `⚠️ El correo de bienvenida NO se pudo enviar automáticamente.\n` +
+            `Por favor comparte las credenciales manualmente:\n` +
+            `• Usuario: ${formData.username}\n` +
+            `• Contraseña: ${formData.password}\n\n` +
+            `(Error técnico: ${data.emailError || 'fallo de conexión SMTP'})`
+          )
+        }, 300)
+      }
     } catch (err: any) {
       setError(err.message)
     }

@@ -35,21 +35,38 @@ export default async function SubcontratistaProjectDetail({ params }: { params: 
     redirect('/admin/subcontratista')
   }
 
-  // Mark chat as seen for this user
-  await prisma.projectView.upsert({
-    where: {
-      userId_projectId: {
+  // Mark chat as seen for this user (safeguarded against parallel upsert race conditions)
+  try {
+    await prisma.projectView.upsert({
+      where: {
+        userId_projectId: {
+          userId,
+          projectId
+        }
+      },
+      update: { lastSeen: new Date() },
+      create: {
         userId,
-        projectId
+        projectId,
+        lastSeen: new Date()
       }
-    },
-    update: { lastSeen: new Date() },
-    create: {
-      userId,
-      projectId,
-      lastSeen: new Date()
-    }
-  })
+    })
+  } catch (err) {
+    console.warn('[ProjectView Subcontratista Upsert Race Condition]:', err);
+    try {
+      await prisma.projectView.update({
+        where: {
+          userId_projectId: {
+            userId,
+            projectId
+          }
+        },
+        data: {
+          lastSeen: new Date()
+        }
+      })
+    } catch (_) {}
+  }
 
   // Reload all chat messages for this project with user info
   const chatMessages = await prisma.chatMessage.findMany({

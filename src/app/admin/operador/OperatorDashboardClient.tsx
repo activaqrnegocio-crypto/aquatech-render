@@ -144,7 +144,10 @@ export default function OperatorDashboardClient({
       if (isOffline) return allProjects
 
       const uId = user?.id || localUser?.id
-      if (!uId) return allProjects // Fallback: show everything we have in cache
+      // vFIX: No mostrar proyectos hasta que el auth se haya recuperado.
+      // Si devolvemos allProjects sin filtrar, el UI muestra "28/28" y luego
+      // cambia a "23/23" cuando auth se recupera, causando confusión.
+      if (!uId) return []
 
       const userId = Number(uId)
       if (isNaN(userId) || userId <= 0) return allProjects
@@ -157,6 +160,10 @@ export default function OperatorDashboardClient({
         const isPending = p.isPending || String(p.id).startsWith('pending')
         return isInTeam || isCreator || isPending
       })
+
+      // DEBUG: Log filtered IDs from cache to compare with sync
+      console.log(`[ProjectsCache DEBUG] UserID=${userId}, Cache returned ${allProjects.length}, Filtered to ${filtered.length}`);
+      console.log(`[ProjectsCache DEBUG] Visible IDs:`, filtered.map((p:any) => p.id).join(','));
 
       return filtered
     },
@@ -538,14 +545,9 @@ export default function OperatorDashboardClient({
        finalSource = Array.from(map.values());
     }
 
-    // v317: Si estamos cargando o hidratando auth, NO caer a initialProjects (que es [] offline)
-    if (sourceProjects === undefined) {
+    // v317: Si estamos cargando o hidratando auth o la snapshot de emergencia, NO caer a initialProjects (evita parpadeo de "no hay proyectos")
+    if (sourceProjects === undefined || (sourceProjects.length === 0 && emergencyProjects === undefined)) {
        return undefined; // Mantiene el estado de carga (spinner)
-    }
-
-    // v317: Si estamos offline y el source sigue siendo [], intentar forzar el snapshot de emergencia una vez más
-    if (isOffline && sourceProjects.length === 0 && emergencyProjects === undefined) {
-       return undefined; // Esperar un ciclo más por el emergency sync
     }
 
     const projectMap = new Map();
@@ -578,7 +580,8 @@ export default function OperatorDashboardClient({
           p.client?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
           p.city?.toLowerCase().includes(searchTerm.toLowerCase());
         
-        return matchesSearch;
+        const isArchived = p.status === 'ARCHIVADO';
+        return matchesSearch && !isArchived;
       })
       .sort((a, b) => 
         new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()
@@ -603,6 +606,11 @@ export default function OperatorDashboardClient({
   const [deleteConfirmText, setDeleteConfirmText] = useState('');
   const [projectToDelete, setProjectToDelete] = useState<any>(null);
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // States for archiving
+  const [projectToArchive, setProjectToArchive] = useState<any>(null);
+  const [showArchiveModal, setShowArchiveModal] = useState(false);
+  const [isArchiving, setIsArchiving] = useState(false);
 
   const openDeleteModal = (project: any, e: React.MouseEvent) => {
     e.preventDefault();
@@ -683,6 +691,122 @@ export default function OperatorDashboardClient({
     }
   };
 
+  const handleStatusChange = async (projectId: any, newStatus: string) => {
+    const pId = Number(projectId);
+    
+    // Optimistic UI updates
+    try {
+      const existing = await db.projectsCache.get(pId);
+      if (existing) {
+        await db.projectsCache.put({ ...existing, status: newStatus });
+      }
+    } catch(e) {}
+    
+    setEmergencyProjects(prev => {
+      if (!prev) return prev;
+      return prev.map(p => p.id === pId ? { ...p, status: newStatus } : p);
+    });
+
+    try {
+      const saved = localStorage.getItem('last_op_projects_snapshot');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          const updated = parsed.map((p: any) => p.id === pId ? { ...p, status: newStatus } : p);
+          localStorage.setItem('last_op_projects_snapshot', JSON.stringify(updated));
+        }
+      }
+    } catch (e) {}
+
+    let success = false;
+    try {
+      if (navigator.onLine) {
+        const res = await fetch(`/api/projects/${pId}`, {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ status: newStatus })
+        });
+        if (res.ok) success = true;
+      }
+    } catch (e) {}
+
+    if (!success) {
+      await addToOutbox({
+        type: 'PROJECT_UPDATE',
+        projectId: pId,
+        payload: { id: pId, status: newStatus },
+        timestamp: Date.now(),
+        status: 'pending'
+      });
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
+      }
+    }
+  };
+
+  const executeArchive = async () => {
+    if (!projectToArchive) return;
+    setIsArchiving(true);
+    try {
+      const pId = Number(projectToArchive.id);
+      
+      let success = false;
+      try {
+        if (navigator.onLine) {
+          const res = await fetch(`/api/projects/${pId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'ARCHIVADO' })
+          });
+          if (res.ok) success = true;
+        }
+      } catch (e) {}
+
+      if (!success) {
+        await addToOutbox({
+          type: 'PROJECT_UPDATE',
+          projectId: pId,
+          payload: { id: pId, status: 'ARCHIVADO' },
+          timestamp: Date.now(),
+          status: 'pending'
+        });
+      }
+
+      await db.projectsCache.delete(pId);
+      await db.chatCache.delete(pId);
+      
+      const apptsToDelete = await db.appointmentsCache.where('projectId').equals(pId).toArray();
+      if (apptsToDelete.length > 0) {
+        await db.appointmentsCache.bulkDelete(apptsToDelete.map(a => a.id));
+      }
+
+      setEmergencyProjects(prev => prev ? prev.filter(p => p.id !== pId) : []);
+      
+      try {
+        const saved = localStorage.getItem('last_op_projects_snapshot');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) {
+            const filtered = parsed.filter((p: any) => p.id !== pId);
+            localStorage.setItem('last_op_projects_snapshot', JSON.stringify(filtered));
+          }
+        }
+      } catch (e) {}
+
+      setShowArchiveModal(false);
+      setProjectToArchive(null);
+      
+      if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.controller.postMessage({ type: 'FORCE_SYNC_OUTBOX' });
+      }
+    } catch (err) {
+      console.error('[OpDashboard] Archive failed:', err);
+      alert('Error al intentar archivar el proyecto localmente');
+    } finally {
+      setIsArchiving(false);
+    }
+  };
+
   const [selectedTask, setSelectedTask] = useState<any>(null)
 
   const canManageCalendar = hasModuleAccess(user, 'calendario')
@@ -723,9 +847,27 @@ export default function OperatorDashboardClient({
             return;
           }
         }
-        
+
+        // vFIX-WARM-USER: Solo precachear proyectos ASIGNADOS al usuario actual.
+        // projectsFromCache devuelve TODOS si el auth no se ha recuperado (user.id vacío).
+        // Filtramos por team/createdBy igual que projectsFromCache para asegurar
+        // que solo precacheamos los proyectos que realmente le pertenecen al operador.
+        const currentUserId = Number(user?.id || localUser?.id);
+        if (!currentUserId || currentUserId <= 0) {
+          console.log(`[WarmCache] Skipping: no userId available (auth not recovered yet)`);
+          return;
+        }
+
+        // Filtrar SOLO proyectos del usuario actual (mismo filtro que projectsFromCache)
+        const userProjects = (projects || []).filter(p => {
+          if (!p.id || String(p.id).startsWith('pending')) return false;
+          const isInTeam = p.team?.some((m: any) => Number(m.userId) === currentUserId);
+          const isCreator = Number(p.createdBy || p.createdById) === currentUserId;
+          return isInTeam || isCreator;
+        });
+
         // Extract only stable IDs to compare
-        const currentIds = projects.slice(0, 20)
+        const currentIds = userProjects.slice(0, 20)
           .filter(p => p.id && !String(p.id).startsWith('pending'))
           .map(p => Number(p.id));
         
@@ -823,6 +965,7 @@ export default function OperatorDashboardClient({
     const pendingMapped = pendingTasksRaw.map(t => ({
       ...t.payload,
       id: `pending-${t.id}`, // pseudo-id
+      _outboxSyncId: t.syncId || t.payload?.syncId, // carry syncId for dedup
       status: t.payload.status || 'PENDIENTE',
       startTime: new Date(t.payload.startTime),
       endTime: new Date(t.payload.endTime),
@@ -832,6 +975,8 @@ export default function OperatorDashboardClient({
     // v360: Deduplicate pending tasks that have already been synced
     const finalResult: any[] = [...merged];
     const seenMap = new Set();
+    // Also build a set of syncIds from real appointments (for syncId-based dedup)
+    const seenSyncIds = new Set<string>();
     
     // Add real appointments to seenMap
     finalResult.forEach(ra => {
@@ -840,16 +985,31 @@ export default function OperatorDashboardClient({
           const timeStr = new Date(ra.startTime).toISOString().slice(0, 16); // Minute precision
           seenMap.add(`${ra.title}_${ra.projectId}_${timeStr}`);
         }
+        // v-sync-dedup: track syncIds from server appointments so we can skip matching pending items
+        if (ra.syncId) seenSyncIds.add(ra.syncId);
       } catch (e) { /* Ignore invalid dates */ }
     });
 
     pendingMapped.forEach(pt => {
       try {
+        // v-sync-dedup: if the server already has this task (by syncId), skip it
+        if (pt._outboxSyncId && seenSyncIds.has(pt._outboxSyncId)) return;
+
         if (pt.startTime) {
           const timeStr = new Date(pt.startTime).toISOString().slice(0, 16);
           const key = `${pt.title}_${pt.projectId}_${timeStr}`;
           
-          if (!seenMap.has(key)) {
+          // v-sync-dedup: also check ±5min window to handle minor timestamp differences
+          const ptTime = new Date(pt.startTime).getTime();
+          const nearDuplicate = finalResult.some(ra => {
+            if (ra.title !== pt.title || String(ra.projectId) !== String(pt.projectId)) return false;
+            try {
+              const diff = Math.abs(new Date(ra.startTime).getTime() - ptTime);
+              return diff < 5 * 60 * 1000; // 5 minutes
+            } catch { return false; }
+          });
+          
+          if (!seenMap.has(key) && !nearDuplicate) {
             finalResult.push(pt);
             seenMap.add(key);
           }
@@ -1366,9 +1526,46 @@ export default function OperatorDashboardClient({
                             PENDIENTE DE SINCRONIZACIÓN
                           </span>
                         ) : (
-                          <span className={`status-badge status-${project.status.toLowerCase()}`}>
-                            {project.status}
-                          </span>
+                          <div 
+                            style={{ position: 'relative', display: 'inline-block' }}
+                            onClick={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                          >
+                            <select
+                              value={project.status === 'NEGOCIANDO' ? 'LEAD' : project.status}
+                              onChange={async (e) => {
+                                const newStatus = e.target.value;
+                                if (newStatus === 'ARCHIVADO') {
+                                  setProjectToArchive(project);
+                                  setShowArchiveModal(true);
+                                } else {
+                                  await handleStatusChange(project.id, newStatus);
+                                }
+                              }}
+                              style={{
+                                appearance: 'none',
+                                WebkitAppearance: 'none',
+                                MozAppearance: 'none',
+                                padding: '4px 20px 4px 10px',
+                                borderRadius: '8px',
+                                fontSize: '0.75rem',
+                                fontWeight: 'bold',
+                                border: 'none',
+                                cursor: 'pointer',
+                                backgroundPosition: 'right 6px center',
+                                backgroundRepeat: 'no-repeat',
+                                backgroundImage: `url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6' fill='none'><path d='M1 1L5 5L9 1' stroke='%23${
+                                  project.status === 'ACTIVO' ? '3b82f6' : (project.status === 'ARCHIVADO' ? '9ca3af' : 'f59e0b')
+                                }' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'/></svg>")`,
+                                backgroundColor: project.status === 'ACTIVO' ? 'rgba(59, 130, 246, 0.15)' : (project.status === 'ARCHIVADO' ? 'rgba(156, 163, 175, 0.15)' : 'rgba(245, 158, 11, 0.15)'),
+                                color: project.status === 'ACTIVO' ? '#3b82f6' : (project.status === 'ARCHIVADO' ? '#9ca3af' : '#f59e0b'),
+                                outline: 'none'
+                              }}
+                            >
+                              <option value="LEAD" style={{ backgroundColor: '#0f172a', color: '#f59e0b' }}>NEGOCIANDO</option>
+                              <option value="ACTIVO" style={{ backgroundColor: '#0f172a', color: '#3b82f6' }}>ACTIVO</option>
+                              <option value="ARCHIVADO" style={{ backgroundColor: '#0f172a', color: '#9ca3af' }}>ARCHIVAR</option>
+                            </select>
+                          </div>
                         )}
                         <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>{(project.phases || []).length} fases</span>
                       </div>
@@ -1740,6 +1937,33 @@ export default function OperatorDashboardClient({
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {showArchiveModal && projectToArchive && (
+        <div style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000, backdropFilter: 'blur(5px)', padding: '20px' }}>
+          <div style={{ backgroundColor: 'var(--bg-card)', padding: '30px', borderRadius: '15px', width: '100%', maxWidth: '450px', border: '1px solid var(--border-color)', boxShadow: '0 10px 25px rgba(0,0,0,0.5)', textAlign: 'center' }}>
+            <h3 style={{ fontSize: '1.4rem', marginBottom: '15px', color: 'var(--primary)' }}>¿Archivar Proyecto?</h3>
+            <p style={{ color: 'var(--text-muted)', lineHeight: '1.6', marginBottom: '30px', fontSize: '0.95rem' }}>
+              Estás a punto de archivar <strong>{projectToArchive.title}</strong>.<br/>
+              Dejará de aparecer en tu panel de operador. El administrador podrá seguir viéndolo en la sección de archivados.
+            </p>
+            <div style={{ display: 'flex', gap: '15px' }}>
+              <button 
+                onClick={() => { setShowArchiveModal(false); setProjectToArchive(null); }} 
+                style={{ flex: 1, padding: '14px', borderRadius: '10px', background: 'var(--bg-surface)', border: '1px solid var(--border-color)', color: 'white', cursor: 'pointer', fontWeight: '500' }}
+              >
+                Cancelar
+              </button>
+              <button 
+                onClick={executeArchive}
+                disabled={isArchiving}
+                style={{ flex: 1, padding: '14px', borderRadius: '10px', backgroundColor: '#9ca3af', border: 'none', color: '#111827', fontWeight: 'bold', cursor: 'pointer' }}
+              >
+                {isArchiving ? 'Archivando...' : 'Archivar'}
+              </button>
+            </div>
           </div>
         </div>
       )}

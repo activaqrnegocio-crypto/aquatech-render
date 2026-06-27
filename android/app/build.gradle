@@ -11,15 +11,41 @@ android {
         versionName "1.0"
         testInstrumentationRunner "androidx.test.runner.AndroidJUnitRunner"
         aaptOptions {
-            ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~"
+            noCompress "br", "gz", "so", "js", "css", "json"
+            ignoreAssetsPattern = "!.svn:!.git:!.ds_store:!*.scc:.*:!CVS:!thumbs.db:!picasa.ini:!*~:!cache:!standalone"
         }
     }
     compileOptions {
-        sourceCompatibility JavaVersion.VERSION_17
-        targetCompatibility JavaVersion.VERSION_17
+        sourceCompatibility JavaVersion.VERSION_21
+        targetCompatibility JavaVersion.VERSION_21
+    }
+    // SQLCipher habilitado para SQLite nativo
+    signingConfigs {
+        debug {
+            storeFile file("${System.getProperty('user.home')}/.android/debug.keystore")
+            storePassword 'android'
+            keyAlias 'androiddebugkey'
+            keyPassword 'android'
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = false
+        }
+        release {
+            storeFile file("D:/Abel paginas/Aquatech/Llaves play store/aquatech-release.keystore")
+            storePassword 'Aquatech2026'
+            keyAlias 'aquatech'
+            keyPassword 'Aquatech2026'
+            enableV1Signing = true
+            enableV2Signing = true
+            enableV3Signing = false
+        }
     }
     buildTypes {
+        debug {
+            signingConfig signingConfigs.debug
+        }
         release {
+            signingConfig signingConfigs.release
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
         }

@@ -4,6 +4,7 @@ import { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { useSearchParams, usePathname } from 'next/navigation'
 import { db } from '@/lib/db'
 import { useLiveQuery } from 'dexie-react-hooks'
+import { getOutboxPending } from '@/lib/storage'
 
 /**
  * useProjectCache — Hook compartido Admin + Operador
@@ -89,19 +90,17 @@ export function useProjectCache({
     // v444: When manually triggered, reset all 'failed' items to 'pending'
     // so they get picked up by the worker loop again.
     try {
-      await db.transaction('rw', db.outbox, async () => {
-        const failedItems = await db.outbox.where('status').equals('failed').toArray();
-        if (failedItems.length > 0) {
-          console.log(`[Sync] Manual trigger: Resetting ${failedItems.length} failed items to pending...`);
-          for (const item of failedItems) {
-            await db.outbox.update(item.id!, { 
-              status: 'pending', 
-              attempts: 0, // Reset attempts so it starts clean
-              lastAttemptAt: undefined 
-            });
-          }
+      const failedItems = await db.outbox.where('status').equals('failed').toArray();
+      if (failedItems.length > 0) {
+        console.log(`[Sync] Manual trigger: Resetting ${failedItems.length} failed items to pending...`);
+        for (const item of failedItems) {
+          await db.outbox.update(item.id!, { 
+            status: 'pending', 
+            attempts: 0, // Reset attempts so it starts clean
+            lastAttemptAt: undefined 
+          });
         }
-      });
+      }
     } catch (err) {
       console.warn('[Sync] Failed to reset failed items:', err);
     }
@@ -279,11 +278,55 @@ export function useProjectCache({
   }, [idFromUrl, initialProject?.id, initialProject?.isSkeleton])
 
   // ─── Pending Items from Outbox ───
-  const pendingItems = useLiveQuery(async () => {
-    const all = await db.outbox.toArray()
-    // String comparison to avoid type mismatch (Number vs String)
-    return all.filter(item => String(item.projectId) === String(idFromUrl))
-  }, [idFromUrl]) || []
+  // vXXX: Usar getOutboxPending() que rutea a SQLite (APK) o Dexie (PWA)
+  const [pendingItems, setPendingItems] = useState<any[]>([])
+  useEffect(() => {
+    let cancelled = false
+    const load = async () => {
+      const all = await getOutboxPending()
+      if (cancelled) return
+      // String comparison to avoid type mismatch (Number vs String)
+      // v_crash_fix: Buscar projectId en el root Y en payload como fallback
+      // (SQLite nativo puede no exponer projectId en el root en versiones anteriores)
+      setPendingItems(all.filter((item: any) => {
+        const rootId = String(item.projectId ?? '')
+        const payloadId = String(item.payload?.projectId ?? '')
+        return rootId === String(idFromUrl) || payloadId === String(idFromUrl)
+      }))
+    }
+    load()
+    // Re-check cada 5s por si el SW ya sincronizó algunos items
+    const interval = setInterval(load, 5000)
+
+    // APK FIX: también refrescar inmediatamente en eventos de sync
+    // para que el relojito ⏰ desaparezca en cuanto se suba el mensaje
+    const onSyncEvent = () => load()
+    window.addEventListener('aquatech-item-synced', onSyncEvent)
+    window.addEventListener('aquatech-sync-finished', onSyncEvent)
+    window.addEventListener('sync-success', onSyncEvent)
+    window.addEventListener('online', () => setTimeout(load, 2000)) // breve delay al reconectar
+
+    // Escuchar mensajes del Service Worker
+    const swListener = (event: MessageEvent) => {
+      if (event.data?.type === 'SYNC_COMPLETE' || event.data?.type === 'ITEM_SYNCED') {
+        load()
+      }
+    }
+    if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+      navigator.serviceWorker.addEventListener('message', swListener)
+    }
+
+    return () => {
+      cancelled = true
+      clearInterval(interval)
+      window.removeEventListener('aquatech-item-synced', onSyncEvent)
+      window.removeEventListener('aquatech-sync-finished', onSyncEvent)
+      window.removeEventListener('sync-success', onSyncEvent)
+      if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+        navigator.serviceWorker.removeEventListener('message', swListener)
+      }
+    }
+  }, [idFromUrl])
 
   // --- v408: Reactive Cache Watcher ---
   // Listen for changes in IndexedDB to automatically clear 'Syncing' flags and update gallery/expenses
@@ -337,11 +380,37 @@ export function useProjectCache({
           result.push(msg)
         }
       } else {
-        const isDuplicate = result.some(rm =>
-          rm.content === msg.content &&
-          rm.type === msg.type &&
-          Math.abs(new Date(rm.createdAt).getTime() - new Date(msg.createdAt).getTime()) < 45000
-        )
+        const isDuplicate = result.some(rm => {
+          // 1. Check syncId in extraData or directly (most reliable)
+          const rmExtra = typeof rm.extraData === 'string' ? JSON.parse(rm.extraData) : (rm.extraData || {})
+          const msgExtra = typeof msg.extraData === 'string' ? JSON.parse(msg.extraData) : (msg.extraData || {})
+          const rmSyncId = rmExtra?.syncId || rm.syncId
+          const msgSyncId = msgExtra?.syncId || msg.syncId || msg.id
+          if (rmSyncId && msgSyncId && rmSyncId === msgSyncId) return true
+
+          // 2. Media messages: check if filenames match (if they do, it's a duplicate; if not, they are distinct!)
+          if (msg.type !== 'TEXT' && msg.type !== 'LOCATION') {
+            const rmFilename = rm.media?.filename || rmExtra?.filename || rm.filename
+            const msgFilename = msg.media?.filename || msgExtra?.filename || msg.filename
+            if (rmFilename && msgFilename) {
+              return rmFilename === msgFilename
+            }
+            // If we don't have filenames but it is media (e.g. location or others), fallback to content check
+          }
+
+          // 3. Fallback check for TEXT or others
+          if (rm.content !== msg.content || rm.type !== msg.type) return false
+
+          // Never deduplicate two temporary messages against each other unless their syncIds matched above
+          const rmIsTemp = typeof rm.id === 'string' && (rm.id.startsWith('temp-') || rm.id.startsWith('pending-'))
+          if (rmIsTemp) return false
+
+          // Narrow window check for identical messages (clock skew / retry protection)
+          const timeDiff = Math.abs(new Date(rm.createdAt).getTime() - new Date(msg.createdAt).getTime())
+          if (timeDiff < 20 * 1000) return true
+          return false
+        })
+
         if (!isDuplicate && !seenIds.has(msg.id)) {
           seenIds.add(msg.id)
           result.push(msg)
