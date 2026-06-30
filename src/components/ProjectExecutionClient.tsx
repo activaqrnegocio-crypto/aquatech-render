@@ -556,11 +556,9 @@ export default function ProjectExecutionClient({
     };
   }, [idFromUrl, refreshProject, setLocalProject])
 
-  useEffect(() => {
-    if (localChat && localChat.length > 0) {
-      setLocalChat(prev => deduplicateMessages([...localChat, ...prev]))
-    }
-  }, [localChat, deduplicateMessages])
+  // v631: REMOVED infinite loop useEffect that watched localChat and called setLocalChat(deduplicateMessages(...))
+  // This caused an infinite render cycle because deduplicateMessages always returns a new array reference,
+  // which triggers the effect again. Deduplication is already handled at fetch time (lines 471, 497, 507, 514).
 
   // 2. Expenses & Gallery Hooks (States moved to top)
 
