@@ -325,11 +325,20 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
     return <main>{children}</main>
   }
 
-  // Si la sesión está cargando o no está autenticada, no mostramos el layout de administración
-  // para evitar parpadeos visuales molestos de roles anteriores antes del redirect.
-  // v623: Permitir que /admin/force-logout pase de largo para evitar loops o interferir con la desautenticación.
+  // v625: Evitar desmontar Sidebar/Layout durante la navegación suave.
+  // Solo mostramos el spinner de pantalla completa en la carga inicial de la aplicación.
+  const [initialLoadDone, setInitialLoadDone] = useState(false)
+
+  useEffect(() => {
+    if (status !== 'loading') {
+      setInitialLoadDone(true)
+    }
+  }, [status])
+
   const isAuthOrForceLogout = isLoginPage || pathname === '/admin/force-logout'
-  if (!isAuthOrForceLogout && (status === 'loading' || status === 'unauthenticated')) {
+  const shouldShowLoader = !isAuthOrForceLogout && (!initialLoadDone && (status === 'loading' || status === 'unauthenticated'))
+
+  if (shouldShowLoader) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: 'var(--bg-deep)' }}>
         <div style={{ width: '32px', height: '32px', border: '3px solid rgba(255,255,255,0.2)', borderTop: '3px solid #38bdf8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />

@@ -100,7 +100,7 @@ export const authOptions: AuthOptions = {
     async session({ session, token }) {
       if (token.error === 'SessionRevoked') {
         if (session) {
-          session.user = null as any;
+          session.user = { id: '', name: '', email: '', role: '', username: '' } as any;
           (session as any).error = 'SessionRevoked';
         }
         return session

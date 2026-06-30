@@ -1,6 +1,6 @@
 'use client'
 
-import { usePathname } from 'next/navigation'
+import { usePathname, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { signOut, useSession } from 'next-auth/react'
 import { useEffect, useState, useMemo, memo } from 'react'
@@ -157,6 +157,7 @@ const adminNavItems: NavSection[] = [
 // Fase 7: memo() prevents re-renders from parent layout state changes
 export default memo(function Sidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   // Fase 6: Removed unused useSearchParams() — was causing re-renders on every navigation
   const { data: session, status } = useSession()
   const [mobileOpen, setMobileOpen] = useState(false)
@@ -171,30 +172,18 @@ export default memo(function Sidebar() {
     setMounted(true)
   }, [])
 
-  // v400: Robust Navigation — Force hard navigation when switching between major modules
-  // to prevent soft-navigation freezes caused by active Dexie listeners/SW Shell.
   const handleNav = (href: string, e: React.MouseEvent) => {
-    // If we are in a project detail or any complex path, soft navigation is risky
-    const isComplexPath = pathname.includes('/proyecto/') || pathname.includes('/nuevo') || pathname.includes('/shell');
-    
-    // Always force hard nav for these top-level modules to ensure clean state
-    const isTopLevelModule = href.startsWith('/admin/calendario') || 
-                             href.startsWith('/admin/inventario') || 
-                             href.startsWith('/admin/cotizaciones') ||
-                             href.startsWith('/admin/recursos');
-
-    // v411: Force hard nav to ALL dashboard routes when offline — SSR will be intercepted
-    // by Service Worker which serves the cached shell, and Dexie hydrates immediately.
-    // Soft nav in offline fails silently (SSR fetch timeout) leaving a blank page or being extremely slow.
     const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
 
-    if (isComplexPath || isTopLevelModule || isOffline) {
+    if (isOffline) {
       e.preventDefault();
       setMobileOpen(false);
       window.location.href = href;
     } else {
-      // Fallback to soft navigation for same-module items, handled by Link default
+      // Navegación 100% fluida e instantánea en modo Online (PWA y APK)
+      e.preventDefault();
       setMobileOpen(false);
+      router.push(href);
     }
   }
 

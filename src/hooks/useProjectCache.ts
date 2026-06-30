@@ -185,6 +185,10 @@ export function useProjectCache({
         
         if (serverIsFresh && cached && !cached._pendingTeamSync && !cached._pendingProjectSync) {
           // No pending local changes, server is authoritative.
+          setLocalProject(initialProject)
+          setLocalChat(initialProject.chatMessages || [])
+          setIsSyncingOffline(false)
+          setCacheNotFound(false)
           hasRecoveredRef.current = true
           return true
         }
