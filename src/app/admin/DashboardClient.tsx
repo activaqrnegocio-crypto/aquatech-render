@@ -466,34 +466,6 @@ export default function DashboardClient({
         </div>
       </div>
 
-      {/* Weekly Intelligence (New Section) */}
-      <h3 style={{ marginBottom: '15px', color: 'var(--text-muted)', fontSize: '0.85rem', textTransform: 'uppercase', letterSpacing: '1px' }}>
-        📈 Desempeño Semanal (Últimos 7 días)
-      </h3>
-      <div className="weekly-stats-grid">
-        <div className="card-sub" style={{ padding: '15px', background: 'var(--bg-surface)', border: '1px solid var(--primary-light)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-           <div style={{ fontSize: '1.5rem' }}>⏱️</div>
-           <div style={{ minWidth: 0 }}>
-             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Horas Totales del Equipo</div>
-             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--primary)' }}>{stats.totalHours7d} hrs</div>
-           </div>
-        </div>
-        <div className="card-sub" style={{ padding: '15px', background: 'var(--bg-surface)', border: '1px solid var(--info)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-           <div style={{ fontSize: '1.5rem' }}>📸</div>
-           <div style={{ minWidth: 0 }}>
-             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Reportes en Chat</div>
-             <div style={{ fontSize: '1.25rem', fontWeight: 800 }}>{stats.totalMessages7d}</div>
-           </div>
-        </div>
-        <div className="card-sub" style={{ padding: '15px', background: 'var(--bg-surface)', border: '1px solid var(--danger-light)', borderRadius: '12px', display: 'flex', alignItems: 'center', gap: '15px' }}>
-           <div style={{ fontSize: '1.5rem' }}>💸</div>
-           <div style={{ minWidth: 0 }}>
-             <div style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>Gasto Semanal (Viáticos)</div>
-             <div style={{ fontSize: '1.25rem', fontWeight: 800, color: 'var(--danger)' }}>{formatCurrency(stats.totalExpenses7d)}</div>
-           </div>
-        </div>
-      </div>
-
 
       {/* Comparison Tabs */}
       {activeProjects.length > 0 && (

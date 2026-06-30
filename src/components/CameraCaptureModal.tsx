@@ -34,17 +34,20 @@ export default function CameraCaptureModal({ onMediaCapture, onClose }: Props) {
     try {
       const { Camera: CapCam, CameraResultType, CameraSource } = await import('@capacitor/camera')
       const photo = await CapCam.getPhoto({
-        quality: 75,
-        width: 1280,
-        height: 1280,
+        quality: 90,          // Sin width/height: evita decodificar bitmap nativo completo (causa del crash en Redmi Note 7)
         allowEditing: false,
         resultType: CameraResultType.Uri,
         source: CameraSource.Camera
       })
       const path = (photo as any).uri || (photo as any).webPath
       if (!path) throw new Error('No se obtuvo la foto')
-      const resp = await fetch(path); const blob = await resp.blob()
-      onMediaCapture(blob, `photo_${Date.now()}.jpg`, 'image/jpeg'); onClose()
+      const resp = await fetch(path)
+      const rawBlob = await resp.blob()
+      // Comprimir en JS (Canvas) — más seguro en RAM que el pipeline nativo de Android
+      const { compressImage } = await import('@/lib/image-optimization')
+      const blob = await compressImage(rawBlob, 1280, 1280, 0.82)
+      onMediaCapture(blob, `photo_${Date.now()}.jpg`, 'image/jpeg')
+      onClose()
     } catch (err: any) { handleError('Error al tomar foto: ' + (err?.message || err)) }
   }
 

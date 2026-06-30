@@ -63,7 +63,7 @@ export const SafeImage = ({ file, style, alt, className }: { file: ProjectFile; 
     }
   }, [file]);
 
-  return <img src={src} alt={alt || file.filename} style={style} className={className} />;
+  return <img src={src} alt={alt || file.filename} loading="lazy" style={style} className={className} />;
 };
 
 export const SafeVideo = ({ file, style }: { file: ProjectFile; style?: React.CSSProperties }) => {

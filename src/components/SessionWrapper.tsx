@@ -16,7 +16,9 @@ async function restoreNativeSession() {
     
     if (stored.value) {
       console.log('[SessionWrapper] ✓ Sesión nativa restaurada')
+      // Escribir ambas cookies para asegurar soporte local (insecure) y producción (secure)
       document.cookie = `next-auth.session-token=${stored.value}; path=/; max-age=${365 * 24 * 60 * 60}; SameSite=Lax`
+      document.cookie = `__Secure-next-auth.session-token=${stored.value}; path=/; max-age=${365 * 24 * 60 * 60}; SameSite=Lax; Secure`
     }
   } catch (e) {
     console.warn('[SessionWrapper] Error restaurando sesión:', e)
@@ -43,7 +45,11 @@ function SessionRestorer({ children }: { children: React.ReactNode }) {
       // Guardar sesión cada vez que cambie la cookie
       const observer = new MutationObserver(() => {
         const cookies = document.cookie.split(';')
-        const tokenCookie = cookies.find(c => c.trim().startsWith('next-auth.session-token='))
+        // Buscar tanto la cookie segura de prod como la de dev
+        const tokenCookie = cookies.find(c => {
+          const name = c.trim()
+          return name.startsWith('next-auth.session-token=') || name.startsWith('__Secure-next-auth.session-token=')
+        })
         if (tokenCookie) {
           const token = tokenCookie.split('=')[1]?.trim()
           if (token) saveNativeSession(token)

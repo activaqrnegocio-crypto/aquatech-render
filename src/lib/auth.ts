@@ -99,8 +99,11 @@ export const authOptions: AuthOptions = {
     },
     async session({ session, token }) {
       if (token.error === 'SessionRevoked') {
-        // This will force the client to sign out
-        return null as any;
+        if (session) {
+          session.user = null as any;
+          (session as any).error = 'SessionRevoked';
+        }
+        return session
       }
 
       if (session.user) {

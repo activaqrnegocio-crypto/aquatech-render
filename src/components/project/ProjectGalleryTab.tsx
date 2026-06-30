@@ -110,13 +110,13 @@ export default function ProjectGalleryTab({
                   <div style={{ position: 'absolute', top: '8px', right: '8px', padding: '2px 6px', borderRadius: '4px', backgroundColor: 'var(--success)', color: 'white', fontSize: '0.6rem', fontWeight: 'bold' }}>GASTO</div>
                 </div>
               ) : realMime.startsWith('image/') ? (
-                <img src={item.url} alt={fileName} style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                <img src={item.url} alt={fileName} loading="lazy" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
               ) : realMime.startsWith('video/') ? (
                 <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'black' }}>
                   <video 
                     src={`${item.url}#t=0.001`} 
                     style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover', opacity: 0.7 }} 
-                    preload="metadata" 
+                    preload="none" 
                     muted 
                     playsInline 
                   />

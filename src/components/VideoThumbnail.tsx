@@ -14,49 +14,92 @@ export default function VideoThumbnail({ url, mime, filename, file }: { url: str
   const [loaded, setLoaded] = useState(false);
   const [src, setSrc] = useState<string>('');
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   useEffect(() => {
-    const rawFile = file?.file || file;
+    let isMounted = true;
+    let observer: IntersectionObserver | null = null;
+    let video: HTMLVideoElement | null = null;
     let objectUrl = '';
-    let srcToUse = url;
 
-    if (rawFile instanceof File || rawFile instanceof Blob) {
-      objectUrl = URL.createObjectURL(rawFile);
-      srcToUse = objectUrl;
-    } else if (Capacitor.isNativePlatform() && srcToUse && srcToUse.startsWith('file://')) {
-      srcToUse = Capacitor.convertFileSrc(srcToUse);
-    }
-    setSrc(srcToUse);
+    const startGeneration = () => {
+      const rawFile = file?.file || file;
+      let srcToUse = url;
 
-    const video = document.createElement('video');
-    video.crossOrigin = 'anonymous';
-    video.muted = true;
-    video.playsInline = true;
-    video.preload = 'metadata';
-    video.src = srcToUse;
+      if (rawFile instanceof File || rawFile instanceof Blob) {
+        objectUrl = URL.createObjectURL(rawFile);
+        srcToUse = objectUrl;
+      } else if (Capacitor.isNativePlatform() && srcToUse && srcToUse.startsWith('file://')) {
+        srcToUse = Capacitor.convertFileSrc(srcToUse);
+      }
+      setSrc(srcToUse);
 
-    video.onloadedmetadata = () => {
-      video.currentTime = Math.min(1, video.duration / 2);
-    };
+      video = document.createElement('video');
+      video.crossOrigin = 'anonymous';
+      video.muted = true;
+      video.playsInline = true;
+      video.preload = 'metadata';
+      video.src = srcToUse;
 
-    video.onseeked = () => {
-      try {
-        if (canvasRef.current) {
-          canvasRef.current.width = video.videoWidth || 160;
-          canvasRef.current.height = video.videoHeight || 120;
-          const ctx = canvasRef.current.getContext('2d');
-          if (ctx) {
-            ctx.drawImage(video, 0, 0, canvasRef.current.width, canvasRef.current.height);
-            setLoaded(true);
-          }
+      video.onloadedmetadata = () => {
+        if (video) {
+          video.currentTime = Math.min(1, video.duration / 2);
         }
-      } catch(e) {}
-      video.remove();
+      };
+
+      video.onseeked = () => {
+        try {
+          if (canvasRef.current && video && isMounted) {
+            canvasRef.current.width = video.videoWidth || 160;
+            canvasRef.current.height = video.videoHeight || 120;
+            const ctx = canvasRef.current.getContext('2d');
+            if (ctx) {
+              ctx.drawImage(video, 0, 0, canvasRef.current.width, canvasRef.current.height);
+              setLoaded(true);
+            }
+          }
+        } catch (e) {}
+        if (video) {
+          video.remove();
+          video = null;
+        }
+      };
+
+      video.onerror = () => {
+        if (video) {
+          video.remove();
+          video = null;
+        }
+      };
     };
 
-    video.onerror = () => { video.remove(); };
+    // IntersectionObserver para retrasar la creación del decodificador de video
+    if (typeof window !== 'undefined' && 'IntersectionObserver' in window && containerRef.current) {
+      observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            startGeneration();
+            if (observer) {
+              observer.disconnect();
+              observer = null;
+            }
+          }
+        });
+      }, { rootMargin: '100px' }); // Cargar un poco antes de que aparezca en pantalla
+      observer.observe(containerRef.current);
+    } else {
+      // Fallback si no hay soporte para IntersectionObserver
+      startGeneration();
+    }
 
     return () => {
-      video.remove();
+      isMounted = false;
+      if (observer) {
+        observer.disconnect();
+      }
+      if (video) {
+        video.remove();
+      }
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl);
       }
@@ -64,11 +107,11 @@ export default function VideoThumbnail({ url, mime, filename, file }: { url: str
   }, [url, file]);
 
   return (
-    <div style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'black' }}>
+    <div ref={containerRef} style={{ width: '100%', height: '100%', position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: 'black' }}>
       {loaded ? (
         <canvas ref={canvasRef} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
       ) : (
-        src && <video src={`${src}#t=0.5`} preload="metadata" muted playsInline style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
+        src && <video src={`${src}#t=0.5`} preload="none" muted playsInline style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
       )}
       <div style={{ position: 'relative', zIndex: 2, background: 'rgba(0,0,0,0.5)', borderRadius: '50%', padding: '6px', display: 'flex', boxShadow: '0 2px 10px rgba(0,0,0,0.3)' }}>
         <svg width="24" height="24" viewBox="0 0 24 24" fill="white" style={{ marginLeft: '2px' }}><polygon points="5 3 19 12 5 21 5 3"/></svg>

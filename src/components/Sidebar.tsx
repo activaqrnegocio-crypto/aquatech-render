@@ -101,7 +101,6 @@ const adminNavItems: NavSection[] = [
         subItems: [
           { label: 'Proyectos', href: '/admin/proyectos' },
           { label: 'Gestión de Equipo', href: '/admin/team' },
-          { label: 'Reportes', href: '/admin/reportes' },
         ]
       },
       {
