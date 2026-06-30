@@ -120,7 +120,7 @@ export function useProjectCache({
   }, [])
 
   // ─── State ───
-  const [localProject, setLocalProject] = useState<any>(null)
+  const [localProject, setLocalProject] = useState<any>(initialProject)
   const [localChat, setLocalChat] = useState<any[]>([])
   const [cacheNotFound, setCacheNotFound] = useState(false)
   const [isOfflineMode, setIsOfflineMode] = useState(false)
@@ -345,6 +345,19 @@ export function useProjectCache({
   );
 
   useEffect(() => {
+    // v631: ONLINE GUARD estricto. Si estamos online, la fuente de verdad es el servidor/initialProject.
+    // Solo permitimos que Dexie actualice el estado si estamos en modo offline.
+    const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
+    if (isOnline) {
+      if (initialProject && !initialProject.isSkeleton) {
+        // Si tenemos datos del servidor, los mantenemos y no dejamos que Dexie los altere
+        if (!localProject || localProject.isSkeleton || localProject.id !== initialProject.id) {
+          setLocalProject(initialProject);
+        }
+        return;
+      }
+    }
+
     if (liveProject && !isIdentityMismatch) {
       const liveGalleryIds = (liveProject.gallery || []).map((g: any) => String(g.id)).join(',');
       const localGalleryIds = (localProject?.gallery || []).map((g: any) => String(g.id)).join(',');
@@ -357,11 +370,11 @@ export function useProjectCache({
         liveGalleryIds !== localGalleryIds ||
         liveExpenseIds !== localExpenseIds;
 
-      if (hasDataChange || !localProject) {
+      if (hasDataChange || !localProject || localProject.isSkeleton) {
         setLocalProject((prev: any) => ({ ...prev, ...liveProject }));
       }
     }
-  }, [liveProject, isIdentityMismatch, localProject]);
+  }, [liveProject, isIdentityMismatch, localProject, initialProject]);
 
   // ─── Message Deduplication ───
   const deduplicateMessages = useCallback((messages: any[]) => {

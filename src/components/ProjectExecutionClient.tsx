@@ -569,7 +569,11 @@ export default function ProjectExecutionClient({
     const fetchExpenses = async () => {
       if (!navigator.onLine) return
       try {
-        const resp = await fetch(`/api/operator/projects/${project?.id || idFromUrl}/expenses?_t=${Date.now()}`, { cache: 'no-store' })
+        // v630: Timeout de 10s para evitar que un 504 del VPS congele la app
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 10000);
+        const resp = await fetch(`/api/operator/projects/${project?.id || idFromUrl}/expenses?_t=${Date.now()}`, { cache: 'no-store', signal: controller.signal })
+        clearTimeout(timeoutId);
         if (resp.ok) {
           const fresh = await resp.json()
           if (Array.isArray(fresh) && fresh.length > 0) setLocalExpenses(fresh)
