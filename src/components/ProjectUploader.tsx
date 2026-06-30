@@ -47,8 +47,10 @@ interface ProjectUploaderProps {
 type FilterType = 'ALL' | 'IMAGE' | 'VIDEO' | 'DOCUMENT' | 'AUDIO' | 'EXPENSE'
 
 // Helper components to render dynamic offline previews from bin File/Blob objects without RAM leaks
+const INLINE_PLACEHOLDER = "data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'><rect width='100%' height='100%' fill='%23111827'/><text x='50%' y='50%' dominant-baseline='middle' text-anchor='middle' fill='%234b5563' font-size='12' font-family='sans-serif'>Cargando...</text></svg>";
+
 export const SafeImage = ({ file, style, alt, className }: { file: ProjectFile; style?: React.CSSProperties; alt?: string; className?: string }) => {
-  const [src, setSrc] = useState<string>('/placeholder.jpg');
+  const [src, setSrc] = useState<string>(INLINE_PLACEHOLDER);
 
   useEffect(() => {
     const rawFile = (file as any).file;
@@ -59,7 +61,7 @@ export const SafeImage = ({ file, style, alt, className }: { file: ProjectFile; 
         URL.revokeObjectURL(objectUrl);
       };
     } else {
-      setSrc(file.url);
+      setSrc(file.url || INLINE_PLACEHOLDER);
     }
   }, [file]);
 

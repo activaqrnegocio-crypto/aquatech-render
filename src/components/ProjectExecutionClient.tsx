@@ -618,6 +618,11 @@ export default function ProjectExecutionClient({
 
     const applyDexieCache = async () => {
       try {
+        // v631: Si estamos online y ya tenemos gallery del servidor, no mezclar con Dexie
+        // Esto previene el bug de duplicados (7→14) al volver de minimizado
+        const isOnline = typeof navigator !== 'undefined' && navigator.onLine;
+        if (isOnline && project?.gallery?.length > 0) return;
+
         const cached = await db.projectsCache.get(Number(idFromUrl));
         if (cached?.gallery && cached.gallery.length > 0) {
           setLocalProject((prev: any) => {
@@ -809,7 +814,15 @@ export default function ProjectExecutionClient({
     });
 
     // v403: Optimistic uploads go FIRST to match server order (createdAt DESC = newest first)
-    const list = [...optimisticMaster, ...syncedGallery, ...pendingGallery, ...baseFiles, ...expenseFiles]
+    const rawList = [...optimisticMaster, ...syncedGallery, ...pendingGallery, ...baseFiles, ...expenseFiles]
+    // v631: Deduplicar por ID para prevenir duplicados visuales (ej: 7→14 al volver de minimizado)
+    const seen = new Set<string>();
+    const list = rawList.filter(item => {
+      const key = String(item.id);
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
     return list.filter((item: any) => {
       const url = (item.url || '').toLowerCase();
       const mime = (item.mimeType || '').toLowerCase();
