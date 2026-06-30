@@ -399,10 +399,16 @@ export function useProjectCache({
       } else {
         const isDuplicate = result.some(rm => {
           // 1. Check syncId in extraData or directly (most reliable)
-          const rmExtra = typeof rm.extraData === 'string' ? JSON.parse(rm.extraData) : (rm.extraData || {})
-          const msgExtra = typeof msg.extraData === 'string' ? JSON.parse(msg.extraData) : (msg.extraData || {})
-          const rmSyncId = rmExtra?.syncId || rm.syncId
-          const msgSyncId = msgExtra?.syncId || msg.syncId || msg.id
+          let rmExtra: any = {};
+          let msgExtra: any = {};
+          try {
+            rmExtra = typeof rm.extraData === 'string' ? JSON.parse(rm.extraData) : (rm.extraData || {});
+          } catch(e) {}
+          try {
+            msgExtra = typeof msg.extraData === 'string' ? JSON.parse(msg.extraData) : (msg.extraData || {});
+          } catch(e) {}
+          const rmSyncId = (rmExtra as any)?.syncId || rm.syncId
+          const msgSyncId = (msgExtra as any)?.syncId || msg.syncId || msg.id
           if (rmSyncId && msgSyncId && rmSyncId === msgSyncId) return true
 
           // 2. Media messages: check if filenames match (if they do, it's a duplicate; if not, they are distinct!)
@@ -423,7 +429,10 @@ export function useProjectCache({
           if (rmIsTemp) return false
 
           // Narrow window check for identical messages (clock skew / retry protection)
-          const timeDiff = Math.abs(new Date(rm.createdAt).getTime() - new Date(msg.createdAt).getTime())
+          const timeA = rm.createdAt ? new Date(rm.createdAt).getTime() : 0;
+          const timeB = msg.createdAt ? new Date(msg.createdAt).getTime() : 0;
+          if (isNaN(timeA) || isNaN(timeB)) return false;
+          const timeDiff = Math.abs(timeA - timeB)
           if (timeDiff < 20 * 1000) return true
           return false
         })
@@ -434,9 +443,11 @@ export function useProjectCache({
         }
       }
     }
-    return result.sort((a, b) =>
-      new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime()
-    )
+    return result.sort((a, b) => {
+      const timeA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+      const timeB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+      return (isNaN(timeA) ? 0 : timeA) - (isNaN(timeB) ? 0 : timeB);
+    })
   }, [])
 
   // ─── Return ───

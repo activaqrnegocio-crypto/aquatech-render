@@ -46,6 +46,16 @@ export default function LightboxPreview({ item, isSmallScreen, onClose }: Lightb
       setPreviewSrc(item.url || '');
     }
     return () => {
+      // v631: Liberar activamente la RAM del video y detener streaming antes de cerrar
+      try {
+        const videoEl = document.getElementById('lightbox-video-element') as HTMLVideoElement;
+        if (videoEl) {
+          videoEl.pause();
+          videoEl.src = "";
+          videoEl.load();
+        }
+      } catch (e) {}
+
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl);
       }
@@ -158,10 +168,16 @@ export default function LightboxPreview({ item, isSmallScreen, onClose }: Lightb
             />
           ) : isVideo ? (
             <video 
-              src={previewSrc}
+              id="lightbox-video-element"
+              src={
+                Capacitor.isNativePlatform() && previewSrc && previewSrc.startsWith('file://')
+                  ? Capacitor.convertFileSrc(previewSrc)
+                  : previewSrc
+              }
               controls 
               autoPlay 
               playsInline
+              preload="auto"
               controlsList="nodownload"
               style={{ 
                 // v440: On mobile, use full width and auto height so native controls
