@@ -314,12 +314,29 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
   const pagesToPrefetch = getPagesToPrefetch()
 
   const [showSync, setShowSync] = useState(false)
+  const [showWelcomeModal, setShowWelcomeModal] = useState(false)
   
   useEffect(() => {
     // v273: Delay heavy background workers to let the main page load first
     const timer = setTimeout(() => setShowSync(true), 5000);
     return () => clearTimeout(timer);
   }, []);
+
+  // Popup de advertencia de primera carga online
+  useEffect(() => {
+    if (status === 'authenticated' && typeof window !== 'undefined') {
+      const hasSeen = localStorage.getItem('aquatech_welcome_sync_v1')
+      if (!hasSeen) {
+        setShowWelcomeModal(true)
+      }
+    }
+  }, [status])
+
+  const handleCloseWelcomeModal = () => {
+    localStorage.setItem('aquatech_welcome_sync_v1', 'true')
+    setShowWelcomeModal(false)
+  }
+
 
   if (isLoginPage) {
     return <main>{children}</main>
@@ -360,6 +377,117 @@ export default function AdminLayoutClient({ children }: { children: React.ReactN
           <SyncToast />
         </>
       )}
+
+      {/* ── POPUP DE PRIMERA SINCRONIZACIÓN — solo una vez ── */}
+      {showWelcomeModal && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99999,
+          background: 'rgba(0,0,0,0.75)',
+          backdropFilter: 'blur(8px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          padding: '20px',
+          animation: 'fadeIn 0.3s ease'
+        }}>
+          <style>{`
+            @keyframes fadeIn { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+            @keyframes pulse-ring { 0%,100% { box-shadow: 0 0 0 0 rgba(56,189,248,0.4); } 50% { box-shadow: 0 0 0 12px rgba(56,189,248,0); } }
+          `}</style>
+          <div style={{
+            background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
+            border: '1px solid rgba(56,189,248,0.3)',
+            borderRadius: '24px',
+            padding: '36px 32px',
+            maxWidth: '420px',
+            width: '100%',
+            boxShadow: '0 25px 60px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.05)',
+            textAlign: 'center'
+          }}>
+            {/* Icono */}
+            <div style={{
+              width: '72px', height: '72px', borderRadius: '50%',
+              background: 'linear-gradient(135deg, #0ea5e9, #6366f1)',
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 20px',
+              animation: 'pulse-ring 2.5s ease-in-out infinite'
+            }}>
+              <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12.55a11 11 0 0 1 14.08 0"/>
+                <path d="M1.42 9a16 16 0 0 1 21.16 0"/>
+                <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+                <circle cx="12" cy="20" r="1" fill="white"/>
+              </svg>
+            </div>
+
+            {/* Título */}
+            <h2 style={{
+              margin: '0 0 8px', fontSize: '1.4rem', fontWeight: '700',
+              color: '#f1f5f9', letterSpacing: '-0.02em'
+            }}>
+              ¡Bienvenido a Aquatech!
+            </h2>
+            <p style={{ margin: '0 0 24px', fontSize: '0.9rem', color: '#94a3b8', lineHeight: '1.5' }}>
+              Para usar la app sin internet, sigue estos pasos <strong style={{ color: '#38bdf8' }}>una sola vez</strong>:
+            </p>
+
+            {/* Pasos */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '28px', textAlign: 'left' }}>
+              {[
+                { num: '1', icon: '📶', text: 'Abre la app estando conectado a internet' },
+                { num: '2', icon: '🔄', text: 'Navega por los proyectos y espera que aparezca el indicador verde (Sincronizado)' },
+                { num: '3', icon: '✅', text: '¡Listo! Ya puedes usar la app sin internet' },
+              ].map(step => (
+                <div key={step.num} style={{
+                  display: 'flex', alignItems: 'flex-start', gap: '12px',
+                  background: 'rgba(255,255,255,0.04)',
+                  border: '1px solid rgba(255,255,255,0.06)',
+                  borderRadius: '12px', padding: '12px 14px'
+                }}>
+                  <span style={{
+                    width: '24px', height: '24px', borderRadius: '50%',
+                    background: 'linear-gradient(135deg, #0ea5e9, #6366f1)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                    fontSize: '0.7rem', fontWeight: '800', color: 'white',
+                    flexShrink: 0, marginTop: '1px'
+                  }}>{step.num}</span>
+                  <span style={{ fontSize: '0.85rem', color: '#cbd5e1', lineHeight: '1.4' }}>
+                    {step.icon} {step.text}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            {/* Indicador de referencia */}
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: '8px',
+              background: 'rgba(34,197,94,0.1)', border: '1px solid rgba(34,197,94,0.3)',
+              borderRadius: '20px', padding: '6px 14px', marginBottom: '24px',
+              fontSize: '0.8rem', color: '#4ade80'
+            }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#22c55e', display: 'inline-block' }} />
+              Así se ve el indicador verde de sincronizado
+            </div>
+
+            {/* Botón */}
+            <button
+              onClick={handleCloseWelcomeModal}
+              style={{
+                width: '100%', padding: '14px',
+                background: 'linear-gradient(135deg, #0ea5e9, #6366f1)',
+                border: 'none', borderRadius: '12px',
+                color: 'white', fontSize: '0.95rem', fontWeight: '700',
+                cursor: 'pointer', letterSpacing: '0.01em',
+                boxShadow: '0 4px 20px rgba(14,165,233,0.35)',
+                transition: 'opacity 0.2s'
+              }}
+              onMouseEnter={e => (e.currentTarget.style.opacity = '0.9')}
+              onMouseLeave={e => (e.currentTarget.style.opacity = '1')}
+            >
+              ¡Entendido, voy a sincronizar! 🚀
+            </button>
+          </div>
+        </div>
+      )}
+      {/* ── FIN POPUP ── */}
       <Sidebar />
       {isNavigating && (
         <div style={{

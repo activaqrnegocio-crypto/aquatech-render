@@ -449,6 +449,8 @@ model Appointment {
 
   @@index([userId])
   @@index([projectId])
+  @@index([startTime])
+  @@index([endTime])
   @@map("appointments")
 }
 

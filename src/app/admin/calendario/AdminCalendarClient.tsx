@@ -177,6 +177,12 @@ export default function AdminCalendarClient({
   }, [])
   const fetchAppointments = async (silent = false, retryCount = 0) => {
     if (!silent && appointments.length === 0) setLoading(true)
+    let isMounted = true;
+    
+    // Controlador de timeout para no esperar minutos a la VPS si está trabada
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 12000); // 12 segundos límite
+
     try {
       // Limit to 1 month ago and 2 months ahead for speed
       const now = new Date()
@@ -184,7 +190,8 @@ export default function AdminCalendarClient({
       const end = new Date(now.getFullYear(), now.getMonth() + 2, 0).toISOString()
       
       const url = `/api/appointments?userId=${selectedOperatorId}&start=${start}&end=${end}`
-      const res = await fetch(url)
+      const res = await fetch(url, { signal: controller.signal })
+      clearTimeout(timeoutId)
       
       if (res.ok) {
         const data = await res.json()
@@ -202,25 +209,26 @@ export default function AdminCalendarClient({
             await db.appointmentsCache.bulkPut(data)
           }
         }
-        setLoading(false)
       } else {
-        // v274: Improved error handling for 504 (timeout) and 500
+        // Fallido (ej: 500, 504)
         const isTimeout = res.status === 504;
         if (retryCount < 1 && !isTimeout) {
           console.warn(`Fetch fallido (Status: ${res.status}). Reintentando...`)
-          setTimeout(() => fetchAppointments(silent, retryCount + 1), 500)
+          setTimeout(() => fetchAppointments(silent, retryCount + 1), 1000)
           return
         }
-        setLoading(false)
       }
     } catch (error) {
-      if (retryCount < 2) { // v267: 2 retries instead of 1
-        console.warn('Error de red detectado. Reintentando conexión a DB...', error)
-        setTimeout(() => fetchAppointments(silent, retryCount + 1), 1000)
+      clearTimeout(timeoutId)
+      if (retryCount < 1 && error instanceof Error && error.name !== 'AbortError') {
+        console.warn('Error de red detectado. Reintentando...', error)
+        setTimeout(() => fetchAppointments(silent, retryCount + 1), 1500)
         return
       }
-      console.warn('Network fetch failed, staying with cache:', error)
+      console.warn('Network fetch failed or aborted, staying with cache:', error)
+    } finally {
       setLoading(false)
+      setInitialDataLoaded(true)
     }
   }
 

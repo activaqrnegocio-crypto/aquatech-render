@@ -23,11 +23,19 @@ export async function GET(request: Request) {
     const canManage = isAdmin || hasModuleAccess(session.user as any, 'calendario')
     const where: any = {}
     
-    // If Admin/Manager and userId is "all" or not provided, show all.
-    // Otherwise, if not Manager, force current userId.
+    // Rango de fechas optimizado e indexable
+    const now = new Date()
+    const queryStart = start ? new Date(forceEcuadorTZ(start)) : new Date(now.getFullYear(), now.getMonth() - 1, 1)
+    const queryEnd = end ? new Date(forceEcuadorTZ(end)) : new Date(now.getFullYear(), now.getMonth() + 3, 0)
+    
+    where.startTime = {
+      gte: queryStart,
+      lte: queryEnd
+    }
+
+    // Filtrado por usuario
     if (canManage) {
       if (userId && userId !== 'all') {
-        // v500: Filter by assignedUsers OR legacy userId
         const userIdNum = Number(userId)
         where.OR = [
           { userId: userIdNum },
@@ -40,22 +48,6 @@ export async function GET(request: Request) {
         { userId: selfId },
         { assignedUsers: { contains: `"id":${selfId}` } }
       ]
-    }
-
-    if (start && end) {
-      where.startTime = {
-        gte: new Date(forceEcuadorTZ(start)),
-      }
-      where.endTime = {
-        lte: new Date(forceEcuadorTZ(end)),
-      }
-    } else {
-      // Default optimized range: 1 month ago to 6 months ahead to prevent full DB scan
-      const now = new Date()
-      const defaultStart = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-      const defaultEnd = new Date(now.getFullYear(), now.getMonth() + 6, 0)
-      where.startTime = { gte: defaultStart }
-      where.endTime = { lte: defaultEnd }
     }
 
     const appointments = await prisma.appointment.findMany({

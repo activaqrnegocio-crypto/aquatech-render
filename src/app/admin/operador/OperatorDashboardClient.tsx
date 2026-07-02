@@ -110,6 +110,15 @@ export default function OperatorDashboardClient({
 
 
   useEffect(() => {
+    // Timeout de seguridad: Si la sesión tarda más de 2.5s en hidratar (ej. WebView lento),
+    // desbloqueamos la UI para que intente leer los proyectos locales en Dexie.
+    const safetyTimeout = setTimeout(() => {
+      if (isHydratingAuth) {
+        console.warn('[Offline] Hydration timeout hit, unlocking UI');
+        setIsHydratingAuth(false);
+      }
+    }, 2500);
+
     const recoverAuth = async () => {
       if (!user?.id) {
         try {
@@ -123,8 +132,11 @@ export default function OperatorDashboardClient({
         }
       }
       setIsHydratingAuth(false)
+      clearTimeout(safetyTimeout)
     }
     recoverAuth()
+
+    return () => clearTimeout(safetyTimeout)
   }, [user?.id])
 
   // Use Dexie as live source for projects to support offline correctly

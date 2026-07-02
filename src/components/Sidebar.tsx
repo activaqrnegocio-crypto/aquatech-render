@@ -258,6 +258,15 @@ export default memo(function Sidebar() {
 
   // Hooks para datos de sesión y permisos (Siempre al principio)
   const effectiveRole = useMemo(() => {
+    if (status === 'authenticated') {
+      const role = session?.user?.role || offlineUser?.role;
+      const finalRole = String(role || 'OPERATOR').toUpperCase();
+      if (mounted && typeof window !== 'undefined') {
+        localStorage.setItem('last_user_role', finalRole);
+      }
+      return finalRole;
+    }
+
     if (status === 'loading') {
       // v284: Only use localStorage if mounted to avoid hydration mismatch (#418)
       if (mounted && typeof window !== 'undefined') {
@@ -267,14 +276,8 @@ export default memo(function Sidebar() {
       return '';
     }
     
-    const role = session?.user?.role || offlineUser?.role;
-    const finalRole = String(role || 'OPERATOR').toUpperCase();
-    
-    if (mounted && typeof window !== 'undefined' && finalRole) {
-      localStorage.setItem('last_user_role', finalRole);
-    }
-    
-    return finalRole;
+    const role = offlineUser?.role || 'OPERATOR';
+    return String(role).toUpperCase();
   }, [session, offlineUser, status, mounted])
   
   const effectiveName = useMemo(() => session?.user?.name || offlineUser?.name || (status === 'loading' ? '...' : 'Usuario'), [session, offlineUser, status])

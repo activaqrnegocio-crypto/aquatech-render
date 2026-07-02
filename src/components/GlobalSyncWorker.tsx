@@ -545,6 +545,20 @@ export default function GlobalSyncWorker() {
   useEffect(() => {
     if (session?.user?.id && navigator.onLine) {
       const u = session.user
+      const currentUserId = String(u.id)
+      const lastUserId = localStorage.getItem('last_logged_user_id')
+      
+      // Si el usuario cambió de ID (ej. de admin a operador), limpiar caché vieja
+      if (lastUserId && lastUserId !== currentUserId) {
+        console.log(`[Auth] Usuario cambió de ${lastUserId} a ${currentUserId}. Limpiando caché...`);
+        db.projectsCache.clear().catch(() => {})
+        db.chatCache.clear().catch(() => {})
+        db.appointmentsCache.clear().catch(() => {})
+        localStorage.removeItem('last_user_role')
+      }
+      
+      localStorage.setItem('last_logged_user_id', currentUserId)
+
       const authData = {
         userId: u.id,
         name: u.name || '',
