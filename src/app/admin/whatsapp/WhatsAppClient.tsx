@@ -10,32 +10,51 @@ export default function WhatsAppClient() {
   const [showConfirmLogout, setShowConfirmLogout] = useState(false)
   const [isProcessing, setIsProcessing] = useState(false)
   
-  // Ref to track if we should auto-refresh the QR
+  // Refs para control de estado
   const isViewingQR = useRef(false)
-  const refreshIntervalRef = useRef<NodeJS.Timeout | null>(null)
+  // Cooldown: después de desconectar, ignoramos el status poll por 15 segundos
+  const disconnectUntil = useRef<number>(0)
 
+  // ── Consultar estado de conexión ──
   const fetchStatus = useCallback(async () => {
     try {
+      // Bloquear cualquier poll si estamos desconectando, procesando o en cooldown
+      if (status === 'disconnecting' || isProcessing || Date.now() < disconnectUntil.current) {
+        return
+      }
+
       const res = await fetch('/api/whatsapp/status')
+      
+      // Doble verificación: si durante el vuelo de la petición entramos en cooldown o desconexión, descartar el resultado
+      if (status === 'disconnecting' || Date.now() < disconnectUntil.current) {
+        return
+      }
+
       if (res.ok) {
         const data = await res.json()
         const newState = data.instance?.state || data.state
-        setStatus(newState)
+        setStatus(newState || 'close')
         
-        // If connected, stop QR viewing mode
         if (newState === 'open') {
           setQrCode(null)
           isViewingQR.current = false
         }
+      } else {
+        setStatus('close')
       }
     } catch (err) {
       console.warn('Status poll failed', err)
+      setStatus('close')
     } finally {
       if (loading) setLoading(false)
     }
-  }, [loading])
+  }, [loading, status, isProcessing])
 
+  // ── Generar código QR ──
   const fetchQR = async (isAuto = false) => {
+    // Bloquear si estamos en cooldown de desconexión o desconectando
+    if (status === 'disconnecting' || Date.now() < disconnectUntil.current) return
+
     if (!isAuto) setIsProcessing(true)
     setError(null)
     try {
@@ -44,15 +63,19 @@ export default function WhatsAppClient() {
       console.log('[DEBUG WA QR RESPONSE]:', data)
 
       if (res.ok) {
+        // Verificar si ya está conectado
+        if (data.instance?.state === 'open' || data.state === 'open') {
+          setStatus('open')
+          setQrCode(null)
+          isViewingQR.current = false
+          return
+        }
+
         const qrBase64 = data.qrcode?.base64 || data.base64 || data.qr?.base64 || data.code?.base64
         
         if (qrBase64) {
           setQrCode(qrBase64)
           isViewingQR.current = true
-        } else if (data.instance?.state === 'open' || data.state === 'open') {
-          setStatus('open')
-          setQrCode(null)
-          isViewingQR.current = false
         } else {
           const msg = data.message || data.error || JSON.stringify(data)
           if (!isAuto) setError(`No se recibió un QR válido. Respuesta: ${msg}`)
@@ -67,23 +90,29 @@ export default function WhatsAppClient() {
     }
   }
 
+  // ── Desconectar teléfono ──
   const handleLogout = async () => {
     setIsProcessing(true)
+    setError(null)
+    setStatus('disconnecting') // Cambiar a estado desconectando inmediatamente
     try {
-      const res = await fetch('/api/whatsapp/instance', { method: 'DELETE' })
-      if (res.ok) {
-        setStatus('close')
-        setQrCode(null)
-        isViewingQR.current = false
-        setShowConfirmLogout(false)
-        // Give it a moment then fetch status
-        setTimeout(fetchStatus, 1000)
-      } else {
-        const data = await res.json()
-        setError(data.error || 'Error al cerrar sesión')
-      }
+      await fetch('/api/whatsapp/instance', { method: 'DELETE' })
+      
+      // Activar cooldown de 15 segundos para que el poll automático no consulte el estado laggeado
+      disconnectUntil.current = Date.now() + 15000
+      
+      setStatus('close')
+      setQrCode(null)
+      isViewingQR.current = false
+      setShowConfirmLogout(false)
+      console.log('[WA] Desconexión completada. UI forzada a close y cooldown de 15s activo.')
     } catch (err) {
-      setError('Error de red al cerrar sesión')
+      disconnectUntil.current = Date.now() + 15000
+      setStatus('close')
+      setQrCode(null)
+      isViewingQR.current = false
+      setShowConfirmLogout(false)
+      console.warn('[WA] Error de red en logout, UI forzada a close')
     } finally {
       setIsProcessing(false)
     }
@@ -92,21 +121,22 @@ export default function WhatsAppClient() {
   const handleReset = async () => {
     if (confirm('¿Deseas reiniciar completamente la sesión de WhatsApp? Esto cerrará cualquier intento fallido anterior.')) {
       await handleLogout()
-      setTimeout(() => fetchQR(false), 2000)
+      disconnectUntil.current = Date.now() + 3000
+      setTimeout(() => fetchQR(false), 3500)
     }
   }
 
-  // Effect for Status Polling (Every 5s)
+  // ── Status Polling cada 5s ──
   useEffect(() => {
     fetchStatus()
     const interval = setInterval(fetchStatus, 5000)
     return () => clearInterval(interval)
   }, [fetchStatus])
 
-  // Effect for QR Auto-refresh (Every 30s if active)
+  // ── Auto-refresh QR cada 30s (solo si el usuario está viendo un QR activo) ──
   useEffect(() => {
     const qrInterval = setInterval(() => {
-      if (isViewingQR.current && status !== 'open' && document.visibilityState === 'visible') {
+      if (isViewingQR.current && status !== 'open' && status !== 'disconnecting' && Date.now() >= disconnectUntil.current && document.visibilityState === 'visible') {
         console.log('Auto-refreshing QR code...')
         fetchQR(true)
       }
@@ -124,6 +154,32 @@ export default function WhatsAppClient() {
           .shimmer-block { height: 20px; width: 150px; background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent); background-size: 200% 100%; animation: shimmer 1.5s infinite; margin-bottom: 20px; border-radius: 4px; }
           @keyframes shimmer { 0% { background-position: -200% 0; } 100% { background-position: 200% 0; } }
           p { color: var(--text-muted); font-size: 0.9rem; }
+        `}</style>
+      </div>
+    )
+  }
+
+  if (status === 'disconnecting') {
+    return (
+      <div className="whatsapp-card disconnecting-state">
+        <div className="status-indicator">
+          <div className="dot yellow pulse"></div>
+          <span>Desconectando WhatsApp...</span>
+        </div>
+        <p className="description">Cerrando sesión de forma segura y notificando a tu teléfono. Por favor, espera...</p>
+        <style jsx>{`
+          .whatsapp-card { background: var(--bg-card); padding: 2.5rem; border-radius: var(--radius-lg); border: 1px solid var(--border); max-width: 550px; margin: 2rem 0; box-shadow: var(--shadow-lg); position: relative; overflow: hidden; }
+          .whatsapp-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 4px; background: var(--warning); }
+          .status-indicator { display: flex; align-items: center; gap: 12px; font-size: 1.25rem; font-weight: 700; margin-bottom: 1.5rem; font-family: var(--font-brand); }
+          .dot { width: 14px; height: 14px; border-radius: 50%; }
+          .yellow { background: var(--warning); }
+          .pulse { animation: pulse 2s infinite; }
+          @keyframes pulse {
+            0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.7); }
+            70% { transform: scale(1); box-shadow: 0 0 0 10px rgba(245, 158, 11, 0); }
+            100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(245, 158, 11, 0); }
+          }
+          .description { color: var(--text-muted); line-height: 1.6; font-size: 1rem; }
         `}</style>
       </div>
     )

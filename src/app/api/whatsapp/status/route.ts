@@ -22,13 +22,18 @@ export async function GET() {
     })
 
     if (!response.ok) {
-      return NextResponse.json({ error: 'Error al consultar Evolution API' }, { status: response.status })
+      // Si la instancia no existe o Evolution devuelve error, 
+      // devolvemos estado 'close' en lugar de error HTTP.
+      // Esto evita que el frontend se confunda después de una desconexión.
+      console.log('[WA STATUS] Evolution devolvió error, asumiendo estado close:', response.status)
+      return NextResponse.json({ instance: { state: 'close' } })
     }
 
     const data = await response.json()
     return NextResponse.json(data)
   } catch (error) {
     console.error('[WA STATUS ERROR]:', error)
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 })
+    // En caso de error de red, devolvemos close para que la UI no se quede congelada
+    return NextResponse.json({ instance: { state: 'close' } })
   }
 }
