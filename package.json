@@ -4,7 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev --webpack",
-    "build": "next build --webpack && xcopy /E /I /Y public .next\\standalone\\public && xcopy /E /I /Y .next\\static .next\\standalone\\.next\\static",
+    "build": "next build --webpack && node -e \"const fs = require('fs'); fs.cpSync('public', '.next/standalone/public', {recursive: true, force: true}); fs.cpSync('.next/static', '.next/standalone/.next/static', {recursive: true, force: true});\"",
     "start": "node .next/standalone/server.js",
     "lint": "eslint",
     "postinstall": "prisma generate"
