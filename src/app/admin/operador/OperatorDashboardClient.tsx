@@ -57,7 +57,7 @@ export default function OperatorDashboardClient({
   const searchParams = useSearchParams()
   const tabParam = searchParams?.get('tab')
 
-  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS' | 'CALENDARIO'>('PROYECTOS')
+  const [activeTab, setActiveTab] = useState<'PROYECTOS' | 'TAREAS' | 'CALENDARIO' | 'ARCHIVADOS'>('PROYECTOS')
   const [syncNotification, setSyncNotification] = useState<{ id: string, title: string } | null>(null)
 
   useEffect(() => {
@@ -74,7 +74,7 @@ export default function OperatorDashboardClient({
   useEffect(() => {
     try {
       const saved = sessionStorage.getItem('operator_active_tab')
-      if (saved && ['PROYECTOS', 'TAREAS', 'CALENDARIO'].includes(saved) && tabParam !== 'calendario') {
+      if (saved && ['PROYECTOS', 'TAREAS', 'CALENDARIO', 'ARCHIVADOS'].includes(saved) && tabParam !== 'calendario') {
         setActiveTab(saved as any)
       }
     } catch (e) {}
@@ -611,6 +611,20 @@ export default function OperatorDashboardClient({
   useEffect(() => {
     setCurrentPage(1); // Reset page on search
   }, [searchTerm]);
+
+  // Proyectos archivados — visibles solo en el tab CALENDARIO para el operador
+  const archivedProjects = useMemo(() => {
+    const sourceProjects =
+      (projectsFromCache && projectsFromCache.length > 0) ? projectsFromCache :
+      (emergencyProjects && emergencyProjects.length > 0) ? emergencyProjects :
+      initialProjects;
+    if (!sourceProjects) return [];
+    return sourceProjects
+      .filter((p: any) => p.status === 'ARCHIVADO')
+      .sort((a: any, b: any) =>
+        new Date(b.updatedAt || b.createdAt || 0).getTime() - new Date(a.updatedAt || a.createdAt || 0).getTime()
+      );
+  }, [projectsFromCache, emergencyProjects, initialProjects]);
 
   // v352: Delete project — same 2-step modal as admin
   const [showDeleteModal, setShowDeleteModal] = useState(false);
@@ -1377,6 +1391,41 @@ export default function OperatorDashboardClient({
              Agenda Semanal
            </span>
         </button>
+
+        <button 
+          className={`tab ${activeTab === 'ARCHIVADOS' ? 'active' : ''}`}
+          onClick={() => setActiveTab('ARCHIVADOS')}
+          style={{ 
+            flex: 1, 
+            padding: '16px 10px', 
+            fontSize: '0.9rem', 
+            display: 'flex', 
+            alignItems: 'center', 
+            justifyContent: 'center', 
+            gap: '10px',
+            borderRadius: '0',
+            borderBottom: activeTab === 'ARCHIVADOS' ? '3px solid #9ca3af' : '3px solid transparent'
+          }}
+        >
+           <span style={{ fontSize: '1rem' }}>🗄️</span>
+           <span style={{ whiteSpace: 'nowrap', fontWeight: activeTab === 'ARCHIVADOS' ? '700' : '500' }}>
+             Archivados
+           </span>
+           {archivedProjects.length > 0 && (
+             <span style={{
+               fontSize: '0.7rem',
+               fontWeight: 700,
+               color: '#9ca3af',
+               background: 'rgba(156,163,175,0.15)',
+               border: '1px solid rgba(156,163,175,0.25)',
+               borderRadius: '20px',
+               padding: '1px 7px',
+               marginLeft: '2px'
+             }}>
+               {archivedProjects.length}
+             </span>
+           )}
+        </button>
       </div>
 
       {activeTab === 'PROYECTOS' && (
@@ -1766,8 +1815,118 @@ export default function OperatorDashboardClient({
                 Ver Calendario Completo ↗
               </Link>
             </div>
+
           </div>
         )}
+
+      {/* ===== TAB: ARCHIVADOS ===== */}
+      {activeTab === 'ARCHIVADOS' && (
+        <div style={{ marginTop: '20px' }}>
+          {archivedProjects.length === 0 ? (
+            <div style={{
+              textAlign: 'center',
+              padding: '60px 20px',
+              color: 'var(--text-muted)'
+            }}>
+              <div style={{ fontSize: '3rem', marginBottom: '12px' }}>🗄️</div>
+              <p style={{ fontSize: '1rem', fontWeight: 600, margin: 0 }}>No hay proyectos archivados</p>
+              <p style={{ fontSize: '0.85rem', marginTop: '6px', opacity: 0.7 }}>Los proyectos archivados aparecerán aquí</p>
+            </div>
+          ) : (
+            <>
+              <div style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '10px',
+                marginBottom: '16px',
+                paddingBottom: '12px',
+                borderBottom: '1px solid rgba(255,255,255,0.07)'
+              }}>
+                <span style={{ fontSize: '1.2rem' }}>🗄️</span>
+                <h3 style={{ margin: 0, fontSize: '1.05rem', fontWeight: 700, color: 'var(--text)' }}>
+                  Proyectos Archivados
+                </h3>
+                <span style={{
+                  marginLeft: 'auto',
+                  fontSize: '0.75rem',
+                  fontWeight: 600,
+                  color: '#9ca3af',
+                  background: 'rgba(156,163,175,0.12)',
+                  border: '1px solid rgba(156,163,175,0.2)',
+                  borderRadius: '20px',
+                  padding: '2px 10px'
+                }}>
+                  {archivedProjects.length} proyectos
+                </span>
+              </div>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {archivedProjects.map((project: any) => {
+                  const completedPhases = (project.phases || []).filter((p: any) => p.status === 'COMPLETADA').length;
+                  const totalPhases = (project.phases || []).length;
+                  const progress = totalPhases > 0 ? Math.round((completedPhases / totalPhases) * 100) : 0;
+
+                  return (
+                    <Link
+                      key={project.id}
+                      href={`/admin/operador/proyecto/${project.id}`}
+                      prefetch={false}
+                      style={{ textDecoration: 'none' }}
+                      onClick={() => {
+                        sessionStorage.setItem('last_op_project_id', String(project.id));
+                      }}
+                    >
+                      <div className="card interactive" style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '12px',
+                        padding: '14px 16px',
+                        borderLeft: '3px solid rgba(156,163,175,0.4)',
+                        opacity: 0.8,
+                        transition: 'opacity 0.2s ease'
+                      }}>
+                        <span style={{ fontSize: '1.2rem', flexShrink: 0 }}>📦</span>
+
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <p style={{
+                            margin: 0,
+                            fontSize: '0.9rem',
+                            fontWeight: 600,
+                            color: 'var(--text)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis'
+                          }}>
+                            {project.title}
+                          </p>
+                          {(project.city || project.client?.city) && (
+                            <span style={{ fontSize: '0.73rem', color: 'var(--text-muted)' }}>
+                              📍 {project.city || project.client?.city}
+                            </span>
+                          )}
+                        </div>
+
+                        {totalPhases > 0 && (
+                          <div style={{ flexShrink: 0, textAlign: 'right' }}>
+                            <span style={{ fontSize: '0.72rem', color: '#9ca3af', fontWeight: 600 }}>
+                              {progress}%
+                            </span>
+                            <div style={{ width: '60px', height: '3px', background: 'rgba(156,163,175,0.2)', borderRadius: '2px', marginTop: '3px' }}>
+                              <div style={{ width: `${progress}%`, height: '100%', background: '#9ca3af', borderRadius: '2px' }} />
+                            </div>
+                          </div>
+                        )}
+
+                        <span style={{ color: '#9ca3af', fontSize: '0.8rem', flexShrink: 0 }}>→</span>
+                      </div>
+                    </Link>
+                  );
+                })}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
 
       </div>

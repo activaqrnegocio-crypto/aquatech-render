@@ -17,7 +17,7 @@ export async function GET() {
           { team: { some: { userId } } },
           { createdBy: userId }
         ],
-        status: { in: ['LEAD', 'ACTIVO', 'PENDIENTE'] }
+        status: { in: ['LEAD', 'ACTIVO', 'PENDIENTE', 'ARCHIVADO'] }
       },
       orderBy: { updatedAt: 'desc' },
       select: {
